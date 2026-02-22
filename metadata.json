@@ -1,0 +1,5 @@
+{
+  "name": "Gestore Spese Quotidiane",
+  "description": "Un'applicazione semplice e intuitiva per monitorare le tue spese giornaliere, categorizzarle e visualizzare statistiche.",
+  "requestFramePermissions": []
+}
