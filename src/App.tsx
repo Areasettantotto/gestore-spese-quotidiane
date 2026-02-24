@@ -50,6 +50,7 @@ import { twMerge } from 'tailwind-merge';
 import { Expense, Category, CATEGORIES, Accompagnatore, ACCOMPAGNATORI } from './types';
 import { CATEGORY_ICONS } from './types';
 import { supabase } from './lib/supabaseClient';
+import { useExpensesRealtime } from '@/src/features/expenses/useExpensesRealtime';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -77,6 +78,7 @@ export default function App() {
   const [view, setView] = useState<'home' | 'all'>('home');
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
 
   const [filterMonth, setFilterMonth] = useState(format(new Date(), 'yyyy-MM'));
   const [filterCategory, setFilterCategory] = useState<Category | 'Tutte'>('Tutte');
@@ -128,6 +130,7 @@ export default function App() {
       if (user && mounted) {
         await loadExpenses();
         setUserEmail(user.email ?? null);
+        setUserId(user.id);
 
         // no demo seeding (DB should be clean)
       }
@@ -136,8 +139,15 @@ export default function App() {
     init();
 
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) loadExpenses();
-      else setExpenses([]);
+      if (session) {
+        setUserEmail(session.user.email ?? null);
+        setUserId(session.user.id);
+        loadExpenses();
+      } else {
+        setUserEmail(null);
+        setUserId(null);
+        setExpenses([]);
+      }
     });
 
     return () => {
@@ -149,7 +159,50 @@ export default function App() {
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     setUserEmail(null);
+    setUserId(null);
   };
+
+  const realtimeHandlers = useMemo(
+    () => ({
+      onInsert: (row: any) => {
+        const mapped: Expense = {
+          id: row.id,
+          amount: row.amount,
+          category: row.category,
+          description: row.description,
+          date: row.date,
+          accompagnatore: row.accompagnatore ?? undefined,
+        };
+        setExpenses((prev) => {
+          if (prev.some((e) => e.id === mapped.id)) return prev;
+          const next = [mapped, ...prev];
+          next.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+          return next;
+        });
+      },
+      onUpdate: (row: any) => {
+        const mapped: Expense = {
+          id: row.id,
+          amount: row.amount,
+          category: row.category,
+          description: row.description,
+          date: row.date,
+          accompagnatore: row.accompagnatore ?? undefined,
+        };
+        setExpenses((prev) => {
+          const next = prev.map((e) => (e.id === mapped.id ? mapped : e));
+          next.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+          return next;
+        });
+      },
+      onDelete: (row: any) => {
+        setExpenses((prev) => prev.filter((e) => e.id !== row.id));
+      },
+    }),
+    []
+  );
+
+  useExpensesRealtime(realtimeHandlers, userId ? { scopeUserId: userId } : undefined);
 
   const totalMonthly = useMemo(() => {
     const start = startOfMonth(new Date());
