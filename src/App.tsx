@@ -26,7 +26,8 @@ import {
   Home,
   Music,
   Heart,
-  ShoppingBag
+  ShoppingBag,
+  LogOut,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -75,6 +76,7 @@ const COLORS = [
 export default function App() {
   const [view, setView] = useState<'home' | 'all'>('home');
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
 
   const [filterMonth, setFilterMonth] = useState(format(new Date(), 'yyyy-MM'));
   const [filterCategory, setFilterCategory] = useState<Category | 'Tutte'>('Tutte');
@@ -125,6 +127,7 @@ export default function App() {
       const user = sessionData?.session?.user;
       if (user && mounted) {
         await loadExpenses();
+        setUserEmail(user.email ?? null);
 
         // no demo seeding (DB should be clean)
       }
@@ -142,6 +145,11 @@ export default function App() {
       try { sub.subscription.unsubscribe(); } catch (_) {}
     };
   }, []);
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    setUserEmail(null);
+  };
 
   const totalMonthly = useMemo(() => {
     const start = startOfMonth(new Date());
@@ -312,13 +320,29 @@ export default function App() {
             <h1 className="text-2xl font-bold text-zinc-900">Gestore Spese</h1>
             <p className="text-sm text-zinc-500">{format(new Date(), 'EEEE d MMMM', { locale: it })}</p>
           </div>
-          <button
-            onClick={() => setIsAdding(true)}
-            className="btn-primary flex items-center gap-2"
-          >
-            <Plus size={20} />
-            <span>Aggiungi</span>
-          </button>
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => setIsAdding(true)}
+              className="btn-primary flex items-center gap-2"
+            >
+              <Plus size={20} />
+              <span>Aggiungi</span>
+            </button>
+
+            <div className="flex items-center gap-3">
+              {userEmail ? (
+                <span className="text-sm text-zinc-600 hidden sm:inline">{userEmail}</span>
+              ) : null}
+              <button
+                onClick={handleSignOut}
+                aria-label="Logout"
+                title="Logout"
+                className="p-2 rounded-full hover:bg-zinc-100 transition-colors"
+              >
+                <LogOut size={18} />
+              </button>
+            </div>
+          </div>
         </div>
       </header>
 
@@ -478,7 +502,7 @@ export default function App() {
                         </div>
                         <div className="flex items-center gap-2">
                           <p className="font-bold text-zinc-900">€{expense.amount.toLocaleString('it-IT', { minimumFractionDigits: 2 })}</p>
-                          <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                          <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity action-buttons">
                             <button
                               onClick={() => handleEditClick(expense)}
                               className="p-2 text-zinc-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
@@ -618,7 +642,7 @@ export default function App() {
                       </div>
                       <div className="flex items-center gap-2">
                         <p className="font-bold text-zinc-900">€{expense.amount.toLocaleString('it-IT', { minimumFractionDigits: 2 })}</p>
-                        <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                        <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity action-buttons">
                           <button
                             onClick={() => handleEditClick(expense)}
                             className="p-2 text-zinc-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"

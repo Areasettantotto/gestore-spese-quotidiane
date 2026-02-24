@@ -21,3 +21,10 @@ body {
   @apply px-6 py-2 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 active:scale-95 transition-all disabled:opacity-50 disabled:pointer-events-none;
 }
 
+/* Show action buttons (edit/delete) on touch devices (e.g., tablets) where hover is not available */
+@media (hover: none) {
+  .action-buttons {
+    opacity: 1 !important;
+  }
+}
+

@@ -73,12 +73,5 @@ export function AuthGate({ children }: { children: ReactNode }) {
     );
   }
 
-  return (
-    <div>
-      <div style={{ display: "flex", justifyContent: "flex-end", padding: 8 }}>
-        <button onClick={signOut}>Logout</button>
-      </div>
-      {children}
-    </div>
-  );
+  return <>{children}</>;
 }
