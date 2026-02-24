@@ -48,6 +48,7 @@ import { twMerge } from 'tailwind-merge';
 
 import { Expense, Category, CATEGORIES, Accompagnatore, ACCOMPAGNATORI } from './types';
 import { CATEGORY_ICONS } from './types';
+import { supabase } from './lib/supabaseClient';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -73,10 +74,7 @@ const COLORS = [
 
 export default function App() {
   const [view, setView] = useState<'home' | 'all'>('home');
-  const [expenses, setExpenses] = useState<Expense[]>(() => {
-    const saved = localStorage.getItem('expenses');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [expenses, setExpenses] = useState<Expense[]>([]);
 
   const [filterMonth, setFilterMonth] = useState(format(new Date(), 'yyyy-MM'));
   const [filterCategory, setFilterCategory] = useState<Category | 'Tutte'>('Tutte');
@@ -93,37 +91,56 @@ export default function App() {
     accompagnatore: undefined,
   });
 
-  useEffect(() => {
-    try {
-      localStorage.setItem('expenses', JSON.stringify(expenses));
-    } catch (err) {
-      console.error('localStorage save failed', err);
-      alert('Impossibile salvare su questo browser.');
-    }
-  }, [expenses]);
+  // Load expenses from Supabase when a session is present
+  const loadExpenses = async () => {
+    const { data, error } = await supabase
+      .from('expenses')
+      .select('*')
+      .order('date', { ascending: false });
 
-  // Seed demo record once per device if no expenses present
-  useEffect(() => {
-    const seededKey = 'expenses_seeded_v1';
-    const alreadySeeded = localStorage.getItem(seededKey) === '1';
-    try {
-      const savedRaw = localStorage.getItem('expenses');
-      const saved = savedRaw ? JSON.parse(savedRaw) : [];
-      if (!alreadySeeded && (!saved || saved.length === 0)) {
-        const demo: Expense = {
-          id: makeId(),
-          amount: 12.5,
-          category: 'Alimentazione',
-          description: 'Spesa demo (mobile)',
-          date: format(new Date(), 'yyyy-MM-dd'),
-          accompagnatore: undefined,
-        };
-        setExpenses([demo]);
-        localStorage.setItem(seededKey, '1');
-      }
-    } catch (err) {
-      console.error('Seeding check failed', err);
+    if (error) {
+      console.error('Failed to load expenses from Supabase', error);
+      return;
     }
+
+    if (data) {
+      // Map to Expense type if needed (Supabase returns plain objects)
+      const mapped: Expense[] = (data as any[]).map((r) => ({
+        id: r.id,
+        amount: r.amount,
+        category: r.category,
+        description: r.description,
+        date: r.date,
+        accompagnatore: r.accompagnatore ?? undefined,
+      }));
+      setExpenses(mapped);
+    }
+  };
+
+  useEffect(() => {
+    let mounted = true;
+
+    const init = async () => {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const user = sessionData?.session?.user;
+      if (user && mounted) {
+        await loadExpenses();
+
+        // no demo seeding (DB should be clean)
+      }
+    };
+
+    init();
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) loadExpenses();
+      else setExpenses([]);
+    });
+
+    return () => {
+      mounted = false;
+      try { sub.subscription.unsubscribe(); } catch (_) {}
+    };
   }, []);
 
   const totalMonthly = useMemo(() => {
@@ -193,7 +210,7 @@ export default function App() {
     }));
   }, [expenses]);
 
-  const handleAddExpense = (e: React.FormEvent) => {
+  const handleAddExpense = async (e: React.FormEvent) => {
     e.preventDefault();
 
     // Parse amount robustly (allow comma as decimal separator on mobile)
@@ -206,14 +223,30 @@ export default function App() {
     if (!newExpense.description || !newExpense.date || !newExpense.category) return;
     if (isNaN(amountNum) || amountNum <= 0) return;
 
-    if (editingId) {
-      setExpenses(expenses.map(exp =>
-        exp.id === editingId
-          ? { ...exp, ...newExpense as Expense, amount: amountNum }
-          : exp
-      ));
-    } else {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const user = sessionData?.session?.user;
+    if (!user) {
+      alert('Utente non autenticato');
+      return;
+    }
 
+    if (editingId) {
+      const updates = {
+        amount: amountNum,
+        category: newExpense.category as Category,
+        description: newExpense.description,
+        date: newExpense.date,
+        accompagnatore: newExpense.accompagnatore || null,
+        owner_id: user.id,
+      };
+      const { error } = await supabase.from('expenses').update(updates).eq('id', editingId);
+      if (error) {
+        console.error('Update failed', error);
+        alert('Impossibile aggiornare la spesa: ' + (error.message || JSON.stringify(error)));
+      } else {
+        setExpenses(expenses.map(exp => exp.id === editingId ? { ...exp, ...updates as any } : exp));
+      }
+    } else {
       const expense: Expense = {
         id: makeId(),
         amount: amountNum,
@@ -222,7 +255,14 @@ export default function App() {
         date: newExpense.date,
         accompagnatore: newExpense.accompagnatore || undefined,
       };
-      setExpenses([expense, ...expenses]);
+
+      const { error } = await supabase.from('expenses').insert([{ ...expense, user_id: user.id, owner_id: user.id }]);
+      if (error) {
+        console.error('Insert failed', error);
+        alert('Impossibile salvare la spesa: ' + (error.message || JSON.stringify(error)));
+      } else {
+        setExpenses([expense, ...expenses]);
+      }
     }
 
     setIsAdding(false);
@@ -242,7 +282,13 @@ export default function App() {
     setIsAdding(true);
   };
 
-  const deleteExpense = (id: string) => {
+  const deleteExpense = async (id: string) => {
+    const { error } = await supabase.from('expenses').delete().eq('id', id);
+    if (error) {
+      console.error('Delete failed', error);
+      alert('Impossibile eliminare la spesa: ' + (error.message || JSON.stringify(error)));
+      return;
+    }
     setExpenses(expenses.filter(e => e.id !== id));
   };
 
