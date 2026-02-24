@@ -344,13 +344,21 @@ export default function App() {
   };
 
   const deleteExpense = async (id: string) => {
-    const { error } = await supabase.from('expenses').delete().eq('id', id);
+    setExpenses((prev) => prev.filter((e) => e.id !== id)); // optimistic
+
+    const { data, error } = await supabase.from('expenses').delete().eq('id', id).select();
+
     if (error) {
       console.error('Delete failed', error);
       alert('Impossibile eliminare la spesa: ' + (error.message || JSON.stringify(error)));
+      await loadExpenses();
       return;
     }
-    setExpenses(expenses.filter(e => e.id !== id));
+
+    if (!data || data.length === 0) {
+      console.warn('DELETE: nessuna riga cancellata (id non match?)', id);
+      await loadExpenses();
+    }
   };
 
   // Map simple icon keys from types to actual lucide-react components
