@@ -9,6 +9,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -32,43 +33,79 @@ export function AuthGate({ children }: { children: ReactNode }) {
   }, []);
 
   const signIn = async () => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) alert(error.message);
-  };
-
-  const signOut = async () => {
-    await supabase.auth.signOut();
-    setEmail("");
-    setPassword("");
+    try {
+      setSubmitting(true);
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) alert(error.message);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   if (loading) return null;
 
   if (!session) {
     return (
-      <div style={{ maxWidth: 420, margin: "40px auto", padding: 16 }} autoComplete="off">
-        <h2>Accedi</h2>
-        <input
-          style={{ width: "100%", padding: 10, marginTop: 10 }}
-          type="email"
-          name="email"
-          autoComplete="off"
-          placeholder="Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-        />
-        <input
-          style={{ width: "100%", padding: 10, marginTop: 10 }}
-          type="password"
-          name="password"
-          autoComplete="off"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
-        <button style={{ width: "100%", padding: 12, marginTop: 12 }} onClick={signIn}>
-          Login
-        </button>
+      <div className="min-h-screen flex items-center justify-center px-4 py-12">
+        <div className="w-full max-w-md bg-white rounded-2xl border border-zinc-200 shadow-sm p-8">
+          <div className="mb-6 text-center">
+            <h1 className="text-2xl font-bold text-zinc-900">Gestore Spese</h1>
+            <p className="text-sm text-zinc-500 mt-2">Accedi per gestire le tue spese quotidiane</p>
+          </div>
+
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              signIn();
+            }}
+            className="space-y-4"
+            autoComplete="off"
+          >
+            <div>
+              <label className="block text-xs font-medium text-zinc-700 mb-2">Email</label>
+              <input
+                type="email"
+                name="email"
+                autoComplete="off"
+                placeholder="tuo@esempio.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="input-field"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-zinc-700 mb-2">Password</label>
+              <input
+                type="password"
+                name="password"
+                autoComplete="off"
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="input-field"
+                required
+              />
+            </div>
+
+            <div className="flex items-center justify-between text-xs text-zinc-500">
+              <label className="flex items-center gap-2">
+                <input type="checkbox" className="accent-emerald-600" />
+                <span>Ricordami</span>
+              </label>
+              {/* <button type="button" className="text-emerald-600 hover:underline">Password dimenticata?</button> */}
+            </div>
+
+            <button type="submit" className="btn-primary w-full" disabled={submitting}>
+              {submitting ? 'Accesso...' : 'Accedi'}
+            </button>
+          </form>
+
+          <div className="mt-6 text-center text-sm text-zinc-500">
+            <span>Non hai un account? Contatta l'amministratore</span>
+          </div>
+        </div>
       </div>
     );
   }
