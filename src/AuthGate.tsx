@@ -14,10 +14,18 @@ export function AuthGate({ children }: { children: ReactNode }) {
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
       setLoading(false);
+      if (!data.session) {
+        setEmail("");
+        setPassword("");
+      }
     });
 
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
+      if (!session) {
+        setEmail("");
+        setPassword("");
+      }
     });
 
     return () => sub.subscription.unsubscribe();
@@ -30,17 +38,21 @@ export function AuthGate({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     await supabase.auth.signOut();
+    setEmail("");
+    setPassword("");
   };
 
   if (loading) return null;
 
   if (!session) {
     return (
-      <div style={{ maxWidth: 420, margin: "40px auto", padding: 16 }}>
+      <div style={{ maxWidth: 420, margin: "40px auto", padding: 16 }} autoComplete="off">
         <h2>Accedi</h2>
         <input
           style={{ width: "100%", padding: 10, marginTop: 10 }}
           type="email"
+          name="email"
+          autoComplete="off"
           placeholder="Email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
@@ -48,6 +60,8 @@ export function AuthGate({ children }: { children: ReactNode }) {
         <input
           style={{ width: "100%", padding: 10, marginTop: 10 }}
           type="password"
+          name="password"
+          autoComplete="off"
           placeholder="Password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
