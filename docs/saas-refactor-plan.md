@@ -6,8 +6,9 @@ Questo documento descrive le scelte della **fase 1**: schema multi-tenant, RLS e
 
 - **`migrations/migration.sql`** (invariata): baseline `user_id` + policy owner-only storiche.
 - **`migrations/002_saas_tenant_rls.sql`** (nuova): da eseguire **dopo** la baseline nello SQL Editor Supabase (o pipeline equivalente).
+- **`migrations/003_expenses_tenant_insert_guard.sql`**: da eseguire **dopo** la 002. Aggiunge solo una guardia difensiva lato database (funzione + trigger `BEFORE INSERT` su `public.expenses`): se `tenant_id` è omesso o `NULL`, viene valorizzato da `profiles.default_tenant_id` dell’utente corrente; se `tenant_id` è già valorizzato, non viene modificato. Non tocca righe esistenti. Serve a tollerare **vecchie versioni del frontend**, **cache** o **PWA** che inviano ancora insert senza `tenant_id`, evitando errori `NOT NULL` / mismatch con le policy mentre il client viene aggiornato.
 
-La 002 è pensata come script incrementale idempotente dove ha senso (drop/ricrea policy, `if not exists` su indici/tabelle).
+La 002 è pensata come script incrementale idempotente dove ha senso (drop/ricrea policy, `if not exists` su indici/tabelle). La 003 è idempotente (`CREATE OR REPLACE` + `DROP TRIGGER IF EXISTS`).
 
 ### Preflight (prima di applicare la 002)
 
