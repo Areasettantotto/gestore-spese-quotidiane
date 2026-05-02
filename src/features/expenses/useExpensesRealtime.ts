@@ -1,23 +1,12 @@
 import { useEffect } from "react";
 import { supabase } from "@/src/lib/supabaseClient";
 
-export type ExpenseRow = {
-  id: string;
-  amount: number;
-  category: string;
-  description: string;
-  date: string;
-  tenant_id?: string;
-  user_id?: string;
-  owner_id?: string;
-  accompagnatore?: string | null;
-  created_at?: string;
-};
+import type { ExpenseDbRow } from "./expenses.types";
 
 type RealtimeHandlers = {
-  onInsert?: (row: ExpenseRow) => void;
-  onUpdate?: (row: ExpenseRow) => void;
-  onDelete?: (row: ExpenseRow) => void;
+  onInsert?: (row: ExpenseDbRow) => void;
+  onUpdate?: (row: ExpenseDbRow) => void;
+  onDelete?: (row: ExpenseDbRow) => void;
 };
 
 /**
@@ -45,13 +34,13 @@ export function useExpensesRealtime(
         },
         (payload) => {
           if (payload.eventType === "INSERT") {
-            handlers.onInsert?.(payload.new as ExpenseRow);
+            handlers.onInsert?.(payload.new as ExpenseDbRow);
           }
           if (payload.eventType === "UPDATE") {
-            handlers.onUpdate?.(payload.new as ExpenseRow);
+            handlers.onUpdate?.(payload.new as ExpenseDbRow);
           }
           if (payload.eventType === "DELETE") {
-            handlers.onDelete?.(payload.old as ExpenseRow);
+            handlers.onDelete?.(payload.old as ExpenseDbRow);
           }
         }
       )

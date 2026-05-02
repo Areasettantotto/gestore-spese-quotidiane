@@ -50,19 +50,12 @@ import { twMerge } from 'tailwind-merge';
 import { Expense, Category, CATEGORIES, Accompagnatore, ACCOMPAGNATORI } from './types';
 import { CATEGORY_ICONS } from './types';
 import { supabase } from './lib/supabaseClient';
-import { useExpensesRealtime } from '@/src/features/expenses/useExpensesRealtime';
+import { useExpenses } from '@/src/features/expenses/useExpenses';
+import { useActiveTenant } from '@/src/features/tenancy/useActiveTenant';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
-
-// Safe id generator (fallback for iOS Safari if crypto.randomUUID is unavailable)
-const makeId = () => {
-  if (globalThis.crypto?.randomUUID) {
-    return crypto.randomUUID();
-  }
-  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-};
 
 const COLORS = [
   '#10b981', // emerald-500
@@ -76,12 +69,22 @@ const COLORS = [
 
 export default function App() {
   const [view, setView] = useState<'home' | 'all'>('home');
-  const [expenses, setExpenses] = useState<Expense[]>([]);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
-  const [activeTenantId, setActiveTenantId] = useState<string | null>(null);
-  const [profileError, setProfileError] = useState<string | null>(null);
-  const [expensesLoadError, setExpensesLoadError] = useState<string | null>(null);
+
+  const {
+    activeTenantId,
+    profileError,
+    loadDefaultTenant,
+    resolveTenantForMutation,
+    resetTenantState,
+  } = useActiveTenant();
+
+  const { expenses, expensesLoadError, saveExpense, deleteExpense } = useExpenses({
+    userId,
+    activeTenantId,
+    resolveTenantForMutation,
+  });
 
   const [filterMonth, setFilterMonth] = useState(format(new Date(), 'yyyy-MM'));
   const [filterCategory, setFilterCategory] = useState<Category | 'Tutte'>('Tutte');
@@ -98,77 +101,6 @@ export default function App() {
     accompagnatore: undefined,
   });
 
-  /** Normalizes profile.default_tenant_id to a non-empty string or null. */
-  const normalizeTenantId = (value: unknown): string | null => {
-    if (typeof value !== 'string') return null;
-    const t = value.trim();
-    return t.length > 0 ? t : null;
-  };
-
-  /** Loads profile and returns default tenant id (for immediate use before React state commits). */
-  const loadDefaultTenant = async (uid: string): Promise<string | null> => {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('default_tenant_id')
-      .eq('id', uid)
-      .maybeSingle();
-
-    if (error) {
-      console.error('Failed to load profile / default tenant', error);
-      setActiveTenantId(null);
-      setProfileError('Impossibile caricare il profilo o il workspace predefinito.');
-      return null;
-    }
-    const tid = normalizeTenantId(data?.default_tenant_id);
-    setActiveTenantId(tid);
-    if (!tid) {
-      setProfileError(
-        'Nessun workspace predefinito sul profilo. Applica la migration SaaS su Supabase o riprova tra poco.'
-      );
-    } else {
-      setProfileError(null);
-    }
-    return tid;
-  };
-
-  /** Tenant id for Supabase mutations: prefers state, re-fetches profile if missing (avoids stale null). */
-  const resolveTenantForMutation = async (uid: string): Promise<string | null> => {
-    if (activeTenantId) return activeTenantId;
-    return loadDefaultTenant(uid);
-  };
-
-  /** Loads expenses for the active tenant only (RLS also applies; client filter avoids multi-tenant bleed). */
-  const loadExpenses = async (tenantId: string | null) => {
-    setExpensesLoadError(null);
-    if (!tenantId) {
-      setExpenses([]);
-      return;
-    }
-    const { data, error } = await supabase
-      .from('expenses')
-      .select('*')
-      .eq('tenant_id', tenantId)
-      .order('date', { ascending: false });
-
-    if (error) {
-      console.error('Failed to load expenses from Supabase', error);
-      setExpensesLoadError('Impossibile caricare le spese per questo workspace.');
-      return;
-    }
-
-    if (data) {
-      const mapped: Expense[] = (data as any[]).map((r) => ({
-        id: r.id,
-        amount: r.amount,
-        category: r.category,
-        description: r.description,
-        date: r.date,
-        accompagnatore: r.accompagnatore ?? undefined,
-      }));
-      setExpenses(mapped);
-    }
-  };
-
   useEffect(() => {
     let mounted = true;
 
@@ -178,12 +110,7 @@ export default function App() {
       if (user && mounted) {
         setUserEmail(user.email ?? null);
         setUserId(user.id);
-        const tenantId = await loadDefaultTenant(user.id);
-        if (tenantId) {
-          await loadExpenses(tenantId);
-        } else {
-          setExpenses([]);
-        }
+        await loadDefaultTenant(user.id);
       }
     };
 
@@ -193,21 +120,11 @@ export default function App() {
       if (session) {
         setUserEmail(session.user.email ?? null);
         setUserId(session.user.id);
-        void (async () => {
-          const tenantId = await loadDefaultTenant(session.user.id);
-          if (tenantId) {
-            await loadExpenses(tenantId);
-          } else {
-            setExpenses([]);
-          }
-        })();
+        void loadDefaultTenant(session.user.id);
       } else {
         setUserEmail(null);
         setUserId(null);
-        setActiveTenantId(null);
-        setProfileError(null);
-        setExpensesLoadError(null);
-        setExpenses([]);
+        resetTenantState();
       }
     });
 
@@ -215,61 +132,14 @@ export default function App() {
       mounted = false;
       try { sub.subscription.unsubscribe(); } catch (_) {}
     };
-  }, []);
+  }, [loadDefaultTenant, resetTenantState]);
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     setUserEmail(null);
     setUserId(null);
-    setActiveTenantId(null);
-    setProfileError(null);
-    setExpensesLoadError(null);
+    resetTenantState();
   };
-
-  const realtimeHandlers = useMemo(
-    () => ({
-      onInsert: (row: any) => {
-        const mapped: Expense = {
-          id: row.id,
-          amount: row.amount,
-          category: row.category,
-          description: row.description,
-          date: row.date,
-          accompagnatore: row.accompagnatore ?? undefined,
-        };
-        setExpenses((prev) => {
-          if (prev.some((e) => e.id === mapped.id)) return prev;
-          const next = [mapped, ...prev];
-          next.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-          return next;
-        });
-      },
-      onUpdate: (row: any) => {
-        const mapped: Expense = {
-          id: row.id,
-          amount: row.amount,
-          category: row.category,
-          description: row.description,
-          date: row.date,
-          accompagnatore: row.accompagnatore ?? undefined,
-        };
-        setExpenses((prev) => {
-          const next = prev.map((e) => (e.id === mapped.id ? mapped : e));
-          next.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-          return next;
-        });
-      },
-      onDelete: (row: any) => {
-        setExpenses((prev) => prev.filter((e) => e.id !== row.id));
-      },
-    }),
-    []
-  );
-
-  useExpensesRealtime(
-    realtimeHandlers,
-    userId && activeTenantId ? { scopeTenantId: activeTenantId } : undefined
-  );
 
   const totalMonthly = useMemo(() => {
     const start = startOfMonth(new Date());
@@ -351,70 +221,14 @@ export default function App() {
     if (!newExpense.description || !newExpense.date || !newExpense.category) return;
     if (isNaN(amountNum) || amountNum <= 0) return;
 
-    const { data: sessionData } = await supabase.auth.getSession();
-    const user = sessionData?.session?.user;
-    if (!user) {
-      alert('Utente non autenticato');
-      return;
-    }
-
-    const tenantIdForSave = await resolveTenantForMutation(user.id);
-    if (!tenantIdForSave) {
-      alert('Tenant non caricato, effettua di nuovo il login');
-      return;
-    }
-
-    if (editingId) {
-      const updates = {
-        amount: amountNum,
-        category: newExpense.category as Category,
-        description: newExpense.description,
-        date: newExpense.date,
-        accompagnatore: newExpense.accompagnatore || null,
-        owner_id: user.id,
-        tenant_id: tenantIdForSave,
-      };
-      const { error } = await supabase
-        .from('expenses')
-        .update(updates)
-        .eq('id', editingId)
-        .eq('tenant_id', tenantIdForSave);
-      if (error) {
-        console.error('Update failed', error);
-        alert('Impossibile aggiornare la spesa: ' + (error.message || JSON.stringify(error)));
-      } else {
-        setExpenses(expenses.map(exp => exp.id === editingId ? { ...exp, ...updates as any } : exp));
-      }
-    } else {
-      const expense: Expense = {
-        id: makeId(),
-        amount: amountNum,
-        category: newExpense.category as Category,
-        description: newExpense.description,
-        date: newExpense.date,
-        accompagnatore: newExpense.accompagnatore || undefined,
-      };
-
-      const insertRow = {
-        id: expense.id,
-        amount: expense.amount,
-        category: expense.category,
-        description: expense.description,
-        date: expense.date,
-        accompagnatore: expense.accompagnatore ?? null,
-        user_id: user.id,
-        owner_id: user.id,
-        tenant_id: tenantIdForSave,
-      };
-
-      const { error } = await supabase.from('expenses').insert([insertRow]);
-      if (error) {
-        console.error('Insert failed', error);
-        alert('Impossibile salvare la spesa: ' + (error.message || JSON.stringify(error)));
-      } else {
-        setExpenses([expense, ...expenses]);
-      }
-    }
+    await saveExpense({
+      amount: amountNum,
+      category: newExpense.category as Category,
+      description: newExpense.description,
+      date: newExpense.date,
+      accompagnatore: newExpense.accompagnatore,
+      editingId,
+    });
 
     setIsAdding(false);
     setEditingId(null);
@@ -433,40 +247,8 @@ export default function App() {
     setIsAdding(true);
   };
 
-  const deleteExpense = async (id: string) => {
-    const { data: sessionData } = await supabase.auth.getSession();
-    const user = sessionData?.session?.user;
-    if (!user) {
-      alert('Utente non autenticato');
-      return;
-    }
-
-    const tenantIdForDelete = await resolveTenantForMutation(user.id);
-    if (!tenantIdForDelete) {
-      alert('Tenant non caricato, effettua di nuovo il login');
-      return;
-    }
-
-    setExpenses((prev) => prev.filter((e) => e.id !== id)); // optimistic
-
-    const { data, error } = await supabase
-      .from('expenses')
-      .delete()
-      .eq('id', id)
-      .eq('tenant_id', tenantIdForDelete)
-      .select();
-
-    if (error) {
-      console.error('Delete failed', error);
-      alert('Impossibile eliminare la spesa: ' + (error.message || JSON.stringify(error)));
-      await loadExpenses(tenantIdForDelete);
-      return;
-    }
-
-    if (!data || data.length === 0) {
-      console.warn('DELETE: nessuna riga cancellata (id non match?)', id);
-      await loadExpenses(tenantIdForDelete);
-    }
+  const handleDeleteExpense = (id: string) => {
+    void deleteExpense(id);
   };
 
   // Map simple icon keys from types to actual lucide-react components
@@ -690,7 +472,7 @@ export default function App() {
                             <button
                               onClick={() => {
                                 if (confirm(`Confermi l'eliminazione di "${expense.description}"?`)) {
-                                  deleteExpense(expense.id);
+                                  handleDeleteExpense(expense.id);
                                 }
                               }}
                               className="p-2 text-zinc-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
@@ -830,7 +612,7 @@ export default function App() {
                           <button
                             onClick={() => {
                               if (confirm(`Confermi l'eliminazione di "${expense.description}"?`)) {
-                                deleteExpense(expense.id);
+                                handleDeleteExpense(expense.id);
                               }
                             }}
                             className="p-2 text-zinc-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
