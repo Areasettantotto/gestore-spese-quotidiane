@@ -1,0 +1,28 @@
+---
+description: Typecheck, build e discipline dopo refactor; documentazione architetturale
+alwaysApply: true
+---
+
+# Quality gates e discipline
+
+## Dopo ogni blocco di modifiche rilevante
+
+Eseguire almeno gli script definiti in `package.json`:
+
+1. **`npm run lint`** — nel repo corrente equivale a `tsc --noEmit` (controllo tipi). Se in futuro viene aggiunto ESLint o altro, **leggere `package.json`** e usare lo script `lint` effettivo.
+2. **`npm run build`** — build di produzione Vite (`vite build`).
+
+Se uno script non esiste, **consultare `package.json`** e usare l’equivalente più vicino (es. solo `build` se `lint` mancasse temporaneamente) e proporre l’allineamento degli script in modo incrementale.
+
+## TODO e debito
+
+- **Non** lasciare TODO vaghi (“fix later”, “improve”) senza **riferimento** a issue tracker, ticket, o breve piano nel messaggio di commit / PR.
+- Preferire issue tracciabile o rimozione del TODO una volta risolto.
+
+## Cambiamenti architetturali
+
+- Decisioni strutturali (nuovo layering, tenancy, RLS, billing) vanno **documentate** in **`README.md`** o in **`docs/`** (file markdown conciso), così che contributor e agenti successivi condividano lo stesso modello mentale.
+
+## Coerenza con le altre regole
+
+- Le modifiche non devono violare le regole in `000-`, `010-`, `020-`, `030-`, `040-` senza aggiornare esplicitamente anche la documentazione e le policy/migration correlate.

@@ -1,0 +1,29 @@
+---
+description: Contesto SaaS multi-tenant, stack e vincoli del repository gestore-spese-quotidiane
+alwaysApply: true
+---
+
+# Contesto progetto
+
+Questo repository è una **SaaS di gestione spese (expense management) multi-tenant** in evoluzione da prototipo locale / single-user verso un prodotto scalabile.
+
+## Stack (preservare)
+
+- **Frontend:** React (Vite), TypeScript, Tailwind CSS
+- **Backend dati / auth:** Supabase (Auth, Database, Realtime) con **PostgreSQL** e **Row-Level Security**
+- **Deploy atteso:** sito statico (es. build `vite build`, directory `dist`); variabili `VITE_*` solo per chiavi pubbliche / URL
+- **Billing:** eventuale integrazione futura (Stripe o Paddle) — vedi regola billing
+
+Il progetto può contenere dipendenze legacy (es. script locali, SQLite); **non introdurre nuove dipendenze server-side obbligatorie** per il percorso SaaS senza motivazione architetturale esplicita.
+
+## Obiettivi
+
+- Multi-tenancy con `tenant_id` e RLS coerente
+- UX stabile durante la migrazione
+- Sicurezza: nessun secret o service role nel bundle client
+
+## Vincoli di modifica
+
+- **Vietati** refactor distruttivi o wide-ranging non richiesti dall’utente o da un issue/piano chiaro
+- Preferire **modifiche incrementali**, piccoli PR/commit logici, comportamento **verificabile** (build, typecheck, test quando presenti)
+- Allineare nuove cartelle/file agli standard definiti nelle altre regole (architettura, RLS, frontend, billing, quality gates)

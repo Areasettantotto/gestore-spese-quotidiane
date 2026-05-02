@@ -1,0 +1,47 @@
+---
+description: RLS, tenant_id, helper SQL e Realtime per Supabase/PostgreSQL
+globs:
+  - migrations/**/*.sql
+  - supabase/**/*.sql
+  - src/lib/**/*.ts
+  - src/features/**/*.ts
+alwaysApply: false
+---
+
+# Supabase, PostgreSQL e multi-tenancy (RLS)
+
+## RLS obbligatorio su dati tenant-scoped
+
+- Abilitare **RLS** su ogni tabella che contiene dati per-tenant.
+- Le policy devono garantire che un utente possa accedere solo alle righe dei tenant di cui è membro (o ruolo adeguato).
+
+## Evitare policy “solo user_id” sul dominio tenant
+
+- Se il dominio è **tenant-scoped**, **vietare** policy che controllano **solo** `auth.uid() = user_id` (o owner) **senza** vincolo di appartenenza al tenant — rischio di inconsistenze e migrazione incompleta.
+- Le policy devono combinare membership tenant (es. tramite helper) con eventuali ruoli o ownership dove serve.
+
+## Funzioni helper (database)
+
+Richiedere (o estendere) funzioni stabili in `public` (o schema dedicato), ad esempio:
+
+- `is_tenant_member(tenant uuid)` — true se `auth.uid()` è membro del tenant
+- `has_tenant_role(tenant uuid, role text)` — opzionale, per ruoli admin/billing
+
+Usarle nelle policy `USING` / `WITH CHECK` per leggibilità e manutenzione.
+
+## Indici
+
+- Creare indici (o indici composti) che includano **`tenant_id`** sulle query frequenti (liste, filtri, FK verso `tenants`).
+
+## Realtime
+
+- Sottoscrizioni Realtime devono essere **filtrate per `tenant_id`** coerente con `activeTenantId`; non sottoscrivere “tutto il channel” senza filtro tenant dove i dati sono sensibili.
+
+## Chiavi e client
+
+- **Mai** usare `service_role` o altri secret nel **frontend** o in variabili `VITE_*`.
+- Solo **anon key** + RLS per il client browser; operazioni privilegiate solo server-side (Edge Function con secret in env Supabase, mai nel repo client).
+
+## Migrazioni
+
+- Versionare le modifiche schema/policy in `migrations/**/*.sql` e/o `supabase/migrations` quando adottato il CLI; mantenere script idempotenti dove il progetto già usa pattern `if not exists`.

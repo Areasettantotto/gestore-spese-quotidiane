@@ -1,0 +1,34 @@
+---
+description: Astrazioni billing, webhook server-side, subscription per tenant
+globs:
+  - src/features/billing/**
+  - server/**
+  - supabase/functions/**
+  - migrations/**/*.sql
+alwaysApply: false
+---
+
+# Billing readiness (Stripe / Paddle)
+
+## Provider-agnostic
+
+- Introdurre **astrazioni** (porte/adattatori) per pagamenti e subscription; **non** hardcodare chiamate provider sparse in UI o repository generici.
+- Nomi tipo `BillingProvider`, `createCheckoutSession`, `parseWebhookEvent` meglio di import diretti del SDK in ogni file.
+
+## Webhook
+
+- Endpoint webhook **solo server-side**: Supabase Edge Functions, backend dedicato, o worker — **mai** segreti webhook o verifica firma nel bundle Vite.
+- Gli handler devono essere **idempotenti** (dedup per `event_id` o chiave naturale in tabella dedicata) per evitare doppi addebiti o doppie attivazioni piano.
+
+## Modello di dominio
+
+- **Subscription / piano** legati al **tenant**, non al singolo utente personale (il pagatore può essere un utente, ma lo stato commerciale è del workspace).
+- **Feature gating** basato su **piano** (e dove serve) **ruolo** nel tenant (es. solo admin gestisce billing).
+
+## Secret
+
+- Nessuna API key segreta, signing secret, o `service_role` nel frontend o in file committati non cifrati; usare env Supabase / CI.
+
+## SQL e RLS
+
+- Tabelle `subscriptions`, `invoices`, `usage`, ecc. devono avere **`tenant_id`** e RLS allineata alle regole tenancy; operazioni amministrative privilegiate solo via ruolo service, non anon client.

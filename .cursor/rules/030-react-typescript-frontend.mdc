@@ -1,0 +1,33 @@
+---
+description: React, TypeScript, layering dati e stati UI per src/
+globs:
+  - src/**/*.tsx
+  - src/**/*.ts
+alwaysApply: false
+---
+
+# Frontend React + TypeScript
+
+## Componenti
+
+- Componenti **piccoli**, nominati in modo chiaro, con responsabilità singola.
+- Non rompere **UX e flussi esistenti** senza requisito esplicito; preferire estensioni retrocompatibili.
+
+## Accesso dati (Supabase)
+
+- **Non** chiamare `supabase` direttamente da componenti **complessi** o pagine “container” dense di logica.
+- Centralizzare in **repository / service** (es. `src/lib/`, `src/features/*/api` o `*Repository.ts`) così che filtri `tenant_id` e mapping errori siano coerenti e testabili.
+
+## Stati UI
+
+- Gestire esplicitamente **loading**, **error** e **empty state** per liste e form async.
+- Evitare `any`; se inevitabile, **documentare** in commento locale il motivo e restringere il più possibile (cast mirato, generic, `unknown` + narrowing).
+
+## TypeScript
+
+- Mantenere il codice **strict-friendly**: preferire tipi espliciti su boundary API, null check su optional, evitare `@ts-ignore` salvo eccezione documentata.
+
+## Convenzioni
+
+- Riusare utilità esistenti (`clsx`, `tailwind-merge`, alias `@/` se configurato) invece di duplicare pattern.
+- Import e stile allineati al codice già presente nel repository.

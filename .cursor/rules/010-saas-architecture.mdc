@@ -1,0 +1,37 @@
+---
+description: Architettura tenant-first, layering e modello dati condiviso + RLS
+alwaysApply: true
+---
+
+# Architettura SaaS
+
+## Tenant-first
+
+- Ogni **risorsa di dominio** (spese, categorie, allegati, impostazioni workspace, ecc.) deve appartenere a un **tenant** identificato da `tenant_id` (o equivalente esplicito nel modello).
+- Ogni **operazione sui dati** deve **ricevere** o **derivare in modo tracciabile** un `activeTenantId` (o contesto tenant equivalente) prima di query, insert, update, delete o subscribe Realtime.
+
+## Separazione dei layer
+
+Tenere distinti (cartelle o moduli chiari):
+
+| Layer | Responsabilità |
+|--------|------------------|
+| **UI (React)** | Presentazione, stato UI, orchestrazione sottile |
+| **Domain** | Regole di business pure, invarianti tenant |
+| **Repository / data access** | Chiamate Supabase, filtri `tenant_id`, error mapping |
+| **Mapper** | DTO DB ↔ tipi di dominio / UI |
+| **Auth** | Sessione utente, redirect login, contesto JWT/session |
+| **Tenancy** | Risoluzione tenant attivo, membership, switch tenant |
+| **Billing** (quando presente) | Piano, limiti, feature flags — vedi regola billing |
+
+Evitare logica di dominio “sparata” in componenti grossi o in file SQL-only senza allineamento al codice client.
+
+## Modello dati consigliato
+
+- Preferire **database condiviso**, **schema condiviso**, colonna **`tenant_id`**, enforcement con **RLS** (non silos per-tenant per schema DB salvo requisito esplicito).
+- Pianificare estensibilità per: **audit log** (chi/cosa/quando per tenant), **job asincroni** (Edge Functions / queue / cron Supabase), **readiness billing** (tabelle o campi subscription legati al tenant).
+
+## Backend Node locale
+
+- **Non** aggiungere un backend Node obbligatorio per il flusso principale dell’app se il prodotto resta statico + Supabase.
+- Logiche server-side: preferire **Supabase Edge Functions**, **SQL migrations**, **Database Functions** + RLS; valutare script esistenti solo se già parte del workflow del repo.

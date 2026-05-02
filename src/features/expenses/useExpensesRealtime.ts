@@ -7,6 +7,7 @@ export type ExpenseRow = {
   category: string;
   description: string;
   date: string;
+  tenant_id?: string;
   user_id?: string;
   owner_id?: string;
   accompagnatore?: string | null;
@@ -19,11 +20,18 @@ type RealtimeHandlers = {
   onDelete?: (row: ExpenseRow) => void;
 };
 
+/**
+ * Subscribes to public.expenses changes filtered by tenant_id only.
+ * When scopeTenantId is missing, no channel is opened (avoid broad or owner-only streams).
+ */
 export function useExpensesRealtime(
   handlers: RealtimeHandlers,
-  opts?: { scopeUserId?: string }
+  opts?: { scopeTenantId: string }
 ) {
   useEffect(() => {
+    if (!opts?.scopeTenantId) {
+      return;
+    }
 
     const channel = supabase
       .channel("rt-expenses")
@@ -33,9 +41,7 @@ export function useExpensesRealtime(
           event: "*",
           schema: "public",
           table: "expenses",
-          ...(opts?.scopeUserId
-            ? { filter: `owner_id=eq.${opts.scopeUserId}` }
-            : {}),
+          filter: `tenant_id=eq.${opts.scopeTenantId}`,
         },
         (payload) => {
           if (payload.eventType === "INSERT") {
@@ -51,10 +57,8 @@ export function useExpensesRealtime(
       )
       .subscribe();
 
-
-
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [handlers, opts?.scopeUserId]);
+  }, [handlers, opts?.scopeTenantId]);
 }
