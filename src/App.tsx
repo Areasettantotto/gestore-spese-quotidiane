@@ -98,6 +98,13 @@ export default function App() {
     accompagnatore: undefined,
   });
 
+  /** Normalizes profile.default_tenant_id to a non-empty string or null. */
+  const normalizeTenantId = (value: unknown): string | null => {
+    if (typeof value !== 'string') return null;
+    const t = value.trim();
+    return t.length > 0 ? t : null;
+  };
+
   /** Loads profile and returns default tenant id (for immediate use before React state commits). */
   const loadDefaultTenant = async (uid: string): Promise<string | null> => {
     const { data, error } = await supabase
@@ -112,7 +119,7 @@ export default function App() {
       setProfileError('Impossibile caricare il profilo o il workspace predefinito.');
       return null;
     }
-    const tid = data?.default_tenant_id ?? null;
+    const tid = normalizeTenantId(data?.default_tenant_id);
     setActiveTenantId(tid);
     if (!tid) {
       setProfileError(
@@ -122,6 +129,12 @@ export default function App() {
       setProfileError(null);
     }
     return tid;
+  };
+
+  /** Tenant id for Supabase mutations: prefers state, re-fetches profile if missing (avoids stale null). */
+  const resolveTenantForMutation = async (uid: string): Promise<string | null> => {
+    if (activeTenantId) return activeTenantId;
+    return loadDefaultTenant(uid);
   };
 
   /** Loads expenses for the active tenant only (RLS also applies; client filter avoids multi-tenant bleed). */
@@ -166,7 +179,11 @@ export default function App() {
         setUserEmail(user.email ?? null);
         setUserId(user.id);
         const tenantId = await loadDefaultTenant(user.id);
-        await loadExpenses(tenantId);
+        if (tenantId) {
+          await loadExpenses(tenantId);
+        } else {
+          setExpenses([]);
+        }
       }
     };
 
@@ -178,7 +195,11 @@ export default function App() {
         setUserId(session.user.id);
         void (async () => {
           const tenantId = await loadDefaultTenant(session.user.id);
-          await loadExpenses(tenantId);
+          if (tenantId) {
+            await loadExpenses(tenantId);
+          } else {
+            setExpenses([]);
+          }
         })();
       } else {
         setUserEmail(null);
@@ -337,8 +358,9 @@ export default function App() {
       return;
     }
 
-    if (!activeTenantId) {
-      alert('Workspace non disponibile. Esegui la migration SaaS su Supabase o riprova tra poco.');
+    const tenantIdForSave = await resolveTenantForMutation(user.id);
+    if (!tenantIdForSave) {
+      alert('Tenant non caricato, effettua di nuovo il login');
       return;
     }
 
@@ -350,13 +372,13 @@ export default function App() {
         date: newExpense.date,
         accompagnatore: newExpense.accompagnatore || null,
         owner_id: user.id,
-        tenant_id: activeTenantId,
+        tenant_id: tenantIdForSave,
       };
       const { error } = await supabase
         .from('expenses')
         .update(updates)
         .eq('id', editingId)
-        .eq('tenant_id', activeTenantId);
+        .eq('tenant_id', tenantIdForSave);
       if (error) {
         console.error('Update failed', error);
         alert('Impossibile aggiornare la spesa: ' + (error.message || JSON.stringify(error)));
@@ -373,9 +395,19 @@ export default function App() {
         accompagnatore: newExpense.accompagnatore || undefined,
       };
 
-      const { error } = await supabase.from('expenses').insert([
-        { ...expense, user_id: user.id, owner_id: user.id, tenant_id: activeTenantId },
-      ]);
+      const insertRow = {
+        id: expense.id,
+        amount: expense.amount,
+        category: expense.category,
+        description: expense.description,
+        date: expense.date,
+        accompagnatore: expense.accompagnatore ?? null,
+        user_id: user.id,
+        owner_id: user.id,
+        tenant_id: tenantIdForSave,
+      };
+
+      const { error } = await supabase.from('expenses').insert([insertRow]);
       if (error) {
         console.error('Insert failed', error);
         alert('Impossibile salvare la spesa: ' + (error.message || JSON.stringify(error)));
@@ -402,29 +434,38 @@ export default function App() {
   };
 
   const deleteExpense = async (id: string) => {
-    if (!activeTenantId) {
-      alert('Workspace non disponibile. Impossibile eliminare.');
+    const { data: sessionData } = await supabase.auth.getSession();
+    const user = sessionData?.session?.user;
+    if (!user) {
+      alert('Utente non autenticato');
       return;
     }
+
+    const tenantIdForDelete = await resolveTenantForMutation(user.id);
+    if (!tenantIdForDelete) {
+      alert('Tenant non caricato, effettua di nuovo il login');
+      return;
+    }
+
     setExpenses((prev) => prev.filter((e) => e.id !== id)); // optimistic
 
     const { data, error } = await supabase
       .from('expenses')
       .delete()
       .eq('id', id)
-      .eq('tenant_id', activeTenantId)
+      .eq('tenant_id', tenantIdForDelete)
       .select();
 
     if (error) {
       console.error('Delete failed', error);
       alert('Impossibile eliminare la spesa: ' + (error.message || JSON.stringify(error)));
-      await loadExpenses(activeTenantId);
+      await loadExpenses(tenantIdForDelete);
       return;
     }
 
     if (!data || data.length === 0) {
       console.warn('DELETE: nessuna riga cancellata (id non match?)', id);
-      await loadExpenses(activeTenantId);
+      await loadExpenses(tenantIdForDelete);
     }
   };
 
