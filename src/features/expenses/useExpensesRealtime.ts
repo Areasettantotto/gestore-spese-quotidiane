@@ -23,7 +23,7 @@ export function useExpensesRealtime(
     }
 
     const channel = supabase
-      .channel("rt-expenses")
+      .channel(`rt-expenses-${opts.scopeTenantId}`)
       .on(
         "postgres_changes",
         {

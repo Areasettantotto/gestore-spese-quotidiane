@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { supabase } from '@/src/lib/supabaseClient';
-import type { Accompagnatore, Category, Expense } from '@/src/types';
+import type { Expense } from '@/src/types';
 
 import { expenseFromUpdatePayload, mapDbRowToExpense } from './expenses.mapper';
 import {
@@ -10,23 +10,16 @@ import {
   loadExpensesForTenant,
   updateExpenseInTenant,
 } from './expenses.service';
-import type { ExpenseDbRow } from './expenses.types';
+import type { ExpenseDbRow, SaveExpenseFormInput } from './expenses.types';
 import { useExpensesRealtime } from './useExpensesRealtime';
+
+export type { SaveExpenseFormInput } from './expenses.types';
 
 const makeId = () => {
   if (globalThis.crypto?.randomUUID) {
     return crypto.randomUUID();
   }
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-};
-
-export type SaveExpenseFormInput = {
-  amount: number;
-  category: Category;
-  description: string;
-  date: string;
-  accompagnatore?: Accompagnatore;
-  editingId: string | null;
 };
 
 export function useExpenses(options: {

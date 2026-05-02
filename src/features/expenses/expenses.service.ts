@@ -6,10 +6,10 @@ import {
   mapDbRowToExpense,
 } from './expenses.mapper';
 import {
-  deleteExpenseById,
-  insertExpenses,
+  createExpense,
+  deleteExpense,
   listExpensesByTenant,
-  updateExpenseById,
+  updateExpense,
 } from './expenses.repository';
 import type { ExpenseDbRow } from './expenses.types';
 
@@ -35,7 +35,7 @@ export async function createExpenseInTenant(params: {
   tenantId: string;
 }): Promise<{ error: Error | null }> {
   const row = buildInsertPayload(params);
-  const { error } = await insertExpenses([row]);
+  const { error } = await createExpense(row);
   if (error) {
     console.error('Insert failed', error);
     return { error: new Error(error.message || JSON.stringify(error)) };
@@ -62,7 +62,11 @@ export async function updateExpenseInTenant(params: {
     userId: params.userId,
     tenantId: params.tenantId,
   });
-  const { error } = await updateExpenseById(params.tenantId, params.expenseId, payload);
+  const { error } = await updateExpense({
+    tenantId: params.tenantId,
+    expenseId: params.expenseId,
+    payload,
+  });
   if (error) {
     console.error('Update failed', error);
     return { error: new Error(error.message || JSON.stringify(error)) };
@@ -74,7 +78,10 @@ export async function deleteExpenseInTenant(params: {
   tenantId: string;
   expenseId: string;
 }): Promise<{ error: Error | null; deletedRows: unknown[] | null }> {
-  const { data, error } = await deleteExpenseById(params.tenantId, params.expenseId);
+  const { data, error } = await deleteExpense({
+    tenantId: params.tenantId,
+    expenseId: params.expenseId,
+  });
   if (error) {
     console.error('Delete failed', error);
     return { error: new Error(error.message || JSON.stringify(error)), deletedRows: null };
