@@ -74,7 +74,8 @@ export default function App() {
 
   const {
     activeTenantId,
-    profileError,
+    isTenantContextLoading,
+    tenantError,
     loadDefaultTenant,
     resolveTenantForMutation,
     resetTenantState,
@@ -83,6 +84,7 @@ export default function App() {
   const { expenses, expensesLoadError, saveExpense, deleteExpense } = useExpenses({
     userId,
     activeTenantId,
+    isTenantContextLoading,
     resolveTenantForMutation,
   });
 
@@ -273,8 +275,10 @@ export default function App() {
           </div>
           <div className="flex items-center gap-4">
             <button
+              type="button"
               onClick={() => setIsAdding(true)}
-              className="btn-primary flex items-center gap-2"
+              disabled={!userId || !activeTenantId || isTenantContextLoading}
+              className="btn-primary flex items-center gap-2 disabled:opacity-50 disabled:pointer-events-none"
             >
               <Plus size={20} />
               <span>Aggiungi</span>
@@ -298,16 +302,37 @@ export default function App() {
       </header>
 
       <main className="max-w-2xl mx-auto px-4 py-8 space-y-8">
-        {userEmail && (profileError || expensesLoadError) ? (
+        {userId && activeTenantId && expensesLoadError ? (
           <div
             className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
             role="alert"
           >
-            {profileError ? <p>{profileError}</p> : null}
-            {expensesLoadError ? <p className={profileError ? 'mt-2' : ''}>{expensesLoadError}</p> : null}
+            <p>{expensesLoadError}</p>
           </div>
         ) : null}
-        {view === 'home' ? (
+        {userId && isTenantContextLoading ? (
+          <div
+            className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-6 text-sm text-zinc-700"
+            role="status"
+            aria-live="polite"
+          >
+            Caricamento workspace…
+          </div>
+        ) : null}
+        {userId && !isTenantContextLoading && !activeTenantId ? (
+          <div
+            className="rounded-xl border border-zinc-200 bg-white px-4 py-8 text-center text-sm text-zinc-600"
+            role="region"
+            aria-label="Workspace non disponibile"
+          >
+            <p className="font-medium text-zinc-900">Workspace non disponibile</p>
+            <p className="mt-2">
+              {tenantError ??
+                'Accedi con un account configurato oppure verifica che il profilo abbia un workspace predefinito.'}
+            </p>
+          </div>
+        ) : null}
+        {userId && !isTenantContextLoading && activeTenantId && view === 'home' ? (
           <>
             {/* Summary Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -498,7 +523,8 @@ export default function App() {
               </div>
             </section>
           </>
-        ) : (
+        ) : null}
+        {userId && !isTenantContextLoading && activeTenantId && view === 'all' ? (
           <section className="space-y-6">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
@@ -637,7 +663,7 @@ export default function App() {
               </AnimatePresence>
             </div>
           </section>
-        )}
+        ) : null}
       </main>
 
       {/* Add Expense Modal */}

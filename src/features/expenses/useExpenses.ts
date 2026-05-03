@@ -25,9 +25,11 @@ const makeId = () => {
 export function useExpenses(options: {
   userId: string | null;
   activeTenantId: string | null;
+  /** When true, skip expense fetch/clear errors until tenancy bootstrap finishes. */
+  isTenantContextLoading: boolean;
   resolveTenantForMutation: (uid: string) => Promise<string | null>;
 }) {
-  const { userId, activeTenantId, resolveTenantForMutation } = options;
+  const { userId, activeTenantId, isTenantContextLoading, resolveTenantForMutation } = options;
 
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [expensesLoadError, setExpensesLoadError] = useState<string | null>(null);
@@ -54,8 +56,14 @@ export function useExpenses(options: {
   }, []);
 
   useEffect(() => {
+    if (!userId) return;
+    if (isTenantContextLoading) {
+      setExpenses([]);
+      setExpensesLoadError(null);
+      return;
+    }
     void loadExpenses(activeTenantId);
-  }, [activeTenantId, loadExpenses]);
+  }, [userId, activeTenantId, isTenantContextLoading, loadExpenses]);
 
   const realtimeHandlers = useMemo(
     () => ({
