@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 
 import { resolveTenantContextFromProfileRow } from './tenancy.mapper';
 import { fetchProfileTenantContext } from './tenancy.repository';
-import type { TenantRole } from './tenancy.types';
+import type { TenantPlanSnapshot, TenantRole } from './tenancy.types';
 
 const NO_DEFAULT_TENANT_MESSAGE =
   'Il tuo profilo non ha un workspace predefinito (default_tenant_id). Verifica la configurazione dell’account o contatta chi gestisce il progetto.';
@@ -13,11 +13,13 @@ const PROFILE_LOAD_FAILED_MESSAGE =
 type TenantBootstrapResult = {
   defaultTenantId: string | null;
   membershipRole: TenantRole | null;
+  activeTenantPlan: TenantPlanSnapshot | null;
 };
 
 export function useActiveTenant() {
   const [activeTenantId, setActiveTenantId] = useState<string | null>(null);
   const [membershipRole, setMembershipRole] = useState<TenantRole | null>(null);
+  const [activeTenantPlan, setActiveTenantPlan] = useState<TenantPlanSnapshot | null>(null);
   const [isTenantContextLoading, setIsTenantContextLoading] = useState(false);
   const [tenantError, setTenantError] = useState<string | null>(null);
 
@@ -31,6 +33,7 @@ export function useActiveTenant() {
     inflightByUser.current.clear();
     setActiveTenantId(null);
     setMembershipRole(null);
+    setActiveTenantPlan(null);
     setTenantError(null);
     setIsTenantContextLoading(false);
   }, []);
@@ -39,6 +42,7 @@ export function useActiveTenant() {
     const tid = resolved.defaultTenantId;
     setActiveTenantId(tid);
     setMembershipRole(resolved.membershipRole);
+    setActiveTenantPlan(resolved.activeTenantPlan);
 
     if (!tid) {
       setTenantError(NO_DEFAULT_TENANT_MESSAGE);
@@ -65,15 +69,20 @@ export function useActiveTenant() {
       const { data, error } = await fetchProfileTenantContext(uid);
 
       if (epochAtStart !== tenancyEpoch.current) {
-        return { defaultTenantId: null, membershipRole: null };
+        return { defaultTenantId: null, membershipRole: null, activeTenantPlan: null };
       }
 
       if (error) {
         console.error('Failed to load profile / tenant context', error);
-        const failed: TenantBootstrapResult = { defaultTenantId: null, membershipRole: null };
+        const failed: TenantBootstrapResult = {
+          defaultTenantId: null,
+          membershipRole: null,
+          activeTenantPlan: null,
+        };
         if (epochAtStart === tenancyEpoch.current) {
           setActiveTenantId(null);
           setMembershipRole(null);
+          setActiveTenantPlan(null);
           setTenantError(PROFILE_LOAD_FAILED_MESSAGE);
         }
         return failed;
@@ -113,6 +122,8 @@ export function useActiveTenant() {
     /** Same as activeTenantId in this phase; explicit name for callers that think in profile terms. */
     defaultTenantId: activeTenantId,
     membershipRole,
+    /** Plan/subscription snapshot for the active tenant (readiness only; no billing provider yet). */
+    activeTenantPlan,
     isTenantContextLoading,
     tenantError,
     loadDefaultTenant,

@@ -7,8 +7,10 @@ Questo documento descrive le scelte della **fase 1**: schema multi-tenant, RLS e
 - **`migrations/migration.sql`** (invariata): baseline `user_id` + policy owner-only storiche.
 - **`migrations/002_saas_tenant_rls.sql`** (nuova): da eseguire **dopo** la baseline nello SQL Editor Supabase (o pipeline equivalente).
 - **`migrations/003_expenses_tenant_insert_guard.sql`**: da eseguire **dopo** la 002. Aggiunge solo una guardia difensiva lato database (funzione + trigger `BEFORE INSERT` su `public.expenses`): se `tenant_id` è omesso o `NULL`, viene valorizzato da `profiles.default_tenant_id` dell’utente corrente; se `tenant_id` è già valorizzato, non viene modificato. Non tocca righe esistenti. Serve a tollerare **vecchie versioni del frontend**, **cache** o **PWA** che inviano ancora insert senza `tenant_id`, evitando errori `NOT NULL` / mismatch con le policy mentre il client viene aggiornato.
+- **`migrations/004_expenses_realtime_delete_replica_identity.sql`**: da eseguire quando serve Realtime con eventi `DELETE` completi. Imposta `replica identity full` su `public.expenses` così il payload Realtime include la riga eliminata (chiave / colonne) senza cambiare RLS o dati applicativi.
+- **`migrations/005_tenant_plan_readiness.sql`**: da eseguire **dopo** la 002 (e coerente con il client che legge `public.tenants`). Aggiunge campi di **readiness** su `public.tenants` per piano e stato subscription a livello **tenant** (non utente). **Non** introduce provider di pagamento, checkout, webhook né Edge Functions.
 
-La 002 è pensata come script incrementale idempotente dove ha senso (drop/ricrea policy, `if not exists` su indici/tabelle). La 003 è idempotente (`CREATE OR REPLACE` + `DROP TRIGGER IF EXISTS`).
+La 002 è pensata come script incrementale idempotente dove ha senso (drop/ricrea policy, `if not exists` su indici/tabelle). La 003 è idempotente (`CREATE OR REPLACE` + `DROP TRIGGER IF EXISTS`). La 005 è idempotente su colonne (`IF NOT EXISTS`) e sui vincoli nominati (`pg_constraint`).
 
 ### Preflight (prima di applicare la 002)
 
@@ -75,7 +77,7 @@ Dopo la migration, in caso di spese “orfane”, la tabella `public.expenses_or
 
 | Oggetto | Scopo |
 |--------|--------|
-| `public.tenants` | Workspace; `is_personal = true` per il tenant creato alla registrazione. |
+| `public.tenants` | Workspace; `is_personal = true` per il tenant creato alla registrazione. Dopo la **005** include campi opzionali di readiness commerciale (`plan_code`, `subscription_status`, `is_demo`, `trial_ends_at`) — vedi sezione **FASE D**. |
 | `public.profiles` | Una riga per utente (`id` = `auth.users.id`), con `default_tenant_id` verso il tenant personale. |
 | `public.tenant_memberships` | Membri con ruolo `admin`, `user` o `billing` (check constraint). |
 
@@ -124,7 +126,59 @@ Trigger `on_auth_user_created` su `auth.users`: dopo ogni insert crea tenant per
 ## Frontend (cambiamento minimo)
 
 - Dopo login si legge `profiles.default_tenant_id` e si usa come **`activeTenantId`** per insert/update/delete, caricamento lista (`.eq('tenant_id', ...)`) e filtro Realtime (`tenant_id=eq...`). Senza tenant predefinito si mostrano messaggi di errore e non si apre subscription Realtime ampia.
-- Nessun repository dedicato in questa fase (previsto in fase 2 dall’audit).
+- Dopo la **FASE D**, il contesto tenant include anche uno snapshot di piano (`activeTenantPlan`) letto da `public.tenants` per il workspace predefinito, senza cambiare UX in modo significativo e senza gating commerciale.
+
+## FASE D — Tenant plan readiness (completata in codice / migration)
+
+**Scopo:** preparare il modello SaaS a distinguere workspace free / trial / paid / internal / demo (incluso un tenant **demo** per live e presentazioni), **senza** Stripe/Paddle, checkout, webhook, dashboard billing, Edge Functions obbligatorie, limiti commerciali effettivi o blocchi hard delle feature.
+
+**Principio:** il piano e lo stato commerciale (subscription) appartengono al **tenant**, non al singolo utente. Il pagatore futuro può essere un utente con ruolo adeguato, ma i campi di readiness sono sulla riga `public.tenants`.
+
+### Migration `005_tenant_plan_readiness.sql`
+
+Aggiunge su `public.tenants`:
+
+| Colonna | Tipo | Default | Note |
+|--------|------|---------|------|
+| `plan_code` | `text NOT NULL` | `'free'` | Valori ammessi: `free`, `trial`, `paid`, `internal`, `demo` (check constraint). |
+| `subscription_status` | `text NOT NULL` | `'active'` | Valori ammessi: `active`, `trialing`, `past_due`, `canceled`, `suspended`. Specchio “logico” per una futura tabella subscription; **nessun** provider ancora collegato. |
+| `is_demo` | `boolean NOT NULL` | `false` | Flag operativo per tenant sandbox / presentazioni. Combinabile con `plan_code = 'demo'`. |
+| `trial_ends_at` | `timestamptz` | `NULL` | Opzionale; fine trial quando applicabile. |
+
+I tenant esistenti ricevono automaticamente i default alla prima applicazione della migration: nessuna perdita dati, nessuna modifica a `public.expenses`, RLS expenses invariata. Gli insert tramite `handle_new_user()` continuano a funzionare (colonne con default).
+
+**Non implementato in questa fase:** billing provider, pagina piani, tenant switcher, dashboard admin avanzata, reset automatico dati demo, seed demo nel repo.
+
+### Frontend (`src/features/tenancy/*`)
+
+Tipi e snapshot: `TenantPlanCode`, `TenantSubscriptionStatus`, `TenantPlanSnapshot` (alias `TenantBillingReadiness`). Helper in `tenancy.mapper.ts`: `isDemoTenant`, `isFreePlan`, `isPaidPlan`, `isTrialPlan`, più `DEFAULT_TENANT_PLAN_SNAPSHOT` se la riga tenant non è disponibile. `useActiveTenant` espone `activeTenantPlan` oltre a `activeTenantId` / `membershipRole`. Nessuna nuova query in `App.tsx`.
+
+**Ordine deploy consigliato:** applicare la migration **005** su Supabase **prima** (o insieme) al deploy del frontend che seleziona le nuove colonne; altrimenti la `select` su `tenants` fallisce finché lo schema non è aggiornato.
+
+### Tenant demo (solo SQL manuale post-deploy)
+
+Non inserire credenziali, password o email reali nel repository. Per un tenant **isolato** da dati reali (account dedicato o progetto staging), dopo aver creato utente/tenant/membership con i flussi normali:
+
+**1) Marcare un tenant esistente come demo**
+
+```sql
+-- Sostituire :tenant_id con l’UUID del workspace da usare in demo.
+update public.tenants
+set
+  plan_code = 'demo',
+  subscription_status = 'active',
+  is_demo = true,
+  trial_ends_at = null
+where id = :tenant_id;
+```
+
+**2) Creare un tenant demo** solo se si è già verificato che provisioning, RLS e membership consentono un insert coerente (tipicamente da SQL Editor con ruolo privilegiato, **mai** dal client anon). Preferibile: nuovo utente di test su Supabase Auth → trigger `handle_new_user` crea tenant personale → poi `update` come sopra. Per **reset** futuro dei dati demo: job manuale o script controllato che opera solo su `tenant_id` del demo (fuori scope fase D).
+
+Usare **solo dati fittizi** nelle spese demo; nessun dato personale reale.
+
+### Billing reale (fase successiva)
+
+Stripe/Paddle, checkout, webhook idempotenti e RLS su eventuali tabelle `subscriptions`/`invoices` saranno una **fase successiva** esplicita; restano vincoli architetturali in `.cursor/rules/040-billing-readiness.mdc`.
 
 ## Prossimi passi suggeriti
 
