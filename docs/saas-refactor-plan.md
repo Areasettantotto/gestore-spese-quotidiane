@@ -245,13 +245,29 @@ Stripe/Paddle, checkout, webhook idempotenti e RLS su eventuali tabelle `subscri
 - Il ruolo **`service_role`** non deve **mai** comparire nel frontend.
 - Si prevedono ruoli **`admin`** / **`billing`** (già presenti o estendibili sul membership) per operazioni future: checkout, customer portal, sola lettura billing — da dettagliare quando si implementa il provider.
 
-**Fase successiva suggerita:** **FASE H** — revisione su staging e **apply** della migration billing (schema `draft_006` o evoluzione di essa) **solo dopo** review esplicita; nessun apply automatico da questa fase.
+**Fase successiva suggerita (post-G):** **FASE H2** — creare e applicare una **migration ufficiale** billing **solo dopo** review del draft hardened (FASE H1.1) e prove su staging; nessun apply automatico dalla sola FASE G.
 
 **Nota env:** in questa fase **non** sono state aggiunte variabili Stripe operative in `.env.example` (né obbligatorie altrove); resta la preferenza di non esporre segreti o placeholder “reali” finché non c’è integrazione.
 
+## FASE H1 — Review tecnica draft billing (completata)
+
+La **review tecnica** dello schema billing in bozza ha concluso che il design è una **buona base**, ma **non ancora pronto** come migration ufficiale senza ulteriore hardening e seconda review.
+
+### FASE H1.1 — Hardening del draft billing schema (completata in documentazione / SQL draft)
+
+| Esito | Dettaglio |
+|-------|-----------|
+| Review tecnica | Completata (esito: serve hardening prima di versionare come migration). |
+| Hardening | Applicato a `docs/billing-data-model.md` e `docs/sql/draft_006_billing_data_model.sql` (mapping snapshot vs stato provider, privacy `billing_events`, cardinalità subscription, GRANT/REVOKE, RLS senza SELECT client su `billing_events`). |
+| Database | **Nessun** SQL applicato al database in questa sottofase. |
+| Migration ufficiale | **Non** creata (in particolare **non** esiste `migrations/006_billing_data_model.sql`). |
+| `billing_events` | Modello **solo server-side** / audit: nessuna lettura client diretta; `payload` non esposto al frontend. |
+
+**Prossima fase:** **FASE H2** — redigere la **migration ufficiale** (nome e ordine concordati) **solo dopo** review del draft hardened e validazione su staging; allineare GRANT/RLS al contenuto aggiornato di `docs/billing-data-model.md`.
+
 ## Prossimi passi suggeriti
 
-- **FASE H (billing schema):** dopo review staging, applicare migration billing derivata da `docs/sql/draft_006_billing_data_model.sql` e allineare RLS/policies come da `docs/billing-data-model.md`.
+- **FASE H2 (billing schema):** dopo review del draft hardened, creare migration ufficiale derivata da `docs/sql/draft_006_billing_data_model.sql` e allineare RLS/GRANT come da `docs/billing-data-model.md`.
 - Switch tenant e inviti (membership da UI).
 - Repository centralizzato e tipi row con `tenant_id` esplicito.
 - Test su staging: due utenti, due tenant, verifica query + Realtime (checklist in `docs/saas-rls-test-plan.md`).

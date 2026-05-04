@@ -1,5 +1,5 @@
 -- =============================================================================
--- DRAFT — NON APPLICARE SENZA REVIEW (FASE G3)
+-- DRAFT — NON APPLICARE SENZA REVIEW (FASE G3 + hardening H1.1)
 -- =============================================================================
 -- Stato: bozza SQL di design; NON è una migrazione versionata e NON va eseguito
 --   in produzione senza revisione esplicita del team.
@@ -111,7 +111,7 @@ create index if not exists idx_tenant_subscriptions_provider_customer_id
   where provider_customer_id is not null;
 
 comment on table public.tenant_subscriptions is
-  'DRAFT: per-tenant subscription state from provider. Denormalized snapshot on public.tenants is the read model for simple queries/UX; this table holds detail and may lag or lead briefly during async sync. No direct client writes.';
+  'DRAFT: per-tenant subscription state from provider. Multiple historical/transitional rows per (tenant_id, provider) are allowed — no unique(tenant_id, provider). Pick current row operationally via status, period, provider_subscription_id. Denormalized snapshot on public.tenants is the UX/RLS read model; this table holds detail. No direct client writes.';
 
 comment on column public.tenant_subscriptions.tenant_id is
   'Owning workspace; subscription is a tenant-scoped resource, not per-user.';
@@ -154,7 +154,9 @@ create table if not exists public.billing_events (
   processing_error text null,
   created_at timestamptz not null default now(),
   constraint billing_events_provider_event_unique
-    unique (provider, provider_event_id)
+    unique (provider, provider_event_id),
+  constraint billing_events_provider_check
+    check (provider in ('stripe'))
 );
 
 create index if not exists idx_billing_events_tenant_id
@@ -167,9 +169,10 @@ create index if not exists idx_billing_events_processed_at
   on public.billing_events (processed_at);
 
 comment on table public.billing_events is
-  'DRAFT: inbound provider events for idempotency (unique provider_event_id), audit-lite, and debugging. Rows with tenant_id null are not exposed to authenticated clients under the draft SELECT policy; resolution stays server-side. Inserts/updates only via privileged server path.';
+  'DRAFT: inbound provider events for idempotency (unique provider_event_id), audit-lite, and debugging. Server-side only: no client SELECT (no GRANT SELECT to authenticated; RLS enabled with no SELECT policy). Payload must not be exposed to the browser; future UI uses a reduced view or Edge Function. Inserts/updates only via privileged server path.';
 
-comment on column public.billing_events.provider is 'Billing provider that emitted the event.';
+comment on column public.billing_events.provider is
+  'Billing provider that emitted the event; draft check restricts to stripe for parity with other billing tables.';
 comment on column public.billing_events.provider_event_id is
   'Natural id for idempotency (e.g. Stripe evt_…); duplicate deliveries must not double-apply side effects.';
 
@@ -189,11 +192,15 @@ comment on column public.billing_events.processing_error is
 -- -----------------------------------------------------------------------------
 -- 4) Row Level Security (conservative draft)
 -- - RLS ON for all three tables.
--- - SELECT for authenticated members with role admin OR billing on the row tenant.
--- - NO INSERT / UPDATE / DELETE policies for the normal authenticated client:
+-- - tenant_billing_customers / tenant_subscriptions: SELECT only for authenticated
+--   members with role admin OR billing on the row tenant (see policies below).
+-- - billing_events: RLS ON but NO SELECT policy for authenticated — table is
+--   server-side / audit only; payload must not reach the client; see GRANT block.
+-- - NO INSERT / UPDATE / DELETE policies for authenticated on any of these tables:
 --   all writes must use a privileged server role (e.g. service role in Edge
 --   Function / webhook handler), never the browser anon key.
--- - service_role bypasses RLS in Supabase; still keep secrets only in server env.
+-- - service_role bypasses RLS in Supabase; still keep secrets only in server env;
+--   never expose service_role in the frontend bundle.
 -- -----------------------------------------------------------------------------
 alter table public.tenant_billing_customers enable row level security;
 alter table public.tenant_subscriptions enable row level security;
@@ -225,29 +232,33 @@ create policy tenant_subscriptions_select_admin_billing
     )
   );
 
--- Rows with tenant_id IS NULL are not visible to authenticated users under this
--- policy; server-side jobs use a role that bypasses RLS. When tenant_id is set,
--- only admin/billing on that tenant may SELECT.
+-- billing_events: remove any prior client-readable policy; do NOT add SELECT for authenticated.
+-- Future UI must use a column-safe view or Edge Function; never expose payload to anon key clients.
 drop policy if exists billing_events_select_admin_billing
   on public.billing_events;
-create policy billing_events_select_admin_billing
-  on public.billing_events
-  for select
-  using (
-    billing_events.tenant_id is not null
-    and public.has_tenant_role(
-      billing_events.tenant_id,
-      array['admin', 'billing']::text[]
-    )
-  );
-
--- TODO (se in review si preferisce zero policy finché non c’è UX): sostituire
--- le tre policy SELECT sopra con un blocco commentato e documentare che finché
--- non applicato, nessun client legge queste tabelle; oppure aggiungere policy
--- più restrittive (es. solo service role) se si espone tutto via viste sicure.
 
 -- -----------------------------------------------------------------------------
--- 5) updated_at automatic refresh
+-- 5) Table privileges (GRANT / REVOKE) — conservative complement to RLS
+-- - RLS policies above further restrict which rows authenticated users may SELECT
+--   on tenant_billing_customers and tenant_subscriptions (admin/billing only).
+-- - billing_events: no GRANT SELECT to authenticated — combined with RLS and no
+--   SELECT policy, keeps events and payload off the client; server role used in
+--   a future migration may receive explicit grants as needed.
+-- - Do not grant INSERT/UPDATE/DELETE on these tables to anon or authenticated.
+-- -----------------------------------------------------------------------------
+revoke all on table public.tenant_billing_customers from anon;
+revoke all on table public.tenant_billing_customers from authenticated;
+grant select on table public.tenant_billing_customers to authenticated;
+
+revoke all on table public.tenant_subscriptions from anon;
+revoke all on table public.tenant_subscriptions from authenticated;
+grant select on table public.tenant_subscriptions to authenticated;
+
+revoke all on table public.billing_events from anon;
+revoke all on table public.billing_events from authenticated;
+
+-- -----------------------------------------------------------------------------
+-- 6) updated_at automatic refresh
 -- Il progetto non definisce ancora un trigger/function condivisa tipo
 -- `set_updated_at()` sulle tabelle esistenti (solo default now() sulle colonne).
 -- Evitare refactor ampio: se in futuro si introduce un pattern comune, agganciare

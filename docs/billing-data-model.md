@@ -5,7 +5,7 @@
 Questo documento definisce il **modello dati e le convenzioni** per un billing SaaS futuro (provider tipo Stripe), in linea con l’architettura **tenant-first** del prodotto.
 
 - **Non** implementa Stripe, checkout, webhook, Edge Functions o SDK lato client.
-- **Non** modifica lo schema applicato oggi; serve da riferimento per migrazioni e integrazioni successive (es. FASE H onward).
+- **Non** modifica lo schema applicato oggi; serve da riferimento per migrazioni e integrazioni successive (es. FASE H2 onward). Il **hardening del draft** (FASE H1.1) è riflesso in questo documento e in `docs/sql/draft_006_billing_data_model.sql`; resta **non applicato** finché non diventa migration ufficiale.
 
 Obiettivo: avere uno **schema mentale condiviso** (tabelle dedicate, snapshot su `tenants`, idempotenza, RLS, mapping provider) prima di scrivere SQL o codice server-side.
 
@@ -130,7 +130,13 @@ Fonte di verità **lato applicazione** per l’abbonamento corrente (per tenant 
 
 - **`tenant_subscriptions.plan_code`**: valore sul record subscription (può cambiare con upgrade/downgrade prima che lo snapshot su `tenants` sia aggiornato).
 - **`tenants.plan_code`**: **denormalizzazione** per letture veloci e RLS/UI.
-- **Non** è obbligatorio che coincidano istante per istante durante una transazione; la regola è: dopo elaborazione webhook/job, **allineare** lo snapshot (sezione 6). Se in futuro esistono più subscription attive (raro in B2B), il design va esteso (es. “subscription primaria”); per default si assume **una subscription primaria per tenant per provider**.
+- **Non** è obbligatorio che coincidano istante per istante durante una transazione; la regola è: dopo elaborazione webhook/job, **allineare** lo snapshot (sezione 6).
+
+**Cardinalità (FASE H1.1, prudente):**
+
+- Sono **ammesse più righe** in `tenant_subscriptions` per la stessa coppia `(tenant_id, provider)` (storico, transizioni, retry, cambio `provider_subscription_id`).
+- **Non** imporre vincolo `unique (tenant_id, provider)` su `tenant_subscriptions`: bloccherebbe storico e percorsi di retry; la “subscription corrente” si selezionerà in query/handler tramite `status`, fine periodo, `provider_subscription_id` e regole di prodotto.
+- Lo **snapshot commerciale corrente** resta su **`public.tenants`** (`plan_code`, `subscription_status`, `trial_ends_at`, …), non sulla singola riga subscription senza logica esplicita.
 
 ### C. `public.billing_events`
 
@@ -139,7 +145,7 @@ Tabella per **idempotenza**, **audit minimo** e **debug** degli eventi provider 
 | Colonna | Tipo | Note |
 |---------|------|------|
 | `id` | `uuid` PK | |
-| `provider` | `text` NOT NULL | |
+| `provider` | `text` NOT NULL | Check `in ('stripe')` in prima fase, allineato alle altre tabelle billing. |
 | `provider_event_id` | `text` NOT NULL | Es. `evt_…` Stripe |
 | `event_type` | `text` NOT NULL | Es. `customer.subscription.updated` |
 | `tenant_id` | `uuid` NULL | FK `tenants`, `on delete set null` — utile per query per tenant; può restare null se risoluzione ritardata |
@@ -174,8 +180,9 @@ Tabella per **idempotenza**, **audit minimo** e **debug** degli eventi provider 
 ### Regole di sicurezza comportamentale
 
 - **Tenant demo / internal**: gli handler devono **saltare** o **non propagare** aggiornamenti provider che confliggono con flag operativi (`is_demo`, `plan_code = 'demo'|'internal'`), salvo policy esplicita “promuovi da demo a paid”. Obiettivo: evitare **sovrascritture accidentali** da eventi di test o customer collegati per errore.
-- **Tenant paid / trial**: stato derivato principalmente da **`tenant_subscriptions`** + regole di mapping (sezione 9).
+- **Tenant paid / trial**: stato derivato principalmente da **`tenant_subscriptions`** + regole di mapping (sezione 12.A).
 - **Stati critici** (`past_due`, `canceled`, `suspended`): mappare da stati Stripe con una **tabella di mapping** versionata (codice o config), evitando che piccole variazioni nomenclatura provider rompano i check; documentare eccezioni (es. `unpaid` vs `past_due`).
+- Il futuro webhook/handler **non** deve copiare in modo ingenuo `tenant_subscriptions.status` dentro `tenants.subscription_status`: lo snapshot UX/RLS resta un sottoinsieme **derivato** con regole esplicite (sezione 12.A).
 
 ---
 
@@ -186,10 +193,11 @@ Da implementare in migrazioni dedicate, non in questo documento:
 | Risorsa | Lettura | Scrittura |
 |---------|---------|-----------|
 | **Snapshot su `tenants`** | Membri del tenant (policy esistente o estesa) per campi non sensibili | Solo server-side o ruoli DB dedicati per sync billing |
-| **`tenant_subscriptions`** | Preferibilmente **solo** ruoli `admin` e/o **`billing`** (helper tipo `has_tenant_role(tenant, 'billing')`) | **Nessun** insert/update/delete da client anon/authenticated “normale” |
+| **`tenant_billing_customers`** | **Solo** membri con ruolo **`admin`** e/o **`billing`** sul tenant (`has_tenant_role`, ecc.) | **Nessun** insert/update/delete da client `anon` / `authenticated` |
+| **`tenant_subscriptions`** | **Solo** ruoli **`admin`** e/o **`billing`** sul tenant | **Nessun** insert/update/delete da client anon/authenticated “normale” |
+| **`billing_events`** | **Nessuna** lettura diretta dal client: tabella **server-side / audit** (vedi sezione 12.B); eventuale UI futura tramite **vista ridotta senza `payload`** o **Edge Function** autorizzata | **Solo** Edge Function / worker con ruolo privilegiato — **mai** `service_role` nel frontend |
 | **Subset meno sensibile** | Opzionale: esporre ai membri solo colonne aggregate (vista) se serve UX “sei in trial fino al …” senza esporre ID provider | — |
-| **Tabelle billing / `billing_events`** | ristretta (admin/billing) o solo server | **Solo** Edge Function / backend con **service role** o ruolo DB limitato — **mai** `service_role` nel frontend |
-| **Principio** | Client = **anon key + RLS**; operazioni privilegiate = **server** con segreti in env Supabase | |
+| **Principio** | A livello tabella: `GRANT SELECT` su customers/subscriptions solo a `authenticated`, con RLS che restringe a admin/billing; su `billing_events` **nessun** `GRANT SELECT` a `authenticated`. Client = **anon key + RLS**; operazioni privilegiate = **server** con segreti in env Supabase | |
 
 ---
 
@@ -250,7 +258,8 @@ Nessun codice qui: solo contratto concettuale.
 
 | Fase | Contenuto |
 |------|-----------|
-| **FASE H** | **Billing schema**: bozza migrazione SQL, review, apply — tabelle sezione 5, vincoli, indici, commenti |
+| **FASE H1 / H1.1** | Review tecnica draft; **hardening** documentazione + `draft_006` (nessuna migration ufficiale, nessun apply SQL) |
+| **FASE H2** | **Billing schema**: migration ufficiale, review su staging, apply — tabelle sezione 5, vincoli, indici, commenti, GRANT/RLS allineati al draft hardened |
 | **FASE I** | **Stripe test mode** + Edge Functions (checkout/portal) dietro auth, senza produzione |
 | **FASE J** | **Webhook** + idempotenza (`billing_events`) + sync verso `tenant_subscriptions` e snapshot `tenants` |
 | **FASE K** | **UI billing minima** (stato piano, link a portal, gestione ruolo billing) |
@@ -271,4 +280,46 @@ Nessun codice qui: solo contratto concettuale.
 
 ---
 
-*Documento di design (FASE G2). Nessuna implementazione provider o modifiche runtime associate a questo file.*
+## 12. Hardening draft (FASE H1.1)
+
+Decisioni di design consolidate dopo la review tecnica; da riflettere nella migration ufficiale (FASE H2), non come vincolo sul DB oggi.
+
+### 12.A Mapping status dettagliato vs snapshot `tenants`
+
+- **`tenant_subscriptions.status`** può contenere stati del provider **più granulari** (inclusi valori tipo Stripe: `incomplete`, `unpaid`, `paused`, `unknown`, ecc.), eventualmente estesi per versionamento.
+- **`public.tenants.subscription_status`** resta uno **snapshot ridotto** per UX, query semplici e (ove applicabile) RLS/feature gating: vocabolario allineato alla migration **005** (`active`, `trialing`, `past_due`, `canceled`, `suspended`).
+
+**Mapping proposto (da implementare nel futuro handler, non copia 1:1):**
+
+| Stato su `tenant_subscriptions` (dettaglio) | Snapshot `tenants.subscription_status` |
+|-------------------------------------------|----------------------------------------|
+| `active` | `active` |
+| `trialing` | `trialing` |
+| `past_due` | `past_due` |
+| `canceled` | `canceled` |
+| `unpaid` | `past_due` **oppure** `suspended` — scelta esplicita nell’handler |
+| `incomplete` | `past_due` **oppure** stato che nega accesso “paid” finché il checkout non completa; **`active` non consentito** finché il pagamento non è completato |
+| `incomplete_expired` | `canceled` |
+| `paused` | `suspended` |
+| `unknown` | `suspended` **oppure** **non aggiornare** lo snapshot — scelta esplicita nell’handler (es. in caso di ambiguità o dati provider incoerenti) |
+
+Il futuro processo di sync **non** deve assegnare `tenants.subscription_status` con una semplice assegnazione stringa da `tenant_subscriptions.status` senza normalizzazione e regole di prodotto.
+
+### 12.B Privacy e accesso a `billing_events`
+
+- **`public.billing_events` non deve essere leggibile direttamente dal frontend** (nessuna dipendenza UX da `select` client sulla tabella piena).
+- **Motivi:** il campo `payload` può contenere **PII** o dati provider sensibili; la tabella serve **audit**, **debug controllato** e **idempotenza** server-side; esporla al client aumenta superficie di leak e complessità compliance.
+- Una **UI futura** sugli eventi (se mai necessaria) deve passare da una **vista ridotta** (senza `payload`, colonne minime) o da un’**Edge Function** che filtra e autorizza, mai dalla tabella grezza in anon key.
+
+### 12.C Cardinalità subscription (richiamo)
+
+- Più righe per `(tenant_id, provider)` per storico e transizioni; snapshot corrente su `public.tenants`; selezione della riga “operativa” lato query/handler; **nessun** `unique (tenant_id, provider)` su `tenant_subscriptions` nella prima migration billing (vedi sezione 5.B).
+
+### 12.D Privilegi, GRANT e RLS (intento)
+
+- **`tenant_billing_customers` / `tenant_subscriptions`:** in migration, prevedere `REVOKE ALL` da `anon`/`authenticated` poi `GRANT SELECT` a `authenticated` **solo** dove serve; le **policy RLS** limitano la `SELECT` a **admin** / **billing** sul tenant. Nessuna policy `INSERT`/`UPDATE`/`DELETE` per `authenticated`.
+- **`billing_events`:** `REVOKE ALL` da `anon`/`authenticated`; **nessun** `GRANT SELECT` a `authenticated`; RLS `ON` senza policy di lettura client; scritture solo per ruolo **server-side** (es. `service_role` in Edge Function **solo in ambiente server**, mai nel bundle Vite). La migration ufficiale potrà aggiungere `GRANT` mirati a ruoli operativi (`service_role` / ruolo dedicato) coerenti con Supabase.
+
+---
+
+*Documento di design (FASE G2, hardening H1.1). Nessuna implementazione provider o modifiche runtime associate a questo file.*
