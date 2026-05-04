@@ -149,36 +149,39 @@ I tenant esistenti ricevono automaticamente i default alla prima applicazione de
 
 **Non implementato in questa fase:** billing provider, pagina piani, tenant switcher, dashboard admin avanzata, reset automatico dati demo, seed demo nel repo.
 
+### Tenant demo (spostato in FASE E)
+
+La procedura operativa (verify / mark / reset / seed), la checklist pre-live e i rischi sono documentati in **`docs/demo-tenant.md`** e negli script manuali in **`docs/sql/demo-tenant-*.sql`**. La FASE D resta focalizzata sulla migration 005 e sul client readiness; la **FASE E** copre l’operatività del tenant demo senza nuove migration schema.
+
 ### Frontend (`src/features/tenancy/*`)
 
 Tipi e snapshot: `TenantPlanCode`, `TenantSubscriptionStatus`, `TenantPlanSnapshot` (alias `TenantBillingReadiness`). Helper in `tenancy.mapper.ts`: `isDemoTenant`, `isFreePlan`, `isPaidPlan`, `isTrialPlan`, più `DEFAULT_TENANT_PLAN_SNAPSHOT` se la riga tenant non è disponibile. `useActiveTenant` espone `activeTenantPlan` oltre a `activeTenantId` / `membershipRole`. Nessuna nuova query in `App.tsx`.
 
 **Ordine deploy consigliato:** applicare la migration **005** su Supabase **prima** (o insieme) al deploy del frontend che seleziona le nuove colonne; altrimenti la `select` su `tenants` fallisce finché lo schema non è aggiornato.
 
-### Tenant demo (solo SQL manuale post-deploy)
-
-Non inserire credenziali, password o email reali nel repository. Per un tenant **isolato** da dati reali (account dedicato o progetto staging), dopo aver creato utente/tenant/membership con i flussi normali:
-
-**1) Marcare un tenant esistente come demo**
-
-```sql
--- Sostituire :tenant_id con l’UUID del workspace da usare in demo.
-update public.tenants
-set
-  plan_code = 'demo',
-  subscription_status = 'active',
-  is_demo = true,
-  trial_ends_at = null
-where id = :tenant_id;
-```
-
-**2) Creare un tenant demo** solo se si è già verificato che provisioning, RLS e membership consentono un insert coerente (tipicamente da SQL Editor con ruolo privilegiato, **mai** dal client anon). Preferibile: nuovo utente di test su Supabase Auth → trigger `handle_new_user` crea tenant personale → poi `update` come sopra. Per **reset** futuro dei dati demo: job manuale o script controllato che opera solo su `tenant_id` del demo (fuori scope fase D).
-
-Usare **solo dati fittizi** nelle spese demo; nessun dato personale reale.
-
 ### Billing reale (fase successiva)
 
 Stripe/Paddle, checkout, webhook idempotenti e RLS su eventuali tabelle `subscriptions`/`invoices` saranno una **fase successiva** esplicita; restano vincoli architetturali in `.cursor/rules/040-billing-readiness.mdc`.
+
+## FASE E — Demo tenant operational readiness (completata in documentazione / SQL manuali)
+
+**Scopo:** rendere il tenant demo **ripetibile e sicuro** per live, presentazioni e test manuali, senza billing provider, senza backend Node, senza Edge Functions, senza dashboard admin, senza tenant switcher e senza automazioni distruttive o schedulate.
+
+**Principio:** il tenant demo è un tenant normale con `plan_code = 'demo'`, `subscription_status = 'active'`, `is_demo = true`; le spese demo hanno solo quel `tenant_id`.
+
+**Deliverable:**
+
+| Artefatto | Percorso |
+|-----------|----------|
+| Runbook operativo | `docs/demo-tenant.md` |
+| Verifica tenant / conteggi / igiene `tenant_id` | `docs/sql/demo-tenant-verify.sql` |
+| Marcatura metadata demo | `docs/sql/demo-tenant-mark.sql` |
+| Reset controllato solo `public.expenses` del demo | `docs/sql/demo-tenant-reset-expenses.sql` |
+| Seed spese fittizie (categorie allineate all’app) | `docs/sql/demo-tenant-seed-expenses.sql` |
+
+**Non è stata creata una migration schema:** nessun cambiamento a `public.expenses`, RLS expenses, `user_id`/`owner_id`, archivio `expenses_orphan_archive_002` o backup `private.backup_*`. Gli SQL sono **template manuali** con placeholder `<DEMO_TENANT_ID>` / `<DEMO_OWNER_USER_ID>` (mai UUID reali nel repo).
+
+**Non implementato (come da vincoli fase E):** Stripe/Paddle, checkout, webhook, billing reale, reset automatici, `service_role` nel frontend, credenziali o dati personali nel repository.
 
 ## Prossimi passi suggeriti
 
