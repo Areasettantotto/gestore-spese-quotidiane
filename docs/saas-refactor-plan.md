@@ -203,8 +203,55 @@ Stripe/Paddle, checkout, webhook idempotenti e RLS su eventuali tabelle `subscri
 
 **Non implementato (come da vincoli fase F):** Stripe/Paddle, checkout, webhook, billing reale, backend Node obbligatorio per l’app principale, Supabase Edge Functions, dashboard admin, tenant switcher, automazioni distruttive, reset automatici, `service_role` nel frontend, credenziali nel repository, `render.yaml` (non richiesto; deploy configurabile solo da dashboard Render).
 
+## FASE G — Billing data model design (completata in documentazione / SQL draft)
+
+**Stato:** il **design del data model billing** è completato come lavoro di analisi e documentazione. In questa fase **non** sono state introdotte integrazioni operative.
+
+**Esplicitamente fuori scope (nessuna implementazione):**
+
+- Nessuna integrazione **Stripe** (né altro provider di pagamento).
+- Nessuna **Supabase Edge Function**.
+- Nessun **backend Node** obbligatorio o parallelo per il billing.
+- Nessun **checkout** (hosted o embedded).
+- Nessun **webhook** (né listener server-side nel prodotto).
+- Nessuna **migration schema applicata** al database: lo schema applicativo resta quello delle fasi precedenti.
+
+**Schema esistente invariato in questa fase:**
+
+- **`public.expenses`**: non modificata (colonne, trigger difensivi, indici come già documentati).
+- **RLS su `expenses`**: non modificata.
+
+**`public.tenants` come read model leggero (invariato rispetto alla FASE D):** continua a esporre solo i campi di readiness commerciale già introdotti con la migration **005**:
+
+- `plan_code`
+- `subscription_status`
+- `is_demo`
+- `trial_ends_at`
+
+**Documentazione e artefatti draft:**
+
+- Il **design futuro** (entità, flussi di lettura/scrittura, vincoli tenant-first, note su RLS e ruoli) è descritto in **`docs/billing-data-model.md`**.
+- Lo **SQL draft non applicato** (tabelle future, indici, commenti operativi) è in **`docs/sql/draft_006_billing_data_model.sql`**. **Non va eseguito in produzione** finché non passa review su staging e non diventa una migration versionata con nome e ordine concordati.
+
+**Tabelle previste nel design (solo su carta / nel draft SQL, non create nel DB in questa fase):**
+
+- `public.tenant_billing_customers`
+- `public.tenant_subscriptions`
+- `public.billing_events`
+
+**Principi per le fasi successive:**
+
+- Le **scritture** legate al billing (customer, subscription, eventi idempotenti) saranno **solo server-side** (es. Edge Functions, job con chiave privilegiata, o processi operativi con service role **mai** nel bundle frontend).
+- Il ruolo **`service_role`** non deve **mai** comparire nel frontend.
+- Si prevedono ruoli **`admin`** / **`billing`** (già presenti o estendibili sul membership) per operazioni future: checkout, customer portal, sola lettura billing — da dettagliare quando si implementa il provider.
+
+**Fase successiva suggerita:** **FASE H** — revisione su staging e **apply** della migration billing (schema `draft_006` o evoluzione di essa) **solo dopo** review esplicita; nessun apply automatico da questa fase.
+
+**Nota env:** in questa fase **non** sono state aggiunte variabili Stripe operative in `.env.example` (né obbligatorie altrove); resta la preferenza di non esporre segreti o placeholder “reali” finché non c’è integrazione.
+
 ## Prossimi passi suggeriti
 
+- **FASE H (billing schema):** dopo review staging, applicare migration billing derivata da `docs/sql/draft_006_billing_data_model.sql` e allineare RLS/policies come da `docs/billing-data-model.md`.
 - Switch tenant e inviti (membership da UI).
 - Repository centralizzato e tipi row con `tenant_id` esplicito.
 - Test su staging: due utenti, due tenant, verifica query + Realtime (checklist in `docs/saas-rls-test-plan.md`).
