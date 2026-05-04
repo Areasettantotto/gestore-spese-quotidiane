@@ -5,8 +5,16 @@
 
 1. Install dependencies:
    `npm install`
-2. Run the app:
+2. Copy environment template and set Supabase values (see `.env.example`):
+   `cp .env.example .env` then edit `.env` (never commit real secrets).
+3. Run the app:
    `npm run dev`
+
+### Development / deploy documentation
+
+- **Production readiness** (pre/post deploy, rollback, smoke test, env vars): [`docs/production-readiness.md`](docs/production-readiness.md)
+- **Demo tenant** (operational runbook, no auto-reset): [`docs/demo-tenant.md`](docs/demo-tenant.md)
+- **SaaS refactor plan** (migrations, tenancy phases): [`docs/saas-refactor-plan.md`](docs/saas-refactor-plan.md)
 
 
 ## Deploy to Render (Static Site)

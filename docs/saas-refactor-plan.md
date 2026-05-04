@@ -183,6 +183,26 @@ Stripe/Paddle, checkout, webhook idempotenti e RLS su eventuali tabelle `subscri
 
 **Non implementato (come da vincoli fase E):** Stripe/Paddle, checkout, webhook, billing reale, reset automatici, `service_role` nel frontend, credenziali o dati personali nel repository.
 
+## FASE F — Production readiness light (completata in documentazione / esempio env)
+
+**Scopo:** rendere più affidabili e ripetibili **deploy**, **rollback**, verifica ambiente, **smoke test** e gestione operativa minima **prima** di billing Stripe/Paddle o altre fasi invasive.
+
+**Deliverable:**
+
+| Artefatto | Percorso / azione |
+|-----------|-------------------|
+| Checklist pre-deploy, Supabase, Render, post-deploy, smoke test | `docs/production-readiness.md` |
+| Procedura rollback operativo (frontend vs DB) | `docs/production-readiness.md` §8 |
+| Documentazione variabili ambiente frontend (`VITE_SUPABASE_*`, nota `GEMINI_API_KEY` opzionale) | `docs/production-readiness.md` §3 |
+| Nota warning Vite chunk size > 500 kB | `docs/production-readiness.md` §9 |
+| Incident quick checks | `docs/production-readiness.md` §10 |
+| Template env solo placeholder | `.env.example` |
+| README — link minimi a doc deploy / demo / piano | `README.md` |
+
+**Non è stata creata una migration schema:** nessun cambiamento a `public.expenses`, RLS, `public.tenants` oltre a quanto già nelle fasi precedenti, nessuna nuova tabella o policy in questa fase.
+
+**Non implementato (come da vincoli fase F):** Stripe/Paddle, checkout, webhook, billing reale, backend Node obbligatorio per l’app principale, Supabase Edge Functions, dashboard admin, tenant switcher, automazioni distruttive, reset automatici, `service_role` nel frontend, credenziali nel repository, `render.yaml` (non richiesto; deploy configurabile solo da dashboard Render).
+
 ## Prossimi passi suggeriti
 
 - Switch tenant e inviti (membership da UI).
