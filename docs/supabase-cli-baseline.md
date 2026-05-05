@@ -1,0 +1,60 @@
+# Supabase CLI baseline e migration replayable
+
+## Perche' il repository non era replayable da zero
+
+Il progetto e' nato con un database gia' esistente in Supabase e con migration storiche pensate per evolvere quello stato, non per ricrearlo integralmente da un database vuoto.
+
+Nello specifico, le migration `001`-`006` non includono la creazione iniziale di `public.expenses`, ma eseguono alterazioni, policy, trigger e indici su quella tabella. Per questo motivo, un replay completo da zero con solo queste migration non puo' riuscire.
+
+## Stato attuale delle migration
+
+- In `migrations/` sono presenti i file `001_expenses_user_rls.sql` ... `006_billing_data_model.sql`.
+- In `supabase/migrations/` sono presenti gli stessi file `001` ... `006` (allineamento di naming e ordine).
+- Nessuna delle migration `001` ... `006` crea `public.expenses`.
+- Le migration `001`, `002`, `003`, `004` dipendono esplicitamente da `public.expenses` gia' esistente.
+
+Conseguenza pratica: un `supabase db reset` locale su database vuoto fallirebbe finche' non esiste una baseline locale che crei lo schema reale richiesto.
+
+## Ruolo di `migrations/` e `supabase/migrations/`
+
+- `migrations/`: storico progettuale/operativo gia' presente nel repository.
+- `supabase/migrations/`: percorso usato dal workflow Supabase CLI.
+
+In questa fase i contenuti sono stati riallineati per avere una base unica di riferimento, senza introdurre nuove migration applicabili a produzione.
+
+## Problema specifico di `public.expenses`
+
+`public.expenses` e' una dipendenza hard delle migration iniziali, ma la sua DDL originaria non e' presente nel set replayable CLI corrente. Questo e' il punto che impedisce la ricostruzione da zero del DB locale usando solo le migration versionate oggi.
+
+## Perche' non bisogna inventare lo schema da TypeScript
+
+I tipi TypeScript descrivono il contratto applicativo lato client, non sono una fonte affidabile per ricostruire DDL completa (vincoli, indici, trigger, default, policy RLS, ownership, grants, dipendenze tra oggetti).
+
+Inventare la tabella da codice applicativo rischia drift e regressioni: lo schema reale potrebbe divergere in punti critici non rappresentati nei tipi.
+
+## Perche' lo schema va estratto dal DB reale con query read-only
+
+La baseline corretta va derivata dallo stato reale del database (produzione o sorgente autorevole) tramite introspezione read-only, cosi' da acquisire definizioni verificate e non ipotetiche.
+
+Questo approccio consente di:
+
+- preservare compatibilita' con dati e RLS esistenti;
+- evitare assunzioni non validate;
+- preparare una baseline locale ripetibile e auditabile prima di nuove migration evolutive.
+
+## Distinzioni operative da mantenere
+
+- **Baseline locale per replay Supabase CLI**: artefatto tecnico per rendere riproducibile l'ambiente locale da zero.
+- **Migration storiche gia' applicate/legacy**: script che riflettono evoluzioni avvenute su schema esistente.
+- **Migration future applicabili a produzione**: cambiamenti nuovi, espliciti, reviewati e deployati con processo controllato.
+
+Le tre categorie non vanno confuse: la baseline locale non deve alterare retroattivamente la storia di produzione.
+
+## Cosa NON fare in questa fase
+
+- Non eseguire reset DB in produzione.
+- Non eseguire `db push` in produzione.
+- Non alterare `public.expenses` in produzione.
+- Non modificare le policy RLS di `public.expenses` in produzione.
+- Non inventare schema non verificato.
+- Non introdurre integrazione Stripe (checkout, webhook, Edge Functions, SDK o secret).

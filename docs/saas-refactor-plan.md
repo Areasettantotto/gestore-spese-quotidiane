@@ -306,6 +306,31 @@ La migration **`migrations/006_billing_data_model.sql`** e' stata applicata dire
 - **FASE M** — baseline Supabase CLI + migrations replayable per riallineare il flusso change management.
 - **oppure FASE I** — Stripe test mode solo dopo decisione esplicita di avvio integrazione provider.
 
+## FASE M — Supabase CLI baseline / replayable migrations (stato corrente)
+
+**Obiettivo fase:** preparare la baseline del workflow Supabase CLI in modo non distruttivo, senza modifiche di produzione e senza introdurre integrazione Stripe.
+
+### Stato operativo raggiunto
+
+- Supabase CLI installata nel progetto.
+- Docker disponibile per l'ambiente locale Supabase.
+- `supabase/config.toml` presente nel repository.
+- Stack Supabase locale avviato.
+- Directory `supabase/migrations/` presente.
+- Migration copiate da `migrations/` a `supabase/migrations/`.
+- `migrations/migration.sql` rinominata in `migrations/001_expenses_user_rls.sql`.
+
+### Vincoli e risultato tecnico
+
+- Il repository **non e' replayable da zero** allo stato attuale perche' manca una migration che faccia `CREATE TABLE public.expenses`.
+- Le migration iniziali (`001`/`002`/`003`/`004`) assumono `public.expenses` gia' esistente e la modificano.
+- In questa fase non e' stata effettuata alcuna modifica a produzione.
+- In questa fase non e' stata effettuata alcuna integrazione Stripe.
+
+### Piano immediato (step successivo)
+
+Prima di creare una baseline locale replayable, estrarre lo schema reale di `public.expenses` dal DB autorevole tramite query **read-only** (DDL, vincoli, indici, trigger, RLS e grants), evitando ricostruzioni ipotetiche da TypeScript.
+
 ## Prossimi passi suggeriti
 
 - **FASE M (processo migration):** introdurre baseline Supabase CLI e runbook replayable per staging/prod.
