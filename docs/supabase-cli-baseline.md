@@ -9,10 +9,15 @@ Nello specifico, le migration `001`-`006` non includono la creazione iniziale di
 ## Stato attuale delle migration (FASE M8)
 
 - Le migration storiche `001` ... `006` sono state archiviate in `supabase/migrations_archive/`.
-- `supabase/migrations/` contiene ora solo `000_baseline_current_schema.sql` (baseline squash locale/CLI).
+- `supabase/migrations/` contiene ora solo `000_baseline_current_schema.sql` (baseline squash locale/CLI), creata e validata localmente.
 - Le migration `001` ... `006` non devono piu' essere replayate da zero nel flusso locale Supabase CLI.
+- `npx supabase db reset` locale completato con successo sulla baseline M8.
+- Warning su `supabase/seed.sql` assente osservato durante il reset: non bloccante.
+- Nessun `supabase db push` eseguito.
+- Nessuna modifica produzione.
+- Nessuna integrazione Stripe.
 
-Conseguenza pratica: un `supabase db reset` locale su database vuoto fallirebbe finche' non esiste una baseline locale che crei lo schema reale richiesto.
+Conseguenza pratica: prima della baseline M8 un reset da zero non era replayable; dopo la creazione della baseline, il reset locale e' stato eseguito con esito positivo.
 
 ## Ruolo di `supabase/migrations/` dopo baseline squash
 
@@ -52,7 +57,7 @@ Le tre categorie non vanno confuse: la baseline locale non deve alterare retroat
 
 - Non eseguire reset DB in produzione.
 - Non eseguire `db push` in produzione.
-- Non eseguire `supabase db reset` locale prima di review esplicita della baseline.
+- Non eseguire `supabase db reset` locale fuori da review esplicita della baseline.
 - Non alterare `public.expenses` in produzione.
 - Non modificare le policy RLS di `public.expenses` in produzione.
 - Non inventare schema non verificato.

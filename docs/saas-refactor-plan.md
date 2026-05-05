@@ -306,11 +306,11 @@ La migration **`supabase/migrations/006_billing_data_model.sql`** e' stata appli
 - **FASE M** — baseline Supabase CLI + migrations replayable per riallineare il flusso change management.
 - **oppure FASE I** — Stripe test mode solo dopo decisione esplicita di avvio integrazione provider.
 
-## FASE M — Supabase CLI baseline / replayable migrations (stato corrente)
+## FASE M — Supabase CLI baseline / replayable migrations (completata: M8)
 
 **Obiettivo fase:** preparare la baseline del workflow Supabase CLI in modo non distruttivo, senza modifiche di produzione e senza introdurre integrazione Stripe.
 
-### Stato operativo raggiunto
+### Stato operativo raggiunto (M8 completata con successo)
 
 - Supabase CLI installata nel progetto.
 - Docker disponibile per l'ambiente locale Supabase.
@@ -318,17 +318,19 @@ La migration **`supabase/migrations/006_billing_data_model.sql`** e' stata appli
 - Stack Supabase locale avviato.
 - Directory `supabase/migrations/` presente.
 - `supabase/migrations/` confermata come directory canonica delle migration.
-- FASE M8 completata: baseline squash locale in `supabase/migrations/000_baseline_current_schema.sql`.
-- Migration storiche `001..006` archiviate in `supabase/migrations_archive/`.
+- `supabase/migrations/000_baseline_current_schema.sql` creata e validata localmente.
+- `supabase/migrations_archive/` popolata con le migration legacy `001..006`.
+- `npx supabase db reset` in locale completato con successo.
+- Warning su `supabase/seed.sql` assente rilevato come non bloccante.
 
 ### Vincoli e risultato tecnico
 
 - La baseline locale e' derivata da introspezione read-only dello schema produzione verificato.
 - `supabase/migrations/` contiene solo la baseline corrente; `001..006` restano tracciate ma non replayate da zero.
+- In questa fase non e' stato eseguito alcun `supabase db push`.
 - In questa fase non e' stata effettuata alcuna modifica a produzione.
 - In questa fase non e' stata effettuata alcuna integrazione Stripe.
-- In questa fase non deve essere eseguito `supabase db push` verso produzione.
-- `supabase db reset` locale e' consentito solo dopo review esplicita della baseline.
+- `supabase db reset` locale e' stato eseguito e validato nel perimetro di review della baseline M8.
 
 ### Piano immediato (step successivo)
 
