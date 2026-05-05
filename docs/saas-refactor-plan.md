@@ -284,9 +284,32 @@ La migration ufficiale **`migrations/006_billing_data_model.sql`** è stata crea
 
 **Prossima fase:** **FASE H3** — apply e verifica su staging (preflight, esecuzione controllata migration 006, smoke test RLS e validazione query).
 
+## FASE H4 — Production validation report (completata)
+
+La migration **`migrations/006_billing_data_model.sql`** e' stata applicata direttamente su Supabase **produzione** (assenza di staging) con validazione pre/post controllata.
+
+### Esito FASE H4
+
+- **Migration 006 applicata in produzione:** completata con esecuzione riuscita.
+- **Pre-check produzione:** OK (oggetti baseline presenti, colonne readiness su `public.tenants` presenti, oggetti 006 assenti prima dell'apply).
+- **Post-check produzione:** OK (`public.tenant_billing_customers`, `public.tenant_subscriptions`, `public.billing_events` create; RLS attiva su tutte e tre).
+- **Policy/permessi billing:** confermato `SELECT` admin/billing su customers/subscriptions; nessuna policy `SELECT` su `public.billing_events`; ruolo `authenticated` senza accesso a `billing_events`.
+- **`billing_events` server-side only:** confermato (audit/event log non esposto al client).
+- **Regressioni database:** nessuna regressione DB rilevata dopo apply e verifiche.
+- **Auth refresh token (nota operativa):** errore "Invalid Refresh Token: Refresh Token Not Found" osservato solo in browser normale al ritorno su tab; non riprodotto in incognito; classificato come session storage locale stale; non bloccante e non attribuito a regressione schema DB.
+- **Smoke test produzione:** da completare con checklist operativa post-apply (oppure da marcare come completato al termine dei test manuali).
+- **Integrazione Stripe:** nessuna integrazione implementata in questa fase (niente checkout, webhook, Edge Functions, backend Node).
+- **Ambito schema esistente:** `public.expenses` non modificata intenzionalmente; RLS su `expenses` non modificata intenzionalmente.
+
+**Prossima fase consigliata (decisione esplicita):**
+
+- **FASE M** — baseline Supabase CLI + migrations replayable per riallineare il flusso change management.
+- **oppure FASE I** — Stripe test mode solo dopo decisione esplicita di avvio integrazione provider.
+
 ## Prossimi passi suggeriti
 
-- **FASE H3 (apply + verifica staging):** applicare `migrations/006_billing_data_model.sql` su staging con checklist preflight e test RLS/permessi.
+- **FASE M (processo migration):** introdurre baseline Supabase CLI e runbook replayable per staging/prod.
+- **FASE I (billing provider):** avviare Stripe in test mode solo dopo decisione esplicita.
 - Switch tenant e inviti (membership da UI).
 - Repository centralizzato e tipi row con `tenant_id` esplicito.
 - Test su staging: due utenti, due tenant, verifica query + Realtime (checklist in `docs/saas-rls-test-plan.md`).
