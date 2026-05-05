@@ -6,9 +6,27 @@
 1. Install dependencies:
    `npm install`
 2. Copy environment template and set Supabase values (see `.env.example`):
-   `cp .env.example .env` then edit `.env` (never commit real secrets).
+   `cp .env.example .env.local` then edit `.env.local` (never commit real secrets).
 3. Run the app:
    `npm run dev`
+
+## Local development with Supabase
+
+1. Start local Supabase:
+   `npx supabase start`
+2. Optional: reset local database:
+   `npx supabase db reset`
+3. Copy env template:
+   `cp .env.example .env.local`
+4. Edit `.env.local` and replace `VITE_SUPABASE_ANON_KEY` with the local publishable/anon key shown by `npx supabase start`.
+5. Start the app:
+   `npm run dev`
+6. Open app:
+   `http://localhost:5173`
+7. Local Supabase Studio:
+   `http://127.0.0.1:54323`
+8. Stop local Supabase:
+   `npx supabase stop --no-backup`
 
 ### Development / deploy documentation
 

@@ -62,3 +62,10 @@ Le tre categorie non vanno confuse: la baseline locale non deve alterare retroat
 - Non modificare le policy RLS di `public.expenses` in produzione.
 - Non inventare schema non verificato.
 - Non introdurre integrazione Stripe (checkout, webhook, Edge Functions, SDK o secret).
+
+## Nota operativa app locale dopo reset baseline
+
+- Dopo un reset locale riuscito, l'app frontend puo' puntare a Supabase locale via `.env.local`.
+- `.env.local` non va committato.
+- Nel frontend usare solo chiave locale publishable/anon.
+- Mai usare `service_role` nel frontend.
