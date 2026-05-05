@@ -7,7 +7,7 @@ Documento operativo per **deploy ripetibili**, verifica ambiente e **smoke test*
 ## 1. Scopo
 
 - **Frontend:** React + Vite + TypeScript, build statica (`npm run build` → output **`dist`**, publish directory su Render).
-- **Backend dati / auth:** Supabase (PostgreSQL, Auth, Realtime, RLS). Le migration SQL vivono in `migrations/` e vanno applicate nel progetto Supabase (SQL Editor o pipeline interna), **non** dal solo deploy Render.
+- **Backend dati / auth:** Supabase (PostgreSQL, Auth, Realtime, RLS). Le migration SQL vivono in `supabase/migrations/` e vanno applicate nel progetto Supabase (SQL Editor o pipeline interna), **non** dal solo deploy Render.
 - **Hosting statico:** es. [Render](https://render.com) Static Site (configurazione tipica documentata in `README.md`; **nessun** `render.yaml` versionato in questo repo al momento).
 - **Nessun** backend Node obbligatorio per il flusso principale dell’app SaaS descritto nelle regole progetto.
 - **Nessuna** Supabase Edge Function richiesta oggi.
@@ -64,7 +64,7 @@ Nomi effettivi usati dal client (vedi `src/lib/supabaseClient.ts` e `src/vite-en
 
 ## 5. Supabase — checklist migration
 
-- [ ] Applicare migration **incrementali in ordine** (`migrations/migration.sql` baseline se necessario, poi `002`, `003`, `004`, `005` secondo lo stato del progetto — vedi `docs/saas-refactor-plan.md`).
+- [ ] Applicare migration **incrementali in ordine** (`supabase/migrations/001_expenses_user_rls.sql` baseline se necessario, poi `002`, `003`, `004`, `005` secondo lo stato del progetto — vedi `docs/saas-refactor-plan.md`).
 - [ ] Controllare output ed eventuali errori SQL nel SQL Editor (o log della pipeline).
 - [ ] **Non** modificare RLS o oggetti critici a mano senza migration equivalente e documentazione.
 - [ ] **Non** cancellare backup in `private.backup_*` (se presenti) senza piano esplicito.

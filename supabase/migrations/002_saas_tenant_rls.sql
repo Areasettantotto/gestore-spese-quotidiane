@@ -1,5 +1,5 @@
 -- Migration 002: SaaS tenant-first (profiles, tenants, memberships, tenant_id, RLS helpers)
--- Apply after migrations/migration.sql in Supabase SQL Editor (Project → SQL).
+-- Apply after supabase/migrations/001_expenses_user_rls.sql in Supabase SQL Editor (Project → SQL).
 -- Idempotent where practical; safe to re-run for idempotent sections (tables/policies guarded).
 --
 -- ORPHAN EXPENSES (explicit, conservative):

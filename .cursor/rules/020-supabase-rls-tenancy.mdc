@@ -1,7 +1,6 @@
 ---
 description: RLS, tenant_id, helper SQL e Realtime per Supabase/PostgreSQL
 globs:
-  - migrations/**/*.sql
   - supabase/**/*.sql
   - src/lib/**/*.ts
   - src/features/**/*.ts
@@ -44,4 +43,4 @@ Usarle nelle policy `USING` / `WITH CHECK` per leggibilità e manutenzione.
 
 ## Migrazioni
 
-- Versionare le modifiche schema/policy in `migrations/**/*.sql` e/o `supabase/migrations` quando adottato il CLI; mantenere script idempotenti dove il progetto già usa pattern `if not exists`.
+- Versionare le modifiche schema/policy in `supabase/migrations/**/*.sql`; mantenere script idempotenti dove il progetto già usa pattern `if not exists`.

@@ -1,7 +1,7 @@
 -- Migration 003: BEFORE INSERT guard on public.expenses
 -- Defensive tenant_id fallback from profiles.default_tenant_id.
 --
--- Apply after migrations/002_saas_tenant_rls.sql.
+-- Apply after supabase/migrations/002_saas_tenant_rls.sql.
 --
 -- Purpose:
 -- Protect production from old frontend builds / browser cache / PWA cache that may still

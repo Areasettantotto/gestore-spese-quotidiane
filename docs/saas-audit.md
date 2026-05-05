@@ -4,7 +4,7 @@ Documento generato in seguito alle Project Rules del repository.
 **Ambito:** stato attuale della codebase rispetto a un obiettivo **SaaS multi-tenant production-ready** (Supabase, static deploy, RLS, billing readiness).  
 **Nota:** nessuna modifica applicativa è stata introdotta durante questo audit.
 
-**Aggiornamento fase 1:** schema tenant-first, helper SQL e RLS tenant-aware sono descritti e versionati in `migrations/002_saas_tenant_rls.sql`; le decisioni di progetto sono in [`docs/saas-refactor-plan.md`](./saas-refactor-plan.md). Il frontend legge `profiles.default_tenant_id` e invia `tenant_id` sulle mutazioni; Realtime può filtrare per `tenant_id`.
+**Aggiornamento fase 1:** schema tenant-first, helper SQL e RLS tenant-aware sono descritti e versionati in `supabase/migrations/002_saas_tenant_rls.sql`; le decisioni di progetto sono in [`docs/saas-refactor-plan.md`](./saas-refactor-plan.md). Il frontend legge `profiles.default_tenant_id` e invia `tenant_id` sulle mutazioni; Realtime può filtrare per `tenant_id`.
 
 ---
 
@@ -18,12 +18,11 @@ Documento generato in seguito alle Project Rules del repository.
 
 ### Modello dati e migrazioni
 
-- Esiste un unico script SQL versionato: `migrations/migration.sql`, pensato per essere eseguito manualmente nell’SQL Editor di Supabase (commento in testa al file).
+- Le migration SQL versionate sono in `supabase/migrations/` e seguono naming incrementale (`001` ... `006`).
 - Lo script:
   - aggiunge `user_id uuid` su `public.expenses` con FK verso `auth.users` e `on delete cascade`;
   - abilita **RLS** su `expenses`;
   - definisce quattro policy CRUD basate su **`auth.uid() = user_id`**.
-- **Non** è presente cartella `supabase/migrations` né workflow Supabase CLI nel repo: le evoluzioni schema/policy sono **decentralizzate** rispetto a una pipeline CI standard.
 
 ### Supabase Auth
 
@@ -34,7 +33,7 @@ Documento generato in seguito alle Project Rules del repository.
 
 ### Policy RLS
 
-- Documentate e implementate **solo** in `migrations/migration.sql` per la tabella `expenses`, con modello **single-user / owner row** (`user_id`), non multi-tenant.
+- Documentate e implementate nella catena `supabase/migrations/*.sql` per la tabella `expenses`, con evoluzione da modello single-user a tenant-aware.
 
 ### Accesso dati dal frontend
 
@@ -148,7 +147,7 @@ Ordine indicativo; i primi sono i più impattati per sicurezza e modello dati.
 
 | File / percorso | Motivo |
 |-----------------|--------|
-| `migrations/migration.sql` (o nuova catena sotto `supabase/migrations/`) | Schema `tenants` / `tenant_members`, `tenant_id` su `expenses`, funzioni helper, policy RLS tenant-aware; allineamento `user_id`/`owner_id`. |
+| `supabase/migrations/001_expenses_user_rls.sql` (e successive) | Schema `tenants` / `tenant_members`, `tenant_id` su `expenses`, funzioni helper, policy RLS tenant-aware; allineamento `user_id`/`owner_id`. |
 | `src/lib/supabaseClient.ts` | Eventuali factory per client per test; invariato per chiavi se resta solo anon. |
 | `src/types.ts` | Estendere tipi dominio / row DB (`tenant_id`, ownership coerente). |
 | `src/features/expenses/useExpensesRealtime.ts` | Filtro `tenant_id`; rimuovere dipendenza incoerente da `owner_id` se si unifica il modello. |

@@ -133,5 +133,5 @@ Le spese esistenti restano nel DB; non vengono cancellate da questo `UPDATE`. Pe
 
 - Piano refactor: `docs/saas-refactor-plan.md` (FASE E).
 - SQL manuali: `docs/sql/demo-tenant-*.sql`.
-- Schema tenant / RLS: `migrations/002_saas_tenant_rls.sql`, `migrations/005_tenant_plan_readiness.sql`.
+- Schema tenant / RLS: `supabase/migrations/002_saas_tenant_rls.sql`, `supabase/migrations/005_tenant_plan_readiness.sql`.
 - Test RLS: `docs/saas-rls-test-plan.md`.

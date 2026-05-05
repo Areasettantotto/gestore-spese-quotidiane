@@ -4,10 +4,10 @@
 
 export type TenantRole = 'admin' | 'user' | 'billing';
 
-/** Aligned with migrations/005_tenant_plan_readiness.sql check constraint. */
+/** Aligned with supabase/migrations/005_tenant_plan_readiness.sql check constraint. */
 export type TenantPlanCode = 'free' | 'trial' | 'paid' | 'internal' | 'demo';
 
-/** Aligned with migrations/005_tenant_plan_readiness.sql check constraint. */
+/** Aligned with supabase/migrations/005_tenant_plan_readiness.sql check constraint. */
 export type TenantSubscriptionStatus =
   | 'active'
   | 'trialing'

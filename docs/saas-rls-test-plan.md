@@ -1,6 +1,6 @@
 # Piano test RLS e tenancy — Fase 1
 
-Checklist manuale per **staging** dopo `migrations/002_saas_tenant_rls.sql`.  
+Checklist manuale per **staging** dopo `supabase/migrations/002_saas_tenant_rls.sql`.  
 Prerequisito: due utenti Auth (`user_a`, `user_b`), idealmente due tenant distinti (o stesso tenant con membri diversi secondo lo scenario).
 
 Sostituire gli UUID segnaposto (`<tenant_a>`, `<user_a>`, …) con valori reali (da `select * from public.tenant_memberships` / `auth.users`).

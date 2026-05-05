@@ -1,14 +1,14 @@
 # Piano refactor SaaS — Fase 1 (implementata)
 
-Questo documento descrive le scelte della **fase 1**: schema multi-tenant, RLS e compatibilità con i dati esistenti. Le istruzioni operative restano in `README.md` e nelle migration in `migrations/`.
+Questo documento descrive le scelte della **fase 1**: schema multi-tenant, RLS e compatibilità con i dati esistenti. Le istruzioni operative restano in `README.md` e nelle migration in `supabase/migrations/`.
 
 ## Migration
 
-- **`migrations/migration.sql`** (invariata): baseline `user_id` + policy owner-only storiche.
-- **`migrations/002_saas_tenant_rls.sql`** (nuova): da eseguire **dopo** la baseline nello SQL Editor Supabase (o pipeline equivalente).
-- **`migrations/003_expenses_tenant_insert_guard.sql`**: da eseguire **dopo** la 002. Aggiunge solo una guardia difensiva lato database (funzione + trigger `BEFORE INSERT` su `public.expenses`): se `tenant_id` è omesso o `NULL`, viene valorizzato da `profiles.default_tenant_id` dell’utente corrente; se `tenant_id` è già valorizzato, non viene modificato. Non tocca righe esistenti. Serve a tollerare **vecchie versioni del frontend**, **cache** o **PWA** che inviano ancora insert senza `tenant_id`, evitando errori `NOT NULL` / mismatch con le policy mentre il client viene aggiornato.
-- **`migrations/004_expenses_realtime_delete_replica_identity.sql`**: da eseguire quando serve Realtime con eventi `DELETE` completi. Imposta `replica identity full` su `public.expenses` così il payload Realtime include la riga eliminata (chiave / colonne) senza cambiare RLS o dati applicativi.
-- **`migrations/005_tenant_plan_readiness.sql`**: da eseguire **dopo** la 002 (e coerente con il client che legge `public.tenants`). Aggiunge campi di **readiness** su `public.tenants` per piano e stato subscription a livello **tenant** (non utente). **Non** introduce provider di pagamento, checkout, webhook né Edge Functions.
+- **`supabase/migrations/001_expenses_user_rls.sql`**: baseline `user_id` + policy owner-only storiche.
+- **`supabase/migrations/002_saas_tenant_rls.sql`**: da eseguire **dopo** la baseline nello SQL Editor Supabase (o pipeline equivalente).
+- **`supabase/migrations/003_expenses_tenant_insert_guard.sql`**: da eseguire **dopo** la 002. Aggiunge solo una guardia difensiva lato database (funzione + trigger `BEFORE INSERT` su `public.expenses`): se `tenant_id` è omesso o `NULL`, viene valorizzato da `profiles.default_tenant_id` dell’utente corrente; se `tenant_id` è già valorizzato, non viene modificato. Non tocca righe esistenti. Serve a tollerare **vecchie versioni del frontend**, **cache** o **PWA** che inviano ancora insert senza `tenant_id`, evitando errori `NOT NULL` / mismatch con le policy mentre il client viene aggiornato.
+- **`supabase/migrations/004_expenses_realtime_delete_replica_identity.sql`**: da eseguire quando serve Realtime con eventi `DELETE` completi. Imposta `replica identity full` su `public.expenses` così il payload Realtime include la riga eliminata (chiave / colonne) senza cambiare RLS o dati applicativi.
+- **`supabase/migrations/005_tenant_plan_readiness.sql`**: da eseguire **dopo** la 002 (e coerente con il client che legge `public.tenants`). Aggiunge campi di **readiness** su `public.tenants` per piano e stato subscription a livello **tenant** (non utente). **Non** introduce provider di pagamento, checkout, webhook né Edge Functions.
 
 La 002 è pensata come script incrementale idempotente dove ha senso (drop/ricrea policy, `if not exists` su indici/tabelle). La 003 è idempotente (`CREATE OR REPLACE` + `DROP TRIGGER IF EXISTS`). La 005 è idempotente su colonne (`IF NOT EXISTS`) e sui vincoli nominati (`pg_constraint`).
 
@@ -67,8 +67,8 @@ Dopo la migration, in caso di spese “orfane”, la tabella `public.expenses_or
 
 1. Backup o snapshot del progetto staging (Dashboard Supabase).
 2. Eseguire le query di **preflight** e salvare l’output.
-3. Incollare ed eseguire `migrations/migration.sql` se staging non l’ha ancora applicata.
-4. Incollare ed eseguire `migrations/002_saas_tenant_rls.sql` in un’unica transazione o in blocco unico (SQL Editor → Run).
+3. Incollare ed eseguire `supabase/migrations/001_expenses_user_rls.sql` se staging non l’ha ancora applicata.
+4. Incollare ed eseguire `supabase/migrations/002_saas_tenant_rls.sql` in un’unica transazione o in blocco unico (SQL Editor → Run).
 5. Verificare: `select count(*) from public.expenses where tenant_id is null` → `0`.
 6. Se `expenses_orphan_archive_002` ha righe, valutare ripristino manuale o attribuzione tenant prima di cancellare l’archivio.
 7. Test smoke: signup utente test, insert spesa da app, controlli RLS secondo `docs/saas-rls-test-plan.md`.
@@ -265,7 +265,7 @@ La **review tecnica** dello schema billing in bozza ha concluso che il design è
 
 ## FASE H2 — Migration ufficiale billing schema (completata in codice, non applicata automaticamente)
 
-La migration ufficiale **`migrations/006_billing_data_model.sql`** è stata creata a partire dal draft hardened (`docs/sql/draft_006_billing_data_model.sql`) con adattamento delle diciture da bozza a migration versionata.
+La migration ufficiale **`supabase/migrations/006_billing_data_model.sql`** è stata creata a partire dal draft hardened (`docs/sql/draft_006_billing_data_model.sql`) con adattamento delle diciture da bozza a migration versionata.
 
 ### Esito FASE H2
 
@@ -286,7 +286,7 @@ La migration ufficiale **`migrations/006_billing_data_model.sql`** è stata crea
 
 ## FASE H4 — Production validation report (completata)
 
-La migration **`migrations/006_billing_data_model.sql`** e' stata applicata direttamente su Supabase **produzione** (assenza di staging) con validazione pre/post controllata.
+La migration **`supabase/migrations/006_billing_data_model.sql`** e' stata applicata direttamente su Supabase **produzione** (assenza di staging) con validazione pre/post controllata.
 
 ### Esito FASE H4
 
@@ -317,8 +317,8 @@ La migration **`migrations/006_billing_data_model.sql`** e' stata applicata dire
 - `supabase/config.toml` presente nel repository.
 - Stack Supabase locale avviato.
 - Directory `supabase/migrations/` presente.
-- Migration copiate da `migrations/` a `supabase/migrations/`.
-- `migrations/migration.sql` rinominata in `migrations/001_expenses_user_rls.sql`.
+- `supabase/migrations/` confermata come directory canonica delle migration.
+- Baseline rinominata in `supabase/migrations/001_expenses_user_rls.sql`.
 
 ### Vincoli e risultato tecnico
 

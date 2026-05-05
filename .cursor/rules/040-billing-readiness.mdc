@@ -4,7 +4,6 @@ globs:
   - src/features/billing/**
   - server/**
   - supabase/functions/**
-  - migrations/**/*.sql
 alwaysApply: false
 ---
 

@@ -8,17 +8,15 @@ Nello specifico, le migration `001`-`006` non includono la creazione iniziale di
 
 ## Stato attuale delle migration
 
-- In `migrations/` sono presenti i file `001_expenses_user_rls.sql` ... `006_billing_data_model.sql`.
-- In `supabase/migrations/` sono presenti gli stessi file `001` ... `006` (allineamento di naming e ordine).
+- Le migration canoniche `001` ... `006` sono in `supabase/migrations/`.
 - Nessuna delle migration `001` ... `006` crea `public.expenses`.
 - Le migration `001`, `002`, `003`, `004` dipendono esplicitamente da `public.expenses` gia' esistente.
 
 Conseguenza pratica: un `supabase db reset` locale su database vuoto fallirebbe finche' non esiste una baseline locale che crei lo schema reale richiesto.
 
-## Ruolo di `migrations/` e `supabase/migrations/`
+## Ruolo di `supabase/migrations/`
 
-- `migrations/`: storico progettuale/operativo gia' presente nel repository.
-- `supabase/migrations/`: percorso usato dal workflow Supabase CLI.
+- `supabase/migrations/`: percorso canonico usato dal workflow Supabase CLI.
 
 In questa fase i contenuti sono stati riallineati per avere una base unica di riferimento, senza introdurre nuove migration applicabili a produzione.
 
