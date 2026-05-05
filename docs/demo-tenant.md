@@ -2,7 +2,7 @@
 
 Documentazione per usare un **workspace demo** isolato (live, presentazioni, test manuali) senza billing reale, senza automazioni distruttive e senza credenziali nel repository.
 
-Gli script SQL citati sono **template manuali** in `docs/sql/` (non migration automatiche). Sostituire sempre i placeholder (`<DEMO_TENANT_ID>`, `<DEMO_OWNER_USER_ID>`) con UUID reali **solo** nell’SQL Editor del progetto Supabase (o client con ruolo adeguato), mai nel codice sorgente.
+Gli script SQL citati sono **template manuali** in `supabase/snippets/demo/` (non migration automatiche). Sostituire sempre i placeholder (`<DEMO_TENANT_ID>`, `<DEMO_OWNER_USER_ID>`) con UUID reali **solo** nell’SQL Editor del progetto Supabase (o client con ruolo adeguato), mai nel codice sorgente.
 
 ---
 
@@ -41,7 +41,7 @@ Il tenant demo è un **tenant normale** del modello SaaS, marcato in modo esplic
 
 ## 4. Identificare il tenant demo
 
-1. Eseguire le query in **`docs/sql/demo-tenant-verify.sql`** (sezione “Tenant demo” e conteggi).
+1. Eseguire le query in **`supabase/snippets/demo/demo-tenant-verify.sql`** (sezione “Tenant demo” e conteggi).
 2. **Mapping tenant → creatore**: `public.tenants.created_by` → `auth.users.id` (email in `auth.users.email` solo in ambiente controllato; non loggare in chiaro in produzione senza policy).
 3. **Mapping tenant → profilo predefinito**: `public.profiles.default_tenant_id = tenants.id` per verificare quale utente apre l’app su quel workspace.
 4. Confermare che l’utente che userai in demo ha **membership** su quel `tenant_id` (`tenant_memberships`) e che è effettivamente l’account dedicato (non un utente aziendale reale).
@@ -50,7 +50,7 @@ Il tenant demo è un **tenant normale** del modello SaaS, marcato in modo esplic
 
 ## 5. Marcare un tenant esistente come demo
 
-Usare **`docs/sql/demo-tenant-mark.sql`**.
+Usare **`supabase/snippets/demo/demo-tenant-mark.sql`**.
 
 **Avvertenze**
 
@@ -63,7 +63,7 @@ Usare **`docs/sql/demo-tenant-mark.sql`**.
 ## 6. Reset manuale dei dati demo
 
 1. **Backup consigliato**: snapshot progetto Supabase o export controllato delle righe `public.expenses` per quel `tenant_id` (solo se serve ripristino).
-2. Eseguire **`docs/sql/demo-tenant-reset-expenses.sql`** sostituendo `<DEMO_TENANT_ID>`.
+2. Eseguire **`supabase/snippets/demo/demo-tenant-reset-expenses.sql`** sostituendo `<DEMO_TENANT_ID>`.
 3. Lo script:
    - apre una transazione;
    - verifica che il tenant esista e sia **`is_demo = true`** e **`plan_code = 'demo'`**;
@@ -76,7 +76,7 @@ Se le guardie falliscono, **non** viene cancellato nulla: correggere i flag su `
 
 ## 7. Seed manuale di dati fittizi
 
-1. Eseguire **`docs/sql/demo-tenant-seed-expenses.sql`** dopo aver marcato il tenant come demo e aver verificato un **unico** membro `admin` (o impostare esplicitamente `<DEMO_OWNER_USER_ID>` come da commenti nel file).
+1. Eseguire **`supabase/snippets/demo/demo-tenant-seed-expenses.sql`** dopo aver marcato il tenant come demo e aver verificato un **unico** membro `admin` (o impostare esplicitamente `<DEMO_OWNER_USER_ID>` come da commenti nel file).
 2. Esempi di voci: caffè, supermercato, trasporto, pranzo, affitto demo — importi generici (es. 4,50 €, 35 €), categorie allineate a `src/types.ts` (`Alimentazione`, `Trasporti`, `Casa`, …).
 3. Non inserire descrizioni riconducibili a persone reali, IBAN, indirizzi o importi sensibili.
 
@@ -132,6 +132,6 @@ Le spese esistenti restano nel DB; non vengono cancellate da questo `UPDATE`. Pe
 ## Riferimenti
 
 - Piano refactor: `docs/saas-refactor-plan.md` (FASE E).
-- SQL manuali: `docs/sql/demo-tenant-*.sql`.
+- SQL manuali: `supabase/snippets/demo/demo-tenant-*.sql`.
 - Schema tenant / RLS: `supabase/migrations/002_saas_tenant_rls.sql`, `supabase/migrations/005_tenant_plan_readiness.sql`.
 - Test RLS: `docs/saas-rls-test-plan.md`.

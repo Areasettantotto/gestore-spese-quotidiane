@@ -24,7 +24,7 @@ Documento operativo per **deploy ripetibili**, verifica ambiente e **smoke test*
 | **Sviluppo locale** | `npm run dev` (Vite, porta predefinita 3000 in `package.json`) | Variabili in `.env` / `.env.local` (non committate). Vedi sezione 3. |
 | **Progetto Supabase** | Auth, DB, Realtime, RLS | Staging vs produzione: usare due progetti se possibile; stesse migration, dati separati. |
 | **Render (static site)** | Hosting della build `dist` | Build command `npm run build`, publish directory `dist`; env `VITE_*` impostate nel dashboard Render (build-time). |
-| **Tenant demo** (opzionale) | Workspace marcato per demo / test controllati | Runbook: `docs/demo-tenant.md`; SQL manuali: `docs/sql/demo-tenant-*.sql`. |
+| **Tenant demo** (opzionale) | Workspace marcato per demo / test controllati | Runbook: `docs/demo-tenant.md`; SQL manuali: `supabase/snippets/demo/demo-tenant-*.sql`. |
 
 Dove mancano dettagli organizzativi (nomi esatti dei servizi Render, branch di produzione), usare la checklist interna del team e annotare URL e branch nel runbook aziendale (fuori repo se contiene dati sensibili).
 
@@ -58,7 +58,7 @@ Nomi effettivi usati dal client (vedi `src/lib/supabaseClient.ts` e `src/vite-en
 - [ ] `npm run build` senza errori (warning chunk size: vedi sezione 9).
 - [ ] Su Render: variabili `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` presenti e corrette per l’ambiente target.
 - [ ] Nessuna chiave reale, password o email di test nei file versionati.
-- [ ] Se si usa il **tenant demo** in presentazione: verificare stato con `docs/demo-tenant.md` e `docs/sql/demo-tenant-verify.sql` (se rilevante per la release).
+- [ ] Se si usa il **tenant demo** in presentazione: verificare stato con `docs/demo-tenant.md` e `supabase/snippets/demo/demo-tenant-verify.sql` (se rilevante per la release).
 
 ---
 
@@ -136,7 +136,7 @@ Eseguire in ordine (adattare all’account di test):
 | Auth / sessione instabile o redirect errati | `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` su Render; URL di redirect e Site URL in **Supabase Auth** settings. |
 | `permission denied` / dati mancanti (RLS) | Membership su `tenant_memberships`, `profiles.default_tenant_id`, policy RLS (nessun bypass con `service_role` nel client). |
 | Realtime: delete non notificato / payload incompleto | Migration **004** (`replica identity full` su `public.expenses`); filtro canale con `tenant_id` coerente lato client. |
-| Dati demo errati o sporchi | Runbook `docs/demo-tenant.md` e script in `docs/sql/` (reset/seed **manuali**, con guardie). |
+| Dati demo errati o sporchi | Runbook `docs/demo-tenant.md` e script in `supabase/snippets/demo/` (reset/seed **manuali**, con guardie). |
 
 ---
 

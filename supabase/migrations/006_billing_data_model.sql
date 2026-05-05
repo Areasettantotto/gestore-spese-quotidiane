@@ -12,7 +12,7 @@
 --
 -- Alignment docs:
 -- - docs/billing-data-model.md
--- - docs/sql/draft_006_billing_data_model.sql (historical draft)
+-- - supabase/snippets/drafts/draft_006_billing_data_model.sql (historical draft)
 
 -- -----------------------------------------------------------------------------
 -- 1) public.tenant_billing_customers

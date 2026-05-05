@@ -5,7 +5,7 @@
 Questo documento definisce il **modello dati e le convenzioni** per un billing SaaS futuro (provider tipo Stripe), in linea con l’architettura **tenant-first** del prodotto.
 
 - **Non** implementa Stripe, checkout, webhook, Edge Functions o SDK lato client.
-- **Non** modifica lo schema applicato oggi; serve da riferimento per migrazioni e integrazioni successive (es. FASE H2 onward). Il **hardening del draft** (FASE H1.1) è riflesso in questo documento e in `docs/sql/draft_006_billing_data_model.sql`; resta **non applicato** finché non diventa migration ufficiale.
+- **Non** modifica lo schema applicato oggi; serve da riferimento per migrazioni e integrazioni successive (es. FASE H2 onward). Il **hardening del draft** (FASE H1.1) è riflesso in questo documento e in `supabase/snippets/drafts/draft_006_billing_data_model.sql`; resta **non applicato** finché non diventa migration ufficiale.
 
 Obiettivo: avere uno **schema mentale condiviso** (tabelle dedicate, snapshot su `tenants`, idempotenza, RLS, mapping provider) prima di scrivere SQL o codice server-side.
 

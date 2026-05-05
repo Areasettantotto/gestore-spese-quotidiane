@@ -151,7 +151,7 @@ I tenant esistenti ricevono automaticamente i default alla prima applicazione de
 
 ### Tenant demo (spostato in FASE E)
 
-La procedura operativa (verify / mark / reset / seed), la checklist pre-live e i rischi sono documentati in **`docs/demo-tenant.md`** e negli script manuali in **`docs/sql/demo-tenant-*.sql`**. La FASE D resta focalizzata sulla migration 005 e sul client readiness; la **FASE E** copre l’operatività del tenant demo senza nuove migration schema.
+La procedura operativa (verify / mark / reset / seed), la checklist pre-live e i rischi sono documentati in **`docs/demo-tenant.md`** e negli script manuali in **`supabase/snippets/demo/demo-tenant-*.sql`**. La FASE D resta focalizzata sulla migration 005 e sul client readiness; la **FASE E** copre l’operatività del tenant demo senza nuove migration schema.
 
 ### Frontend (`src/features/tenancy/*`)
 
@@ -174,10 +174,10 @@ Stripe/Paddle, checkout, webhook idempotenti e RLS su eventuali tabelle `subscri
 | Artefatto | Percorso |
 |-----------|----------|
 | Runbook operativo | `docs/demo-tenant.md` |
-| Verifica tenant / conteggi / igiene `tenant_id` | `docs/sql/demo-tenant-verify.sql` |
-| Marcatura metadata demo | `docs/sql/demo-tenant-mark.sql` |
-| Reset controllato solo `public.expenses` del demo | `docs/sql/demo-tenant-reset-expenses.sql` |
-| Seed spese fittizie (categorie allineate all’app) | `docs/sql/demo-tenant-seed-expenses.sql` |
+| Verifica tenant / conteggi / igiene `tenant_id` | `supabase/snippets/demo/demo-tenant-verify.sql` |
+| Marcatura metadata demo | `supabase/snippets/demo/demo-tenant-mark.sql` |
+| Reset controllato solo `public.expenses` del demo | `supabase/snippets/demo/demo-tenant-reset-expenses.sql` |
+| Seed spese fittizie (categorie allineate all’app) | `supabase/snippets/demo/demo-tenant-seed-expenses.sql` |
 
 **Non è stata creata una migration schema:** nessun cambiamento a `public.expenses`, RLS expenses, `user_id`/`owner_id`, archivio `expenses_orphan_archive_002` o backup `private.backup_*`. Gli SQL sono **template manuali** con placeholder `<DEMO_TENANT_ID>` / `<DEMO_OWNER_USER_ID>` (mai UUID reali nel repo).
 
@@ -231,7 +231,7 @@ Stripe/Paddle, checkout, webhook idempotenti e RLS su eventuali tabelle `subscri
 **Documentazione e artefatti draft:**
 
 - Il **design futuro** (entità, flussi di lettura/scrittura, vincoli tenant-first, note su RLS e ruoli) è descritto in **`docs/billing-data-model.md`**.
-- Lo **SQL draft non applicato** (tabelle future, indici, commenti operativi) è in **`docs/sql/draft_006_billing_data_model.sql`**. **Non va eseguito in produzione** finché non passa review su staging e non diventa una migration versionata con nome e ordine concordati.
+- Lo **SQL draft non applicato** (tabelle future, indici, commenti operativi) è in **`supabase/snippets/drafts/draft_006_billing_data_model.sql`**. **Non va eseguito in produzione** finché non passa review su staging e non diventa una migration versionata con nome e ordine concordati.
 
 **Tabelle previste nel design (solo su carta / nel draft SQL, non create nel DB in questa fase):**
 
@@ -258,14 +258,14 @@ La **review tecnica** dello schema billing in bozza ha concluso che il design è
 | Esito | Dettaglio |
 |-------|-----------|
 | Review tecnica | Completata (esito: serve hardening prima di versionare come migration). |
-| Hardening | Applicato a `docs/billing-data-model.md` e `docs/sql/draft_006_billing_data_model.sql` (mapping snapshot vs stato provider, privacy `billing_events`, cardinalità subscription, GRANT/REVOKE, RLS senza SELECT client su `billing_events`). |
+| Hardening | Applicato a `docs/billing-data-model.md` e `supabase/snippets/drafts/draft_006_billing_data_model.sql` (mapping snapshot vs stato provider, privacy `billing_events`, cardinalità subscription, GRANT/REVOKE, RLS senza SELECT client su `billing_events`). |
 | Database | **Nessun** SQL applicato al database in questa sottofase. |
 | Migration ufficiale | Demandata alla FASE H2 dopo hardening e review. |
 | `billing_events` | Modello **solo server-side** / audit: nessuna lettura client diretta; `payload` non esposto al frontend. |
 
 ## FASE H2 — Migration ufficiale billing schema (completata in codice, non applicata automaticamente)
 
-La migration ufficiale **`supabase/migrations/006_billing_data_model.sql`** è stata creata a partire dal draft hardened (`docs/sql/draft_006_billing_data_model.sql`) con adattamento delle diciture da bozza a migration versionata.
+La migration ufficiale **`supabase/migrations/006_billing_data_model.sql`** è stata creata a partire dal draft hardened (`supabase/snippets/drafts/draft_006_billing_data_model.sql`) con adattamento delle diciture da bozza a migration versionata.
 
 ### Esito FASE H2
 
