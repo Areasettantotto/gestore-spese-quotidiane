@@ -260,14 +260,33 @@ La **review tecnica** dello schema billing in bozza ha concluso che il design è
 | Review tecnica | Completata (esito: serve hardening prima di versionare come migration). |
 | Hardening | Applicato a `docs/billing-data-model.md` e `docs/sql/draft_006_billing_data_model.sql` (mapping snapshot vs stato provider, privacy `billing_events`, cardinalità subscription, GRANT/REVOKE, RLS senza SELECT client su `billing_events`). |
 | Database | **Nessun** SQL applicato al database in questa sottofase. |
-| Migration ufficiale | **Non** creata (in particolare **non** esiste `migrations/006_billing_data_model.sql`). |
+| Migration ufficiale | Demandata alla FASE H2 dopo hardening e review. |
 | `billing_events` | Modello **solo server-side** / audit: nessuna lettura client diretta; `payload` non esposto al frontend. |
 
-**Prossima fase:** **FASE H2** — redigere la **migration ufficiale** (nome e ordine concordati) **solo dopo** review del draft hardened e validazione su staging; allineare GRANT/RLS al contenuto aggiornato di `docs/billing-data-model.md`.
+## FASE H2 — Migration ufficiale billing schema (completata in codice, non applicata automaticamente)
+
+La migration ufficiale **`migrations/006_billing_data_model.sql`** è stata creata a partire dal draft hardened (`docs/sql/draft_006_billing_data_model.sql`) con adattamento delle diciture da bozza a migration versionata.
+
+### Esito FASE H2
+
+- Creata migration ufficiale con:
+  - `create table if not exists` per `public.tenant_billing_customers`, `public.tenant_subscriptions`, `public.billing_events`
+  - vincoli `unique`/`check`/FK, indici e commenti operativi
+  - RLS abilitata su tutte e tre le tabelle
+  - policy `SELECT` admin/billing solo su customers/subscriptions
+  - nessuna policy `SELECT` client su `billing_events`
+  - nessuna policy `INSERT`/`UPDATE`/`DELETE` per `authenticated`
+  - `REVOKE/GRANT` conservativi (anon senza accesso; authenticated solo `SELECT` su customers/subscriptions, niente accesso a `billing_events`)
+- **Nessuna integrazione Stripe** implementata (nessun checkout, webhook, Edge Function o backend Node).
+- **Nessuna applicazione automatica a produzione** in questa fase: migration solo versionata nel repository.
+- `public.expenses` invariata e RLS su `expenses` invariata.
+- `billing_events` confermata come tabella **server-side/audit only**.
+
+**Prossima fase:** **FASE H3** — apply e verifica su staging (preflight, esecuzione controllata migration 006, smoke test RLS e validazione query).
 
 ## Prossimi passi suggeriti
 
-- **FASE H2 (billing schema):** dopo review del draft hardened, creare migration ufficiale derivata da `docs/sql/draft_006_billing_data_model.sql` e allineare RLS/GRANT come da `docs/billing-data-model.md`.
+- **FASE H3 (apply + verifica staging):** applicare `migrations/006_billing_data_model.sql` su staging con checklist preflight e test RLS/permessi.
 - Switch tenant e inviti (membership da UI).
 - Repository centralizzato e tipi row con `tenant_id` esplicito.
 - Test su staging: due utenti, due tenant, verifica query + Realtime (checklist in `docs/saas-rls-test-plan.md`).
