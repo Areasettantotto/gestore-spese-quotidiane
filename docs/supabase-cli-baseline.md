@@ -6,19 +6,19 @@ Il progetto e' nato con un database gia' esistente in Supabase e con migration s
 
 Nello specifico, le migration `001`-`006` non includono la creazione iniziale di `public.expenses`, ma eseguono alterazioni, policy, trigger e indici su quella tabella. Per questo motivo, un replay completo da zero con solo queste migration non puo' riuscire.
 
-## Stato attuale delle migration
+## Stato attuale delle migration (FASE M8)
 
-- Le migration canoniche `001` ... `006` sono in `supabase/migrations/`.
-- Nessuna delle migration `001` ... `006` crea `public.expenses`.
-- Le migration `001`, `002`, `003`, `004` dipendono esplicitamente da `public.expenses` gia' esistente.
+- Le migration storiche `001` ... `006` sono state archiviate in `supabase/migrations_archive/`.
+- `supabase/migrations/` contiene ora solo `000_baseline_current_schema.sql` (baseline squash locale/CLI).
+- Le migration `001` ... `006` non devono piu' essere replayate da zero nel flusso locale Supabase CLI.
 
 Conseguenza pratica: un `supabase db reset` locale su database vuoto fallirebbe finche' non esiste una baseline locale che crei lo schema reale richiesto.
 
-## Ruolo di `supabase/migrations/`
+## Ruolo di `supabase/migrations/` dopo baseline squash
 
 - `supabase/migrations/`: percorso canonico usato dal workflow Supabase CLI.
-
-In questa fase i contenuti sono stati riallineati per avere una base unica di riferimento, senza introdurre nuove migration applicabili a produzione.
+- In FASE M8 contiene una baseline locale unica (`000_baseline_current_schema.sql`) derivata da introspezione read-only di produzione.
+- La baseline e' un artefatto locale di replay/consistenza; non equivale a una migration da applicare a produzione.
 
 ## Problema specifico di `public.expenses`
 
@@ -42,8 +42,8 @@ Questo approccio consente di:
 
 ## Distinzioni operative da mantenere
 
-- **Baseline locale per replay Supabase CLI**: artefatto tecnico per rendere riproducibile l'ambiente locale da zero.
-- **Migration storiche gia' applicate/legacy**: script che riflettono evoluzioni avvenute su schema esistente.
+- **Baseline locale per replay Supabase CLI**: artefatto tecnico per rendere riproducibile l'ambiente locale da zero (`supabase/migrations/000_baseline_current_schema.sql`).
+- **Migration storiche gia' applicate/legacy**: script archiviati in `supabase/migrations_archive/001..006`.
 - **Migration future applicabili a produzione**: cambiamenti nuovi, espliciti, reviewati e deployati con processo controllato.
 
 Le tre categorie non vanno confuse: la baseline locale non deve alterare retroattivamente la storia di produzione.
@@ -52,6 +52,7 @@ Le tre categorie non vanno confuse: la baseline locale non deve alterare retroat
 
 - Non eseguire reset DB in produzione.
 - Non eseguire `db push` in produzione.
+- Non eseguire `supabase db reset` locale prima di review esplicita della baseline.
 - Non alterare `public.expenses` in produzione.
 - Non modificare le policy RLS di `public.expenses` in produzione.
 - Non inventare schema non verificato.

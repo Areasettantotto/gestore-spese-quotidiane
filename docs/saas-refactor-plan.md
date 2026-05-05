@@ -318,18 +318,21 @@ La migration **`supabase/migrations/006_billing_data_model.sql`** e' stata appli
 - Stack Supabase locale avviato.
 - Directory `supabase/migrations/` presente.
 - `supabase/migrations/` confermata come directory canonica delle migration.
-- Baseline rinominata in `supabase/migrations/001_expenses_user_rls.sql`.
+- FASE M8 completata: baseline squash locale in `supabase/migrations/000_baseline_current_schema.sql`.
+- Migration storiche `001..006` archiviate in `supabase/migrations_archive/`.
 
 ### Vincoli e risultato tecnico
 
-- Il repository **non e' replayable da zero** allo stato attuale perche' manca una migration che faccia `CREATE TABLE public.expenses`.
-- Le migration iniziali (`001`/`002`/`003`/`004`) assumono `public.expenses` gia' esistente e la modificano.
+- La baseline locale e' derivata da introspezione read-only dello schema produzione verificato.
+- `supabase/migrations/` contiene solo la baseline corrente; `001..006` restano tracciate ma non replayate da zero.
 - In questa fase non e' stata effettuata alcuna modifica a produzione.
 - In questa fase non e' stata effettuata alcuna integrazione Stripe.
+- In questa fase non deve essere eseguito `supabase db push` verso produzione.
+- `supabase db reset` locale e' consentito solo dopo review esplicita della baseline.
 
 ### Piano immediato (step successivo)
 
-Prima di creare una baseline locale replayable, estrarre lo schema reale di `public.expenses` dal DB autorevole tramite query **read-only** (DDL, vincoli, indici, trigger, RLS e grants), evitando ricostruzioni ipotetiche da TypeScript.
+Dopo la baseline M8, le prossime migration devono essere additive e reviewate separatamente (es. da `007_*` o timestamp successivo), senza alterare retroattivamente la baseline squash.
 
 ## Prossimi passi suggeriti
 
