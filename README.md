@@ -33,6 +33,7 @@
 - **Production readiness** (pre/post deploy, rollback, smoke test, env vars): [`docs/production-readiness.md`](docs/production-readiness.md)
 - **Demo tenant** (operational runbook, no auto-reset): [`docs/demo-tenant.md`](docs/demo-tenant.md)
 - **SaaS refactor plan** (migrations, tenancy phases): [`docs/saas-refactor-plan.md`](docs/saas-refactor-plan.md)
+- **Supabase CLI baseline + migration workflow** (come creare la prossima migration, reset locale, guardrail su baseline e `db push`): [`docs/supabase-cli-baseline.md`](docs/supabase-cli-baseline.md)
 
 
 ## Deploy to Render (Static Site)

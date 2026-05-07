@@ -63,6 +63,24 @@ Le tre categorie non vanno confuse: la baseline locale non deve alterare retroat
 - Non inventare schema non verificato.
 - Non introdurre integrazione Stripe (checkout, webhook, Edge Functions, SDK o secret).
 
+## Come creare la prossima migration
+
+Dopo la baseline M8, le prossime migration devono essere **additive** e versionate come `007_*` (oppure con timestamp successivo secondo naming Supabase CLI). La baseline `000_baseline_current_schema.sql` resta immutabile.
+
+1. Creare una nuova migration con Supabase CLI:
+   - `supabase migration new <nome>`
+2. Implementare i cambi previsti nel nuovo file migration appena creato (senza toccare `000_baseline_current_schema.sql`).
+3. Verificare localmente il replay completo:
+   - `npx supabase db reset`
+4. Validare applicazione e test locali dopo il reset.
+5. Applicare a produzione solo con procedura controllata e review esplicita.
+
+Guardrail operative:
+
+- Mai editare `supabase/migrations/000_baseline_current_schema.sql` per cambi futuri.
+- Non usare `supabase db push` come scorciatoia non reviewata.
+- Nessuna migration nuova deve modificare retroattivamente la baseline.
+
 ## Nota operativa app locale dopo reset baseline
 
 - Dopo un reset locale riuscito, l'app frontend puo' puntare a Supabase locale via `.env.local`.
