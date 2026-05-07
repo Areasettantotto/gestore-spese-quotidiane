@@ -11,6 +11,7 @@ import { type Expense, type Category, CATEGORIES, type Accompagnatore } from './
 import { supabase } from './lib/supabaseClient';
 import { useExpenses } from '@/src/features/expenses/useExpenses';
 import { useActiveTenant } from '@/src/features/tenancy/useActiveTenant';
+import { useBillingSnapshot } from '@/src/features/billing/useBillingSnapshot';
 import { AppHeader } from '@/src/components/app/AppHeader';
 import { WorkspaceLoadingState } from '@/src/components/app/WorkspaceLoadingState';
 import { WorkspaceUnavailableState } from '@/src/components/app/WorkspaceUnavailableState';
@@ -27,8 +28,21 @@ export default function App() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
 
-  const { activeTenantId, isTenantContextLoading, tenantError, loadDefaultTenant, resolveTenantForMutation, resetTenantState } =
-    useActiveTenant();
+  const {
+    activeTenantId,
+    membershipRole,
+    activeTenantPlan,
+    isTenantContextLoading,
+    tenantError,
+    loadDefaultTenant,
+    resolveTenantForMutation,
+    resetTenantState,
+  } = useActiveTenant();
+
+  const { planBadgeLabel, billingNotice, showCtaPlaceholder } = useBillingSnapshot({
+    activeTenantPlan,
+    membershipRole,
+  });
 
   const { expenses, expensesLoadError, saveExpense, deleteExpense } = useExpenses({
     userId,
@@ -198,6 +212,9 @@ export default function App() {
         dateLabel={format(new Date(), 'EEEE d MMMM', { locale: it })}
         userEmail={userEmail}
         addDisabled={!userId || !activeTenantId || isTenantContextLoading}
+        billingPlanLabel={userId && activeTenantId ? planBadgeLabel : null}
+        billingNotice={userId && activeTenantId ? billingNotice : null}
+        showBillingPlaceholder={userId && activeTenantId ? showCtaPlaceholder : false}
         onAdd={() => setIsAdding(true)}
         onSignOut={handleSignOut}
       />
