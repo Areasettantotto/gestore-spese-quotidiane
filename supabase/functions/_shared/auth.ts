@@ -1,4 +1,5 @@
-import { createClient } from "@supabase/supabase-js";
+// @ts-expect-error Deno npm specifier is resolved by Supabase Edge runtime bundler.
+import { createClient } from "npm:@supabase/supabase-js@2";
 import { badRequest, forbidden, invalidJson, unauthorized, unprocessableEntity } from "./http.ts";
 
 declare const Deno: {
