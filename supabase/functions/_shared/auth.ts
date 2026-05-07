@@ -1,4 +1,11 @@
-import { badRequest, invalidJson, unauthorized } from "./http.ts";
+import { createClient } from "@supabase/supabase-js";
+import { badRequest, forbidden, invalidJson, unauthorized, unprocessableEntity } from "./http.ts";
+
+declare const Deno: {
+  env: {
+    get: (key: string) => string | undefined;
+  };
+};
 
 export type AuthContext = {
   token: string;
@@ -7,6 +14,46 @@ export type AuthContext = {
 export type TenantRequestBody = {
   tenant_id: string;
 };
+
+type AuthenticatedUserContext = {
+  userId: string;
+};
+
+const UUID_V4ISH_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function getSupabaseEdgeConfig():
+  | { supabaseUrl: string; supabaseAnonKey: string }
+  | Response {
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return unauthorized();
+  }
+
+  return { supabaseUrl, supabaseAnonKey };
+}
+
+function createUserScopedClient(token: string) {
+  const envConfig = getSupabaseEdgeConfig();
+  if (envConfig instanceof Response) {
+    return envConfig;
+  }
+
+  return createClient(envConfig.supabaseUrl, envConfig.supabaseAnonKey, {
+    global: {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    },
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+  });
+}
 
 export function parseAuthHeader(req: Request): AuthContext | Response {
   const headerValue = req.headers.get("authorization");
@@ -37,19 +84,65 @@ export function parseTenantBody(body: unknown): TenantRequestBody | Response {
 
   const maybeTenantId = (body as Record<string, unknown>).tenant_id;
   if (typeof maybeTenantId !== "string" || maybeTenantId.trim().length === 0) {
-    return badRequest("Field 'tenant_id' is required and must be a non-empty string.");
+    return unprocessableEntity("Field 'tenant_id' is required and must be a UUID string.");
   }
 
-  return { tenant_id: maybeTenantId };
+  const tenantId = maybeTenantId.trim();
+  if (!UUID_V4ISH_REGEX.test(tenantId)) {
+    return unprocessableEntity("Field 'tenant_id' must be a valid UUID.");
+  }
+
+  return { tenant_id: tenantId };
 }
 
-// Extension point for I2/I3:
-// - validate JWT with Supabase Auth
-// - check tenant membership/role server-side (admin|billing)
-// - never trust role values provided by frontend payload
+export async function getAuthenticatedUser(
+  auth: AuthContext,
+): Promise<AuthenticatedUserContext | Response> {
+  const supabase = createUserScopedClient(auth.token);
+  if (supabase instanceof Response) {
+    return supabase;
+  }
+
+  const { data, error } = await supabase.auth.getUser();
+  if (error || !data.user) {
+    return unauthorized();
+  }
+
+  return { userId: data.user.id };
+}
+
 export async function ensureTenantBillingAccess(
-  _auth: AuthContext,
-  _tenantId: string,
+  auth: AuthContext,
+  tenantId: string,
 ): Promise<{ ok: true } | Response> {
+  const user = await getAuthenticatedUser(auth);
+  if (user instanceof Response) {
+    return user;
+  }
+
+  const supabase = createUserScopedClient(auth.token);
+  if (supabase instanceof Response) {
+    return supabase;
+  }
+
+  const { data: membership, error } = await supabase
+    .from("tenant_memberships")
+    .select("role")
+    .eq("tenant_id", tenantId)
+    .eq("user_id", user.userId)
+    .maybeSingle<{ role: "admin" | "user" | "billing" }>();
+
+  if (error) {
+    return forbidden();
+  }
+
+  if (!membership) {
+    return forbidden();
+  }
+
+  if (membership.role !== "admin" && membership.role !== "billing") {
+    return forbidden();
+  }
+
   return { ok: true };
 }

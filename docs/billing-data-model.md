@@ -334,3 +334,14 @@ Il futuro processo di sync **non** deve assegnare `tenants.subscription_status` 
 - In questa fase **non** sono previsti accessi alle tabelle billing o modifiche schema.
 
 *Documento di design (FASE G2, hardening H1.1, con nota di stato FASE I1). Nessuna implementazione provider runtime attiva.*
+
+## 14. Stato FASE I2 (auth/authz foundation)
+
+- `create-checkout-session` e `create-billing-portal-session` applicano ora controlli server-side su:
+  - `Authorization: Bearer <jwt>` valido tramite Supabase Auth;
+  - `tenant_id` nel body, obbligatorio e UUID valido;
+  - membership utente su `public.tenant_memberships`;
+  - ruolo autorizzato limitato a `admin` oppure `billing`.
+- In caso di successo auth/authz, entrambe le funzioni rispondono ancora con `501 Not Implemented` (`Billing runtime is not implemented yet.`).
+- In FASE I2 non viene eseguita integrazione Stripe runtime e non vengono aggiunti secret/provider env Stripe.
+- In FASE I2 non vengono modificate tabelle billing (`tenant_billing_customers`, `tenant_subscriptions`, `billing_events`) e il webhook resta non operativo.

@@ -44,7 +44,7 @@ async function handler(req: Request): Promise<Response> {
   }
 
   return notImplemented(
-    "Stripe billing portal session is not active yet in this environment.",
+    "Billing runtime is not implemented yet.",
   );
 }
 

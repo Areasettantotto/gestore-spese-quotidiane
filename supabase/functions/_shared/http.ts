@@ -4,6 +4,7 @@ export type ErrorCode =
   | "FORBIDDEN"
   | "INVALID_JSON"
   | "INVALID_REQUEST"
+  | "UNPROCESSABLE_ENTITY"
   | "NOT_IMPLEMENTED";
 
 type JsonHeadersInit = Record<string, string>;
@@ -83,6 +84,18 @@ export function badRequest(message: string): Response {
       },
     },
     400,
+  );
+}
+
+export function unprocessableEntity(message: string): Response {
+  return jsonResponse(
+    {
+      error: {
+        code: "UNPROCESSABLE_ENTITY",
+        message,
+      },
+    },
+    422,
   );
 }
 
