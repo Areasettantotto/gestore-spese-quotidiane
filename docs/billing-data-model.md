@@ -345,3 +345,24 @@ Il futuro processo di sync **non** deve assegnare `tenants.subscription_status` 
 - In caso di successo auth/authz, entrambe le funzioni rispondono ancora con `501 Not Implemented` (`Billing runtime is not implemented yet.`).
 - In FASE I2 non viene eseguita integrazione Stripe runtime e non vengono aggiunti secret/provider env Stripe.
 - In FASE I2 non vengono modificate tabelle billing (`tenant_billing_customers`, `tenant_subscriptions`, `billing_events`) e il webhook resta non operativo.
+
+## 15. Stato FASE I3.0 (Stripe checkout test-mode foundation)
+
+- `create-checkout-session` crea ora una Stripe Checkout Session (`mode=subscription`) in **test mode** via Stripe REST API server-side (`POST /v1/checkout/sessions`).
+- Nessun SDK Stripe e' stato aggiunto nel frontend e non sono state introdotte modifiche a `package.json` / `package-lock.json`.
+- Le env richieste restano solo server-side (Edge Functions):
+  - `STRIPE_SECRET_KEY` (deve iniziare con `sk_test_`)
+  - `STRIPE_PRICE_ID_PRO_MONTHLY`
+  - `APP_BASE_URL` (fallback `SITE_URL`)
+- Auth/authz FASE I2 viene eseguita prima della chiamata Stripe:
+  - JWT valido;
+  - `tenant_id` valido;
+  - membership su `tenant_memberships`;
+  - ruolo consentito `admin` oppure `billing`.
+- `create-billing-portal-session` e `stripe-webhook` restano non implementate (`501`).
+- In FASE I3.0 non viene eseguita alcuna scrittura su:
+  - `billing_events`
+  - `tenants`
+  - `tenant_subscriptions`
+  - `tenant_billing_customers`
+- In FASE I3.0 non sono state introdotte migration e non e' previsto deploy automatico.

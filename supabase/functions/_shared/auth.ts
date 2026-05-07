@@ -114,7 +114,7 @@ export async function getAuthenticatedUser(
 export async function ensureTenantBillingAccess(
   auth: AuthContext,
   tenantId: string,
-): Promise<{ ok: true } | Response> {
+): Promise<{ ok: true; userId: string; role: "admin" | "billing" } | Response> {
   const user = await getAuthenticatedUser(auth);
   if (user instanceof Response) {
     return user;
@@ -144,5 +144,5 @@ export async function ensureTenantBillingAccess(
     return forbidden();
   }
 
-  return { ok: true };
+  return { ok: true, userId: user.userId, role: membership.role };
 }

@@ -5,6 +5,8 @@ export type ErrorCode =
   | "INVALID_JSON"
   | "INVALID_REQUEST"
   | "UNPROCESSABLE_ENTITY"
+  | "SERVICE_UNAVAILABLE"
+  | "UPSTREAM_ERROR"
   | "NOT_IMPLEMENTED";
 
 type JsonHeadersInit = Record<string, string>;
@@ -120,5 +122,33 @@ export function notImplemented(message: string): Response {
       },
     },
     501,
+  );
+}
+
+export function serviceUnavailable(
+  message = "Service is temporarily unavailable.",
+): Response {
+  return jsonResponse(
+    {
+      error: {
+        code: "SERVICE_UNAVAILABLE",
+        message,
+      },
+    },
+    503,
+  );
+}
+
+export function upstreamError(
+  message = "Upstream service request failed.",
+): Response {
+  return jsonResponse(
+    {
+      error: {
+        code: "UPSTREAM_ERROR",
+        message,
+      },
+    },
+    502,
   );
 }
