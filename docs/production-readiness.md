@@ -38,7 +38,6 @@ Nomi effettivi usati dal client (vedi `src/lib/supabaseClient.ts` e `src/vite-en
 |-----------|--------------|--------|
 | `VITE_SUPABASE_URL` | Sì | URL del progetto Supabase (es. `https://<project-ref>.supabase.co`). |
 | `VITE_SUPABASE_ANON_KEY` | Sì | Chiave **anon / public** del progetto. È pensata per il client: la sicurezza dipende da **RLS** e da Auth, non dal nascondere questa chiave nel bundle. |
-| `GEMINI_API_KEY` | No | Opzionale: `vite.config.ts` espone `process.env.GEMINI_API_KEY` in build tramite `loadEnv`. Non è prefissata `VITE_`. Non committare valori reali; non usare per segreti che devono restare server-side. |
 
 **Regole:**
 

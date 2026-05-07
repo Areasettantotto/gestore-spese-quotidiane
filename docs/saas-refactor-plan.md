@@ -193,7 +193,7 @@ Stripe/Paddle, checkout, webhook idempotenti e RLS su eventuali tabelle `subscri
 |-----------|-------------------|
 | Checklist pre-deploy, Supabase, Render, post-deploy, smoke test | `docs/production-readiness.md` |
 | Procedura rollback operativo (frontend vs DB) | `docs/production-readiness.md` §8 |
-| Documentazione variabili ambiente frontend (`VITE_SUPABASE_*`, nota `GEMINI_API_KEY` opzionale) | `docs/production-readiness.md` §3 |
+| Documentazione variabili ambiente frontend (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`) | `docs/production-readiness.md` §3 |
 | Nota warning Vite chunk size > 500 kB | `docs/production-readiness.md` §9 |
 | Incident quick checks | `docs/production-readiness.md` §10 |
 | Template env solo placeholder | `.env.example` |

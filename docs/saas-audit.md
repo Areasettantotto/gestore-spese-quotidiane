@@ -62,9 +62,8 @@ Documento generato in seguito alle Project Rules del repository.
 
 - Dipendenze **effettivamente usate** nel codice TypeScript/React tracciato: React, Vite plugin, Tailwind, Supabase, lucide-react, motion, recharts, date-fns, clsx, tailwind-merge.
 - Dipendenze **presenti ma non referenziate** negli sorgenti `.ts`/`.tsx` del progetto:
-  - `@google/genai` (in `package.json`; `.env.example` cita `GEMINI_API_KEY` ma le variabili esposte sono principalmente Supabase);
-  - `better-sqlite3`, `express`, `dotenv` — coerenti con uno **storico prototipo locale** o script non inclusi nel glob analizzato, ma **non** integrati nel flusso principale Vite/React descritto in README.
-- `vite.config.ts` definisce `process.env.GEMINI_API_KEY` nel bundle; al momento nessun file sorgente nel repo importa `@google/genai` (dead path / preparazione futura).
+  - `@google/genai`, `better-sqlite3`, `express`, `dotenv` — coerenti con uno **storico prototipo locale** o script non inclusi nel glob analizzato, ma **non** integrati nel flusso principale Vite/React descritto in README.
+- `vite.config.ts` non deve iniettare variabili secret-like nel bundle; il client resta allineato a sole variabili `VITE_SUPABASE_*`.
 
 ### Billing (Stripe / Paddle)
 
