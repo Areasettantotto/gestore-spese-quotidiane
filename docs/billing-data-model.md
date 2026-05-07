@@ -322,4 +322,15 @@ Il futuro processo di sync **non** deve assegnare `tenants.subscription_status` 
 
 ---
 
-*Documento di design (FASE G2, hardening H1.1). Nessuna implementazione provider o modifiche runtime associate a questo file.*
+## 13. Stato FASE I1 (scaffold Edge Functions)
+
+- Sono stati aggiunti gli scaffold:
+  - `supabase/functions/create-checkout-session/index.ts`
+  - `supabase/functions/create-billing-portal-session/index.ts`
+  - `supabase/functions/stripe-webhook/index.ts`
+- Le funzioni sono **non operative**: rispondono con `501 Not Implemented` per la logica Stripe.
+- In questa fase **non** e' attiva alcuna integrazione Stripe runtime.
+- In questa fase **non** sono configurati secret Stripe runtime.
+- In questa fase **non** sono previsti accessi alle tabelle billing o modifiche schema.
+
+*Documento di design (FASE G2, hardening H1.1, con nota di stato FASE I1). Nessuna implementazione provider runtime attiva.*
