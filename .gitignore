@@ -6,3 +6,8 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Local Edge Function secrets
+.env.edge.production.local
+supabase/functions/.env.local
+supabase/functions/.env*.local
