@@ -366,3 +366,15 @@ Il futuro processo di sync **non** deve assegnare `tenants.subscription_status` 
   - `tenant_subscriptions`
   - `tenant_billing_customers`
 - In FASE I3.0 non sono state introdotte migration e non e' previsto deploy automatico.
+
+## 16. Stato FASE I4.0 (stripe-webhook signature verification foundation)
+
+- `supabase/functions/stripe-webhook` accetta solo `POST`/`OPTIONS` e legge il body raw con `await req.text()` prima di qualsiasi parsing JSON.
+- La function verifica la firma `Stripe-Signature` con `STRIPE_WEBHOOK_SECRET` e risponde con errore sicuro se header/secret mancano o la signature non e' valida.
+- In questa fase vengono accettati solo eventi test mode (`livemode=false`); eventi live mode vengono rifiutati con risposta sicura.
+- E' presente allowlist minima eventi (`checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.payment_succeeded`, `invoice.payment_failed`).
+- Gli eventi non in allowlist rispondono `200` con `ignored=true` per evitare retry inutili da Stripe.
+- Logging ridotto e sicuro: solo `event.id`, `event.type`, `livemode`, `created`; nessun payload completo in log.
+- `verify_jwt=false` e' configurato solo su `[functions.stripe-webhook]` in `supabase/config.toml` per consentire chiamate Stripe (Stripe non invia JWT Supabase); la sicurezza e' compensata dalla verifica obbligatoria della firma Stripe.
+- In FASE I4.0 non avviene alcuna mutazione DB e non vengono toccate tabelle billing (`billing_events`, `tenant_billing_customers`, `tenant_subscriptions`, `tenants`).
+- Configurazione endpoint e webhook Stripe dashboard resta manuale dopo deploy; `STRIPE_WEBHOOK_SECRET` va impostato esclusivamente nei secrets Supabase, mai nel repository.
