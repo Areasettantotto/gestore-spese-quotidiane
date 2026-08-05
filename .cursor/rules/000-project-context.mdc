@@ -11,7 +11,7 @@ Questo repository è una **SaaS di gestione spese (expense management) multi-ten
 
 | Ruolo | Chi | Responsabilità |
 |-------|-----|----------------|
-| **Supervisor / Architect** | ChatGPT | Pianifica fasi, definisce micro-task, risolve divergenze architetturali |
+| **Supervisor / Architect** | ChatGPT | Pianifica fasi, definisce micro-task, risolve divergenze architetturali; decide se una micro-fase è approvata e se `docs/stato-operativo.md` deve essere aggiornato |
 | **Execution Agent / Executor** | Cursor | Esegue **solo** il micro-task assegnato; non avvia fasi successive di propria iniziativa |
 | **Controllore** | Utente | Autorizza ed esegue operazioni remote o irreversibili (commit, push, deploy, migration, segreti) |
 
@@ -28,19 +28,80 @@ Quel file è la fonte dinamica per: branch/HEAD attesi, fasi completate, attivit
 
 Se `stato-operativo.md` è assente, **non** crearlo autonomamente: segnalarne l’assenza nel report e chiedere istruzioni.
 
+## Autorità sull’aggiornamento dello stato operativo
+
+- ChatGPT decide se `docs/stato-operativo.md` deve essere aggiornato.
+- Cursor **non** aggiorna autonomamente `docs/stato-operativo.md` durante un task applicativo.
+- Cursor può modificare `docs/stato-operativo.md` **soltanto** quando il prompt:
+  - lo autorizza esplicitamente;
+  - ha suffisso `-bis`;
+  - definisce il file tra quelli modificabili.
+- Nel report Cursor deve indicare se un prompt `-bis` è necessario (`Prompt -bis necessario: sì/no`). Il suggerimento **non** equivale ad autorizzazione.
+- L’utente mantiene il controllo su commit, push, deploy, migration, segreti e operazioni remote.
+
+## Ciclo standard delle micro-fasi
+
+1. ChatGPT legge integralmente `docs/stato-operativo.md`.
+2. ChatGPT prepara un prompt principale con scope limitato.
+3. Cursor esegue esclusivamente il task assegnato.
+4. Cursor produce il report finale.
+5. ChatGPT analizza: rispetto dello scope, diff, quality gate, rischi, divergenze, consigli di Cursor.
+6. L’utente autorizza ed esegue il commit del task principale.
+7. Se lo stato è cambiato significativamente, ChatGPT prepara `<ID>-bis`.
+8. Cursor aggiorna lo stato operativo nel task documentale dedicato.
+9. ChatGPT verifica il report documentale.
+10. L’utente autorizza il relativo commit.
+
+Il task principale **non** deve aggiornare contemporaneamente lo stato operativo, salvo eccezione espressa e motivata dall’utente nel prompt corrente.
+
+## Convenzione di numerazione dei prompt
+
+ChatGPT assegna la numerazione. Cursor può suggerirla, ma **non** la adotta autonomamente.
+
+| Formato | Significato |
+|---------|-------------|
+| `<ID>` | Task principale (applicativo, tecnico, di analisi o di governance) |
+| `<ID>A`, `<ID>B`, … | Suddivisioni dello stesso micro-task troppo ampio |
+| `<ID>-bis` | Aggiornamento documentale di `docs/stato-operativo.md` collegato a un task o consolidamento significativo |
+| `<ID>-R` | Review senza nuova implementazione applicativa |
+| `<ID>-F1`, `<ID>-F2`, … | Fix successivi e isolati |
+| `<ID>-D1`, `<ID>-D2`, … | Deploy o operazione controllata relativa al task |
+| `<ID>-T1`, `<ID>-T2`, … | Test operativo separato, solo se ChatGPT lo decide esplicitamente |
+
+Regole:
+
+- Il suffisso `-bis` è **riservato** ai task che aggiornano `docs/stato-operativo.md`.
+- `-bis` non deve essere usato per fix, review, deploy o test.
+- **Vietato** `-bis-bis`.
+- Il commit di un task `-bis` non genera automaticamente un nuovo prompt documentale; sarà registrato nel successivo aggiornamento significativo.
+- Non rinumerare retroattivamente lo storico già completato.
+- Convenzioni storiche diverse: preservare lo storico; applicare questa convenzione soltanto ai task futuri.
+
 ## Gerarchia delle fonti
 
 In caso di conflitto, prevale nell’ordine:
 
 1. Istruzioni esplicite dell’utente nel task corrente
-2. Versione più recente di `stato-operativo.md`
+2. Versione più recente di `stato-operativo.md` (repository / Git verificati)
 3. Stato reale del repository e del branch (Git)
 4. Regole in `.cursor/rules/`
 5. Documentazione in `docs/`
-6. Report precedenti
-7. Assunzioni generali
+6. Mirror di consultazione su Google Drive (se presente)
+7. Report precedenti
+8. Assunzioni generali
 
 Se `stato-operativo.md` e il repository divergono (branch, HEAD, file assenti/modificati in modo inatteso), **segnalare chiaramente** la divergenza nel report e **non** scegliere silenziosamente una delle due versioni.
+
+## Mirror Google Drive (principi)
+
+Dettagli operativi: `docs/ai-context-mirror.md`.
+
+- Il repository resta la fonte canonica; `docs/stato-operativo.md` nel repository resta la fonte canonica dinamica.
+- Google Drive può contenere un mirror di consultazione dei file `.md` e `.mdc`; **non** sostituisce Git.
+- Cursor modifica i file nel repository, non direttamente in Drive.
+- La sincronizzazione con Drive è esterna e controllata dall’utente.
+- Il mirror non deve contenere segreti, `.env`, dump, credenziali o dati personali.
+- Non inserire URL Drive o percorsi locali del computer in questa regola.
 
 ## Stack (preservare)
 
@@ -64,6 +125,7 @@ Il progetto può contenere dipendenze legacy (es. script locali, SQLite); **non 
 - Riuso dei pattern già presenti nel repository
 - Criteri di accettazione verificabili
 - Modifiche isolate e revisionabili tramite Git
+- Separare sempre task applicativo e task documentale (`-bis`)
 
 ## Vincoli di modifica
 
@@ -103,15 +165,27 @@ Ogni report Cursor deve contenere almeno:
 
 `Consigli a ChatGPT per i prossimi prompt`
 
-La sezione `Consigli a ChatGPT per i prossimi prompt` deve includere indicazioni **tecniche e concrete** (non generiche):
+La sezione `Consigli a ChatGPT per i prossimi prompt`:
 
-- prossimo micro-task consigliato e motivazione
-- file da ispezionare o modificare
-- perimetro da mantenere fuori scope
-- rischi principali
-- criteri di accettazione suggeriti
-- test o quality gate da richiedere
-- eventuali approvazioni manuali necessarie
-- dubbi o divergenze che ChatGPT dovrebbe risolvere nel prompt successivo
+- deve essere **l’ultima** del report; non devono esistere sezioni dopo di essa;
+- i consigli **non** autorizzano l’implementazione del task successivo;
+- Cursor **non** deve modificare lo stato soltanto perché ha scritto `sì` a `Prompt -bis necessario`;
+- ChatGPT valuta e decide.
+
+La sezione deve includere indicazioni **tecniche e concrete**:
+
+- prossimo micro-task suggerito e motivazione
+- file da ispezionare
+- file modificabili suggeriti
+- aree fuori scope
+- rischi
+- criteri di accettazione
+- quality gate
+- verifiche manuali
+- approvazioni richieste
+- dubbi o decisioni da risolvere
+- proposta di aggiornamento dello stato
+- riga esatta: `Prompt -bis necessario: sì` oppure `Prompt -bis necessario: no`
+- motivazione della risposta sì/no
 
 Cursor **non** deve eseguire autonomamente i consigli di quella sezione.
