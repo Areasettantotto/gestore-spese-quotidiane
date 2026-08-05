@@ -7,6 +7,41 @@ alwaysApply: true
 
 Questo repository è una **SaaS di gestione spese (expense management) multi-tenant** in evoluzione da prototipo locale / single-user verso un prodotto scalabile.
 
+## Ruoli operativi
+
+| Ruolo | Chi | Responsabilità |
+|-------|-----|----------------|
+| **Supervisor / Architect** | ChatGPT | Pianifica fasi, definisce micro-task, risolve divergenze architetturali |
+| **Execution Agent / Executor** | Cursor | Esegue **solo** il micro-task assegnato; non avvia fasi successive di propria iniziativa |
+| **Controllore** | Utente | Autorizza ed esegue operazioni remote o irreversibili (commit, push, deploy, migration, segreti) |
+
+## Fonte canonica dinamica
+
+**Prima di proporre o implementare qualsiasi attività**, Cursor deve leggere **integralmente** la versione più recente di:
+
+- `docs/stato-operativo.md` (percorso canonico nel repository), **oppure**
+- il file `stato-operativo.md` espressamente fornito dall’utente, se la copia canonica non è presente nel repo.
+
+Quel file è la fonte dinamica per: branch/HEAD attesi, fasi completate, attività aperte, decisioni consolidate, rischi conosciuti, punto di ripresa, prossimo micro-task.
+
+**Non** copiare informazioni dinamiche (HEAD, fasi temporanee, commit) dentro questa regola o altre regole in `.cursor/rules/`.
+
+Se `stato-operativo.md` è assente, **non** crearlo autonomamente: segnalarne l’assenza nel report e chiedere istruzioni.
+
+## Gerarchia delle fonti
+
+In caso di conflitto, prevale nell’ordine:
+
+1. Istruzioni esplicite dell’utente nel task corrente
+2. Versione più recente di `stato-operativo.md`
+3. Stato reale del repository e del branch (Git)
+4. Regole in `.cursor/rules/`
+5. Documentazione in `docs/`
+6. Report precedenti
+7. Assunzioni generali
+
+Se `stato-operativo.md` e il repository divergono (branch, HEAD, file assenti/modificati in modo inatteso), **segnalare chiaramente** la divergenza nel report e **non** scegliere silenziosamente una delle due versioni.
+
 ## Stack (preservare)
 
 - **Frontend:** React (Vite), TypeScript, Tailwind CSS
@@ -22,8 +57,61 @@ Il progetto può contenere dipendenze legacy (es. script locali, SQLite); **non 
 - UX stabile durante la migrazione
 - Sicurezza: nessun secret o service role nel bundle client
 
+## Modalità di avanzamento (micro-task)
+
+- Micro-task **piccoli e verificabili**, con file modificabili **esplicitamente delimitati**
+- Niente refactor estesi non richiesti; niente anticipazione di fasi successive
+- Riuso dei pattern già presenti nel repository
+- Criteri di accettazione verificabili
+- Modifiche isolate e revisionabili tramite Git
+
 ## Vincoli di modifica
 
 - **Vietati** refactor distruttivi o wide-ranging non richiesti dall’utente o da un issue/piano chiaro
 - Preferire **modifiche incrementali**, piccoli PR/commit logici, comportamento **verificabile** (build, typecheck, test quando presenti)
 - Allineare nuove cartelle/file agli standard definiti nelle altre regole (architettura, RLS, frontend, billing, quality gates)
+
+## Operazioni protette (approvazione esplicita richiesta)
+
+Cursor **non** deve eseguire senza approvazione esplicita dell’utente:
+
+- commit; push; deploy
+- applicazione di migration remote; `supabase db push`; reset di database remoti
+- modifiche alla produzione; deploy di Edge Functions
+- configurazione o rotazione di segreti; utilizzo di chiavi Stripe live
+- modifiche distruttive; cambiamenti RLS non previsti dal task
+
+Cursor può **proporre** i comandi relativi, ma **non** eseguirli senza autorizzazione.
+
+## Report finale obbligatorio
+
+Ogni report Cursor deve contenere almeno:
+
+1. Verifica preliminare di `stato-operativo.md`, branch, HEAD e stato Git
+2. Riepilogo dell’attività
+3. File modificati
+4. Motivazione delle scelte
+5. Comportamento prima e dopo
+6. Verifiche e quality gate eseguiti
+7. Esito esatto dei comandi
+8. Verifiche non eseguibili e relativa motivazione
+9. Rischi residui
+10. Divergenze rispetto al prompt
+11. Stato Git finale
+12. Proposta motivata di aggiornamento di `stato-operativo.md`
+13. Sezione finale obbligatoria denominata **esattamente**:
+
+`Consigli a ChatGPT per i prossimi prompt`
+
+La sezione `Consigli a ChatGPT per i prossimi prompt` deve includere indicazioni **tecniche e concrete** (non generiche):
+
+- prossimo micro-task consigliato e motivazione
+- file da ispezionare o modificare
+- perimetro da mantenere fuori scope
+- rischi principali
+- criteri di accettazione suggeriti
+- test o quality gate da richiedere
+- eventuali approvazioni manuali necessarie
+- dubbi o divergenze che ChatGPT dovrebbe risolvere nel prompt successivo
+
+Cursor **non** deve eseguire autonomamente i consigli di quella sezione.

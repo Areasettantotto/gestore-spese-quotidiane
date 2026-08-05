@@ -30,6 +30,7 @@
 
 ### Development / deploy documentation
 
+- **Stato operativo / ripresa sviluppo** (snapshot + prompt per ChatGPT/agenti): [`docs/stato-operativo.md`](docs/stato-operativo.md)
 - **Production readiness** (pre/post deploy, rollback, smoke test, env vars): [`docs/production-readiness.md`](docs/production-readiness.md)
 - **Demo tenant** (operational runbook, no auto-reset): [`docs/demo-tenant.md`](docs/demo-tenant.md)
 - **SaaS refactor plan** (migrations, tenancy phases): [`docs/saas-refactor-plan.md`](docs/saas-refactor-plan.md)
