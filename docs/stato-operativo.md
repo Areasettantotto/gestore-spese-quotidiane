@@ -1,12 +1,12 @@
 # Stato operativo — Gestore Spese Quotidiane
 
-**Data snapshot:** 2026-08-05
+**Data snapshot:** 2026-08-06
 
 | Voce | Valore |
 |------|--------|
 | Branch atteso | `main` |
 | Commit applicativo di riferimento | `1f633fccbeccddd5a1a3182acc4c5bd667513457` — *I4.2 correlate Stripe customers to tenants* |
-| Ultimo commit governance/documentale consolidato | `14a8575` — *docs(governance): normalize operational state references* (GOVERNANCE-4-bis) |
+| Ultimo commit governance/documentale consolidato | `063cbf7` — *docs(governance): formalize prompt workflow and drive mirror* (GOVERNANCE-5-bis) |
 | Verifica Git richiesta | All’inizio di ogni task: `git rev-parse HEAD`, `git status`, `git branch --show-current` |
 
 Nota: l’HEAD reale deve essere verificato all’inizio di ogni task con `git rev-parse HEAD`. Il commit che aggiorna `stato-operativo.md` può essere successivo all’ultimo commit registrato nel documento; questo non costituisce automaticamente una divergenza. Branch, working tree e cronologia reale del repository prevalgono sempre sui valori storici riportati nel documento. Non riportare come HEAD stabile il futuro commit del task documentale corrente.
@@ -39,7 +39,7 @@ Stato attuale (sintesi):
 - Schema billing (tenant_billing_customers, tenant_subscriptions, billing_events) in produzione: FATTO (ex migration 006, ora nella baseline locale).
 - Supabase CLI baseline locale M8 (000_baseline_current_schema.sql): FATTO. Prossime migration additive da 007_*.
 - Stripe test-mode: checkout Edge Function operativa (create-checkout-session); webhook con firma + persistenza billing_events + correlazione customer→tenant su checkout.session.completed (I4.2).
-- Governance operativa (GOVERNANCE-4 / 4-bis / 5-bis): modello Supervisor/Architect (ChatGPT) + Execution Agent/Executor (Cursor); numerazione prompt e workflow `-bis`; mirror Drive documentato in docs/ai-context-mirror.md; consolidamento fonti in 1e83f19; GOVERNANCE-4-bis consolidato in 14a8575 (push/deploy non verificati).
+- Governance operativa (GOVERNANCE-4 / 4-bis / 5-bis): modello Supervisor/Architect (ChatGPT) + Execution Agent/Executor (Cursor); numerazione prompt e workflow `-bis`; GOVERNANCE-5-bis consolidato in 063cbf7 (docs/ai-context-mirror.md + regole 000); mirror Drive operativo come fonte di consultazione del progetto ChatGPT (non canonico); commit storici 1e83f19 e 14a8575.
 - ANCORA MANCANTE: hardening ciclo elaborazione billing_events (I4.3A); sync subscription → tenant_subscriptions + snapshot tenants (I4.3B); billing portal; UI checkout reale; feature gating piani; tenant switcher/inviti.
 
 Riparti dal prossimo micro-task: I4.3A — hardening del ciclo di elaborazione billing_events e della correlazione tenant/customer. NON avviare I4.3B né sync subscription senza task esplicito.
@@ -49,7 +49,7 @@ Chiedimi conferma prima di: deploy Edge Functions, apply migration produzione, d
 
 ---
 
-## 0. Governance operativa (GOVERNANCE-5-bis)
+## 0. Governance operativa (GOVERNANCE-6-bis)
 
 ### Modello ruoli (regola `000`)
 
@@ -71,9 +71,11 @@ Chiedimi conferma prima di: deploy Edge Functions, apply migration produzione, d
 
 ### Mirror Google Drive
 
-- Documento operativo: [`docs/ai-context-mirror.md`](ai-context-mirror.md).
-- Drive = **mirror di consultazione**, non canonico; aggiornato esternamente dall’utente; privo di segreti; da **rileggere** a ogni ripresa.
-- Repository / Git verificato prevale sul mirror.
+- Documento operativo: [`docs/ai-context-mirror.md`](ai-context-mirror.md) — **versionato** in `063cbf7`.
+- Mirror Drive **operativo**: struttura `docs/` e `.cursor/rules/` creata; sincronizzati esclusivamente `docs/**/*.md` e `.cursor/rules/**/*.mdc`; assenza di file inattesi verificata dall’utente.
+- Link stabile della cartella aggiunto alle Fonti del progetto ChatGPT (upload manuali precedenti rimossi); lettura da ChatGPT verificata.
+- Drive = **mirror di consultazione**, non canonico; aggiornato esternamente dall’utente; **nessun monitoraggio automatico**; privo di segreti; da **rileggere** a ogni ripresa.
+- Repository / Git verificato prevale sul mirror. Non documentare percorsi assoluti del computer né credenziali.
 
 ### Fonte canonica e vincoli di processo
 
@@ -82,21 +84,23 @@ Chiedimi conferma prima di: deploy Edge Functions, apply migration produzione, d
 - I consigli in `Consigli a ChatGPT per i prossimi prompt` **non** autorizzano Cursor a implementare autonomamente la fase successiva.
 - `README.md` collega la documentazione di sviluppo a `docs/stato-operativo.md` (percorso relativo).
 
-### Stato Git dopo GOVERNANCE-4-bis e working tree GOVERNANCE-5-bis
+### Stato Git dopo GOVERNANCE-5-bis (verifica preflight GOVERNANCE-6-bis)
 
 | Voce | Valore verificato |
 |------|-------------------|
-| Branch atteso | `main` |
+| Branch | `main` |
+| HEAD | `063cbf722a36588f5a0235384a4182316d090740` |
+| `origin/main` | Allineato allo stesso commit |
+| Working tree | Pulita (al momento della verifica) |
 | Commit applicativo di riferimento | `1f633fccbeccddd5a1a3182acc4c5bd667513457` (*I4.2*) |
-| Ultimo commit governance/documentale consolidato | `14a8575` — *docs(governance): normalize operational state references* (GOVERNANCE-4-bis) |
-| Commit fonti canoniche | `1e83f19` — *docs(governance): consolidate canonical project sources* |
-| `.cursor/rules/000-project-context.mdc` | Esteso in GOVERNANCE-5-bis (working tree, in attesa di review/commit) |
-| `docs/stato-operativo.md` | Questo snapshot (GOVERNANCE-5-bis) in working tree, in attesa di review/commit |
-| `docs/ai-context-mirror.md` | **Nuovo** in GOVERNANCE-5-bis (working tree, in attesa di review/commit) |
-| `README.md` | Collegamento a `docs/stato-operativo.md` **versionato** in `1e83f19` (invariato in questo task) |
-| Push / deploy | **Non verificati** — non dichiarati eseguiti |
+| Ultimo commit governance/documentale consolidato | `063cbf7` — *docs(governance): formalize prompt workflow and drive mirror* (GOVERNANCE-5-bis) |
+| Commit storici governance | `14a8575` (GOVERNANCE-4-bis); `1e83f19` (fonti canoniche) |
+| `.cursor/rules/000-project-context.mdc` | Esteso e consolidato in `063cbf7` |
+| `docs/ai-context-mirror.md` | Creato e consolidato in `063cbf7` |
+| `docs/stato-operativo.md` | Questo snapshot (GOVERNANCE-6-bis); il relativo commit sarà registrato al prossimo aggiornamento significativo |
+| `README.md` | Collegamento a `docs/stato-operativo.md` **versionato** in `1e83f19` |
 
-GOVERNANCE-5-bis **non** è dichiarato committato. Il prossimo task applicativo resta **I4.3A**; **I4.3B** resta separato e non avviato. Nessuna sincronizzazione subscription, nessun deploy, nessuna migration, nessuna modifica applicativa in questo task.
+GOVERNANCE-5-bis è **consolidato** in `063cbf7`. Il prossimo task applicativo resta **I4.3A**; **I4.3B** resta separato e non avviato. Nessuna sincronizzazione subscription, nessun aggiornamento dello snapshot `tenants`, nessun deploy, nessuna migration, nessuna modifica applicativa in questo task.
 
 ---
 
@@ -123,7 +127,7 @@ Project ref Supabase produzione (da sessioni operative): `dormvfiwgzyzslxybetb`.
 | Area | Stato |
 |------|--------|
 | Project Rules Cursor (`.cursor/rules/000`…`050`) | Completate |
-| Governance operativa (GOVERNANCE-1/2/3-bis/4/`1e83f19`/4-bis/`14a8575`/5-bis) | Modello Supervisor/Executor; numerazione prompt e workflow `-bis`; mirror Drive in `docs/ai-context-mirror.md`; fonti canoniche in `1e83f19`; GOVERNANCE-4-bis consolidato in `14a8575`; GOVERNANCE-5-bis in working tree (non ancora committato) |
+| Governance operativa (GOVERNANCE-1/2/3-bis/4/`1e83f19`/4-bis/`14a8575`/5-bis/`063cbf7`/6-bis) | Modello Supervisor/Executor; numerazione prompt e workflow `-bis`; mirror Drive operativo (consultazione); fonti canoniche in `1e83f19`; GOVERNANCE-4-bis in `14a8575`; GOVERNANCE-5-bis consolidato in `063cbf7` |
 | Audit → piano SaaS | `docs/saas-audit.md`, `docs/saas-refactor-plan.md` |
 | Tenant RLS + signup provisioning | Schema + helper `is_tenant_member` / `has_tenant_role` |
 | Guard insert `tenant_id` su expenses | Trigger (ex 003) |
@@ -216,7 +220,7 @@ Ordine concettuale seguito nelle chat (May–Aug 2026):
 15. **I4.0** — webhook signature verification foundation
 16. **I4.1** — persistenza idempotente `billing_events`
 17. **I4.2** — correlazione Stripe customer → `tenant_billing_customers` (+ checkout già in mode subscription)
-18. **GOVERNANCE-1 / GOVERNANCE-2 / GOVERNANCE-3-bis / GOVERNANCE-4 (`1e83f19`) / GOVERNANCE-4-bis (`14a8575`) / GOVERNANCE-5-bis** — modello operativo Supervisor/Executor; consolidamento fonti in `1e83f19`; normalizzazione stato in `14a8575`; GOVERNANCE-5-bis formalizza numerazione prompt, workflow `-bis`, report Cursor e mirror Drive (`docs/ai-context-mirror.md`) senza anticipare I4.3A/I4.3B
+18. **GOVERNANCE-1 / GOVERNANCE-2 / GOVERNANCE-3-bis / GOVERNANCE-4 (`1e83f19`) / GOVERNANCE-4-bis (`14a8575`) / GOVERNANCE-5-bis (`063cbf7`) / GOVERNANCE-6-bis** — modello operativo Supervisor/Executor; consolidamento fonti in `1e83f19`; normalizzazione stato in `14a8575`; GOVERNANCE-5-bis in `063cbf7` formalizza numerazione prompt, workflow `-bis`, report Cursor e `docs/ai-context-mirror.md`; GOVERNANCE-6-bis allinea lo stato operativo al consolidamento e al mirror Drive operativo, senza anticipare I4.3A/I4.3B
 
 Stile operativo ricorrente nei prompt: **micro-fasi**, “modifica SOLO questi file”, no deploy/migration senza conferma, Stripe solo `sk_test_`, nessun secret in repo.
 
