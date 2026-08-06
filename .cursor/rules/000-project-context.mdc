@@ -92,16 +92,46 @@ In caso di conflitto, prevale nell’ordine:
 
 Se `stato-operativo.md` e il repository divergono (branch, HEAD, file assenti/modificati in modo inatteso), **segnalare chiaramente** la divergenza nel report e **non** scegliere silenziosamente una delle due versioni.
 
-## Mirror Google Drive (principi)
+## Mirror Google Drive (principi e sync post-commit)
 
-Dettagli operativi: `docs/ai-context-mirror.md`.
+Dettagli operativi: `docs/ai-context-mirror.md`. Script ufficiale: `scripts/sync-ai-context-mirror.sh`.
 
-- Il repository resta la fonte canonica; `docs/stato-operativo.md` nel repository resta la fonte canonica dinamica.
-- Google Drive può contenere un mirror di consultazione dei file `.md` e `.mdc`; **non** sostituisce Git.
-- Cursor modifica i file nel repository, non direttamente in Drive.
-- La sincronizzazione con Drive è esterna e controllata dall’utente.
+### Principi
+
+- Il repository / Git resta la fonte canonica; `docs/stato-operativo.md` nel repository resta la fonte canonica dinamica.
+- Google Drive è un mirror di consultazione dei file `.md` / `.mdc` ammessi; **non** sostituisce Git.
+- Cursor modifica soltanto i file nel repository, non direttamente in Drive.
+- La destinazione locale si risolve da `AI_CONTEXT_MIRROR_DIR` oppure da `.git/ai-context-mirror-path` (non versionabile). Nessun percorso personale in file versionati, report o prompt.
 - Il mirror non deve contenere segreti, `.env`, dump, credenziali o dati personali.
 - Non inserire URL Drive o percorsi locali del computer in questa regola.
+- Nessun Git hook e nessun monitoraggio in background in questa fase.
+
+### Chi fa cosa
+
+- L’utente continua ad autorizzare ed eseguire: `git add`, commit, push.
+- Dopo che l’utente **conferma in conversazione** il commit di un task che ha modificato almeno un percorso incluso nel mirror, Cursor è autorizzato a eseguire la sincronizzazione locale controllata **senza** attendere un nuovo prompt ChatGPT.
+- La sincronizzazione è **obbligatoria** dopo il commit di ogni task `-bis`.
+- È **consentita** anche dopo commit governance o documentali che modificano `docs/**/*.md` o `.cursor/rules/**/*.mdc`.
+
+### Procedura obbligatoria di sincronizzazione
+
+Prima della sync, Cursor verifica: branch; HEAD; working tree pulita; commit appena confermato dall’utente; assenza di file staged; esistenza della configurazione locale; lista file ammessa.
+
+Poi, in ordine:
+
+1. `scripts/sync-ai-context-mirror.sh --dry-run`
+2. valutare l’output e verificare che contenga solo file ammessi (`docs/**/*.md`, `.cursor/rules/**/*.mdc`)
+3. `scripts/sync-ai-context-mirror.sh --apply`
+
+Fail-closed: se la working tree non è pulita, la configurazione manca, il dry-run presenta anomalie o rsync fallisce → non eseguire apply (o interrompere immediatamente); non correggere automaticamente; non usare fallback; riportare la divergenza.
+
+Divieti permanenti della sync: `--delete`; sincronizzazione inversa Drive → repository; push; deploy; migration; Supabase remoto; Stripe; segreti.
+
+### Report post-commit (dopo sync)
+
+Cursor produce un breve report con: branch; HEAD; working tree; numero e lista relativa dei file sincronizzati; esito dry-run; esito apply; esito verifica byte/hash; eventuali divergenze; conferma che non è stato usato `--delete`; conferma che non sono stati mostrati percorsi personali.
+
+Dopo la sincronizzazione Cursor **non** deve iniziare altri task.
 
 ## Stack (preservare)
 
