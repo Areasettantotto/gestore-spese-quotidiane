@@ -6,7 +6,7 @@
 |------|--------|
 | Branch atteso | `main` |
 | Commit applicativo di riferimento | `18a4bf91001589c75fcf0796bde7f2da7d1b1c87` — *fix(billing): harden webhook event processing* — I4.3A |
-| Ultimo commit governance/documentale consolidato | `253affa095875c41e688430c2edf5e398680fd09` — *docs(governance): align operational state after drive mirror* — GOVERNANCE-6-bis |
+| Ultimo commit governance/documentale consolidato | `8ff556d174af0725ae6ded426a94c624b1634e9d` — *chore(governance): add controlled mirror synchronization* — GOVERNANCE-7 |
 | Verifica Git richiesta | All’inizio di ogni task: `git rev-parse HEAD`, `git status`, `git branch --show-current` |
 
 Nota: l’HEAD reale deve essere verificato all’inizio di ogni task con `git rev-parse HEAD`. Il commit che aggiorna `stato-operativo.md` può essere successivo all’ultimo commit registrato nel documento; questo non costituisce automaticamente una divergenza. Branch, working tree e cronologia reale del repository prevalgono sempre sui valori storici riportati nel documento. Non riportare come HEAD stabile il futuro commit del task documentale corrente.
@@ -40,7 +40,8 @@ Stato attuale (sintesi):
 - Supabase CLI baseline locale M8 (000_baseline_current_schema.sql): FATTO. Prossime migration additive da 007_*.
 - Stripe test-mode: checkout Edge Function operativa (create-checkout-session); webhook con firma + persistenza billing_events + correlazione customer→tenant su checkout.session.completed; I4.3A consolidato in 18a4bf9 (hardening ciclo billing_events).
 - I4.3A: processed_at è commit marker applicativo (non semplice ricevuta); eventi incompleti (processed_at nullo) ritentabili sulla stessa riga; eventi già completati = no-op idempotenti; billing_events.tenant_id valorizzato in modo verificato e non rimappabile silenziosamente; correlazione tenant_billing_customers senza upsert che cambi identità; conflitti customer–tenant non sovrascritti; processing_error sintetico/sanitizzato; update critici condizionati con record restituito o readback; race F1–F4 corrette. Eventi customer.subscription.* e invoice.* allowlist: solo persistiti, processed_at resta nullo (attendono I4.3B). Deploy webhook aggiornato e test runtime NON eseguiti né autorizzati.
-- Governance: GOVERNANCE-5-bis in 063cbf7; GOVERNANCE-6-bis consolidato in 253affa; mirror Drive = consultazione (non canonico); Git è canonico.
+- Governance: GOVERNANCE-5-bis in 063cbf7; GOVERNANCE-6-bis in 253affa; I4.3A-bis in 99dc1f6; GOVERNANCE-7 consolidato in 8ff556d (script scripts/sync-ai-context-mirror.sh; sync controllata mirror).
+- Mirror: Git canonico, Drive = consultazione. Commit/push restano dell’utente. Dopo conferma del commit, Cursor esegue dry-run poi apply (obbligatoria dopo ogni -bis). Config locale non versionata (AI_CONTEXT_MIRROR_DIR o .git/ai-context-mirror-path). Nessun --delete, nessuna sync inversa. Verifica byte-per-byte. Prima sync controllata completata su 15 file. Propagazione cloud = Google Drive Desktop. ChatGPT rilegge il mirror a ogni ripresa.
 - ANCORA MANCANTE: deploy/test controllato del webhook aggiornato; sync subscription → tenant_subscriptions + snapshot tenants (I4.3B, non avviato); billing portal; UI checkout reale; feature gating piani; tenant switcher/inviti.
 
 Riparti dal prossimo micro-task raccomandato: I4.3A-D1 — verifica stato remoto e deploy controllato della sola Edge Function stripe-webhook in Stripe test mode (operazione protetta; richiede autorizzazione esplicita dell’utente). NON avviare I4.3B né sync subscription senza task esplicito. Dopo il deploy: task separato I4.3A-T1 per test runtime controllati.
@@ -72,17 +73,24 @@ Chiedimi conferma prima di: deploy Edge Functions, apply migration produzione, d
 
 ### Mirror Google Drive
 
-- Documento operativo: [`docs/ai-context-mirror.md`](ai-context-mirror.md) — **versionato** in `063cbf7`.
-- Mirror Drive = **copia di consultazione**, non canonico; **Git è canonico**.
-- La sincronizzazione repository → Drive è **esterna** e gestita dall’utente; questo task **non** sincronizza Drive.
-- Il mirror può restare **arretrato** fino alla sincronizzazione successiva; nessuna riconciliazione Drive → repository è consentita.
-- Link stabile della cartella aggiunto alle Fonti del progetto ChatGPT (upload manuali precedenti rimossi); lettura da ChatGPT verificata in sessioni precedenti.
-- Privo di segreti; da **rileggere** a ogni ripresa. Non documentare percorsi assoluti del computer né credenziali.
+- Documento operativo: [`docs/ai-context-mirror.md`](ai-context-mirror.md). Script ufficiale: `scripts/sync-ai-context-mirror.sh` (GOVERNANCE-7, commit `8ff556d`).
+- **Repository / Git** = fonte canonica; Drive = **mirror di consultazione**, non canonico.
+- Cursor modifica **solo** i file nel repository, non direttamente in Drive.
+- Configurazione locale non versionata: variabile `AI_CONTEXT_MIRROR_DIR` oppure file `.git/ai-context-mirror-path`. Nessun percorso personale in file versionati, report o prompt.
+- Commit e push restano dell’**utente**. Dopo **conferma del commit** in conversazione, Cursor può eseguire direttamente la sincronizzazione locale controllata (senza attendere un nuovo prompt ChatGPT).
+- Sync **obbligatoria** dopo ogni task `-bis`; **consentita** dopo altri commit documentali/governance che modificano file del perimetro mirror.
+- Ordine: verifiche pre-sync → `scripts/sync-ai-context-mirror.sh --dry-run` → validazione percorsi → `--apply` (solo con working tree **completamente pulita**) → confronto byte-per-byte → report → Cursor si ferma.
+- Lista file da `git ls-files`, perimetro: `docs/**/*.md` e `.cursor/rules/**/*.mdc`.
+- Divieti permanenti: `--delete`; sincronizzazione inversa Drive → repository; Git hook; monitoraggio in background.
+- Comportamento **fail-closed** (working tree sporca, config assente, dry-run anomalo, rsync fallito → non apply).
+- Propagazione locale → cloud: **Google Drive Desktop**. ChatGPT **non** monitora Drive automaticamente e deve **rileggere** il mirror a ogni ripresa.
+- Prima sincronizzazione controllata post-commit (su `8ff556d`): riuscita — 15 file, dry-run OK, apply OK, verifica byte-per-byte OK; nessun `--delete`; nessun percorso personale.
+- Nessuna riconciliazione Drive → repository è consentita. Dettaglio: `docs/ai-context-mirror.md` e `.cursor/rules/000-project-context.mdc`.
 
 ### Fonte canonica e vincoli di processo
 
 - Prima di ogni task, Cursor deve leggere **integralmente** `docs/stato-operativo.md`.
-- La regola `.cursor/rules/000-project-context.mdc` include: autorità sullo stato, ciclo micro-fasi, numerazione prompt, gerarchia fonti, mirror Drive (principi), operazioni protette, report finale.
+- La regola `.cursor/rules/000-project-context.mdc` include: autorità sullo stato, ciclo micro-fasi, numerazione prompt, gerarchia fonti, mirror Drive (principi e sync post-commit), operazioni protette, report finale.
 - I consigli in `Consigli a ChatGPT per i prossimi prompt` **non** autorizzano Cursor a implementare autonomamente la fase successiva.
 - `README.md` collega la documentazione di sviluppo a `docs/stato-operativo.md` (percorso relativo).
 
@@ -94,11 +102,14 @@ Chiedimi conferma prima di: deploy Edge Functions, apply migration produzione, d
 | HEAD reale | **Verificare** con `git rev-parse HEAD` — non dedurre dal documento |
 | GOVERNANCE-5-bis | Consolidato in `063cbf7` — *docs(governance): formalize prompt workflow and drive mirror* |
 | GOVERNANCE-6-bis | Consolidato in `253affa` — *docs(governance): align operational state after drive mirror* |
+| I4.3A-bis | Consolidato in `99dc1f6` — *docs(context): record billing event hardening* |
+| GOVERNANCE-7 | Consolidato in `8ff556d` — *chore(governance): add controlled mirror synchronization* (include fix F1/F2) |
 | Commit storici governance | `14a8575` (GOVERNANCE-4-bis); `1e83f19` (fonti canoniche) |
 | Commit applicativo corrente | `18a4bf9` — *fix(billing): harden webhook event processing* (I4.3A, include fix review F1–F4) |
 | Commit applicativo precedente | `1f633fcc` (I4.2) |
-| `.cursor/rules/000-project-context.mdc` | Esteso e consolidato in `063cbf7` |
-| `docs/ai-context-mirror.md` | Creato e consolidato in `063cbf7` |
+| `.cursor/rules/000-project-context.mdc` | Esteso in `063cbf7`; sync post-commit aggiornata in `8ff556d` |
+| `docs/ai-context-mirror.md` | Creato in `063cbf7`; workflow script aggiornato in `8ff556d` |
+| `scripts/sync-ai-context-mirror.sh` | Introdotto in `8ff556d` (mode Git `100755`) |
 | `README.md` | Collegamento a `docs/stato-operativo.md` **versionato** in `1e83f19` |
 
 L’HEAD reale e l’allineamento con `origin/main` vanno **sempre verificati** all’inizio di ogni task. **I4.3B** resta separato e non avviato. Nessuna sincronizzazione subscription, nessun aggiornamento dello snapshot `tenants`, nessun deploy del webhook aggiornato dichiarati come eseguiti in questo snapshot.
@@ -128,7 +139,9 @@ Project ref Supabase produzione (da sessioni operative): `dormvfiwgzyzslxybetb`.
 | Area | Stato |
 |------|--------|
 | Project Rules Cursor (`.cursor/rules/000`…`050`) | Completate |
-| Governance operativa (GOVERNANCE-1/2/3-bis/4/`1e83f19`/4-bis/`14a8575`/5-bis/`063cbf7`/6-bis/`253affa`) | Modello Supervisor/Executor; numerazione prompt e workflow `-bis`; mirror Drive operativo (consultazione); fonti canoniche in `1e83f19`; GOVERNANCE-4-bis in `14a8575`; GOVERNANCE-5-bis in `063cbf7`; GOVERNANCE-6-bis consolidato in `253affa` |
+| Governance operativa (GOVERNANCE-1/2/3-bis/4/`1e83f19`/4-bis/`14a8575`/5-bis/`063cbf7`/6-bis/`253affa`/I4.3A-bis/`99dc1f6`/7/`8ff556d`) | Modello Supervisor/Executor; numerazione prompt e workflow `-bis`; fonti canoniche in `1e83f19`; GOVERNANCE-4-bis in `14a8575`; GOVERNANCE-5-bis in `063cbf7`; GOVERNANCE-6-bis in `253affa`; I4.3A-bis in `99dc1f6`; GOVERNANCE-7 in `8ff556d` |
+| **GOVERNANCE-7 — sync controllata mirror** | Commit `8ff556d`: script `scripts/sync-ai-context-mirror.sh`; delega post-commit a Cursor (dopo conferma utente); dry-run → apply; apply solo con working tree pulita; perimetro Git tracciato (`docs/**/*.md`, `.cursor/rules/**/*.mdc`); privacy-safe (no percorsi personali); no `--delete` / no sync inversa; verifica byte-per-byte; **prima sync controllata completata su 15 file** |
+| **I4.3A-bis** | Commit `99dc1f6` — stato operativo aggiornato dopo hardening billing I4.3A |
 | Audit → piano SaaS | `docs/saas-audit.md`, `docs/saas-refactor-plan.md` |
 | Tenant RLS + signup provisioning | Schema + helper `is_tenant_member` / `has_tenant_role` |
 | Guard insert `tenant_id` su expenses | Trigger (ex 003) |
@@ -164,6 +177,7 @@ Project ref Supabase produzione (da sessioni operative): `dormvfiwgzyzslxybetb`.
 | **Smoke test post-H4** | Checklist produzione da chiudere manualmente se non già fatto |
 | **Staging dedicato** | Spesso assente: lavoro fatto su produzione con cautela |
 | **Docs drift** | `docs/billing-data-model.md` §16 descrive I4.0 “senza mutazioni DB”; I4.1/I4.2/I4.3A le hanno introdotte/estese — aggiornare la doc in una fase dedicata di allineamento documentazione billing |
+| **Prerequisiti / limiti operativi mirror** | Config locale necessaria per ogni clone/macchina; apply bloccato da qualsiasi modifica o file untracked (fail-closed); Google Drive Desktop può richiedere tempo per propagare al cloud; lo script è versionato nel repo ma **non** fa parte del perimetro mirror docs/rules |
 
 ### Esplicitamente fuori scope finché non richiesto
 
@@ -197,6 +211,9 @@ supabase/
     stripe-webhook/            # firma + billing_events + correlazione tenant_billing_customers (I4.3A)
     _shared/auth.ts, http.ts
   snippets/demo/, snippets/drafts/
+
+scripts/
+  sync-ai-context-mirror.sh    # sync controllata mirror (GOVERNANCE-7)
 ```
 
 **Vincolo migration:** dopo M8, nuove migration **additive** (`007_*` o timestamp). **Non** editare la baseline `000_` per evoluzioni.
@@ -225,7 +242,9 @@ Ordine concettuale seguito nelle chat (May–Aug 2026):
 16. **I4.1** — persistenza idempotente `billing_events`
 17. **I4.2** — correlazione Stripe customer → `tenant_billing_customers` (+ checkout già in mode subscription)
 18. **I4.3A** — hardening del ciclo `billing_events` e della correlazione Stripe customer–tenant, consolidato in `18a4bf9`, inclusi i fix di review F1–F4
-19. **GOVERNANCE-1 / GOVERNANCE-2 / GOVERNANCE-3-bis / GOVERNANCE-4 (`1e83f19`) / GOVERNANCE-4-bis (`14a8575`) / GOVERNANCE-5-bis (`063cbf7`) / GOVERNANCE-6-bis (`253affa`)** — modello operativo Supervisor/Executor; consolidamento fonti in `1e83f19`; normalizzazione stato in `14a8575`; GOVERNANCE-5-bis in `063cbf7`; GOVERNANCE-6-bis consolidato in `253affa` (allineamento stato operativo e mirror Drive di consultazione)
+19. **GOVERNANCE-1 / GOVERNANCE-2 / GOVERNANCE-3-bis / GOVERNANCE-4 (`1e83f19`) / GOVERNANCE-4-bis (`14a8575`) / GOVERNANCE-5-bis (`063cbf7`) / GOVERNANCE-6-bis (`253affa`)** — modello operativo Supervisor/Executor; consolidamento fonti in `1e83f19`; normalizzazione stato in `14a8575`; GOVERNANCE-5-bis in `063cbf7`; GOVERNANCE-6-bis consolidato in `253affa`
+20. **I4.3A-bis** — aggiornamento stato operativo dopo hardening billing, consolidato in `99dc1f6`
+21. **GOVERNANCE-7** — sincronizzazione controllata del mirror, consolidata in `8ff556d` (inclusi F1 e F2); script `scripts/sync-ai-context-mirror.sh`; prima sincronizzazione post-commit completata su **15 file** (dry-run, apply, confronto byte-per-byte)
 
 Stile operativo ricorrente nei prompt: **micro-fasi**, “modifica SOLO questi file”, no deploy/migration senza conferma, Stripe solo `sk_test_`, nessun secret in repo.
 
@@ -260,6 +279,9 @@ File locali tipo `.env.edge.production.local` / `supabase/functions/.env*.local`
 
 **I4.3A-D1 — verifica dello stato remoto e deploy controllato della sola Edge Function `stripe-webhook` in Stripe test mode**
 
+- **GOVERNANCE-7** e la prima sincronizzazione controllata sono **completati** (`8ff556d`).
+- **GOVERNANCE-7-bis** è il task documentale **corrente** (aggiornamento di questo file); il relativo commit sarà registrato nel prossimo aggiornamento significativo — **non** anticiparlo qui.
+- Dopo il commit di GOVERNANCE-7-bis, Cursor dovrà eseguire **automaticamente** la sincronizzazione post-commit (dry-run → apply → verifica byte-per-byte → report → stop).
 - Operazione **protetta**: richiede **autorizzazione esplicita** dell’utente.
 - **Non** eseguire nel task documentale.
 - **Non** includere: migration, `db push`, rotazione/configurazione segreti, Stripe **live**.
@@ -290,7 +312,9 @@ Punti ancora da progettare e implementare (non trasformare in implementazione or
 
 ---
 
-## 7. Quality gate (I4.3A applicativo)
+## 7. Quality gate
+
+### I4.3A applicativo
 
 Registrati dal consolidamento I4.3A (`18a4bf9`):
 
@@ -304,9 +328,27 @@ Registrati dal consolidamento I4.3A (`18a4bf9`):
 | Test runtime Stripe / Supabase | **Non eseguiti** |
 | Deploy Edge Function | **Non eseguito** |
 
+### GOVERNANCE-7
+
+Registrati dal consolidamento GOVERNANCE-7 (`8ff556d`, inclusi F1/F2) e dalla prima sync post-commit:
+
+| Gate | Esito |
+|------|--------|
+| `git diff --check` | Superato |
+| `bash -n scripts/sync-ai-context-mirror.sh` | Superato |
+| Dry-run (`--dry-run`) | Superato |
+| Test negativo apply con working tree sporca | Superato (output esatto e sanitizzato) |
+| Prima apply reale post-commit | Superata (15 file) |
+| Confronto byte-per-byte su 15 file | Superato |
+| `shellcheck` | **Non eseguito** (non disponibile nell’ambiente) |
+| `npm run lint` / `npm run build` | **Non eseguiti** (task governance/documentale) |
+| Deploy / migration / test runtime applicativo | **Non eseguiti** |
+
 ---
 
-## 8. Rischi residui (I4.3A)
+## 8. Rischi e limiti residui
+
+### I4.3A
 
 - Il flusso webhook usa **più query Supabase** e **non** costituisce una singola transazione PostgreSQL; il retry è reso idempotente dalla riga `billing_events` e dalla correlazione non rimappante.
 - Eventi legacy di I4.1/I4.2 già marcati `processed_at` **prima** di una correlazione riuscita **non** vengono riparati automaticamente.
@@ -314,6 +356,24 @@ Registrati dal consolidamento I4.3A (`18a4bf9`):
 - Il nuovo codice **non** è ancora stato verificato a runtime dopo deploy.
 - `deno check` resta da eseguire in un ambiente idoneo.
 - Eventi `customer.subscription.*` / `invoice.*` persistiti con `processed_at` nullo attendono **I4.3B**.
+
+### Mirror (GOVERNANCE-7)
+
+- La configurazione mirror è **locale** al clone/macchina.
+- File untracked o modifiche locali bloccano `--apply`, per scelta fail-closed.
+- La verifica dello script copre il mirror **locale**; la propagazione cloud dipende da **Google Drive Desktop**.
+- ChatGPT **non** monitora Drive automaticamente.
+- Nessun Git hook né automazione in background.
+- Lo script **non** elimina file obsoleti dal mirror (`--delete` vietato).
+- Il percorso personale non deve mai entrare in file versionati, report o prompt.
+- Il nuovo workflow **non** autorizza push, deploy, migration, segreti o operazioni remote.
+
+### Stato del mirror Drive
+
+- Prima sync controllata (post-commit `8ff556d`): aggiornati i **15 file** ammessi; dry-run, apply e confronto byte-per-byte riusciti.
+- Lettura successiva da ChatGPT: confermato l’aggiornamento di `docs/ai-context-mirror.md` e `.cursor/rules/000-project-context.mdc`.
+- `docs/stato-operativo.md` viene aggiornato da questo task (GOVERNANCE-7-bis) e sarà sincronizzato **solo dopo** il relativo commit.
+- Nessuna riconciliazione Drive → repository è consentita.
 
 ---
 
@@ -340,6 +400,9 @@ npx supabase start
 npx supabase db reset   # SOLO locale, dopo review baseline
 # Deploy EF (solo con conferma):
 # npx supabase functions deploy <name> --project-ref <ref>
+# Mirror AI context (solo post-commit, working tree pulita):
+# scripts/sync-ai-context-mirror.sh --dry-run
+# scripts/sync-ai-context-mirror.sh --apply
 ```
 
 ---
@@ -349,8 +412,9 @@ npx supabase db reset   # SOLO locale, dopo review baseline
 | Documento | Contenuto |
 |-----------|-----------|
 | `docs/stato-operativo.md` | Questo snapshot (ripresa rapida) — **fonte canonica dinamica** |
-| `.cursor/rules/000-project-context.mdc` | Contesto, ruoli, ciclo micro-fasi, numerazione prompt, report obbligatorio |
-| `docs/ai-context-mirror.md` | Mirror Google Drive di consultazione (non canonico) |
+| `.cursor/rules/000-project-context.mdc` | Contesto, ruoli, ciclo micro-fasi, numerazione prompt, sync mirror, report obbligatorio |
+| `docs/ai-context-mirror.md` | Mirror Google Drive di consultazione + workflow script (non canonico) |
+| `scripts/sync-ai-context-mirror.sh` | Script ufficiale sync controllata (GOVERNANCE-7) |
 | `docs/saas-refactor-plan.md` | Storia fasi A–M e decisioni |
 | `docs/billing-data-model.md` | Design billing + note I1–I4.0 (parziale drift post I4.1/I4.3A) |
 | `docs/supabase-cli-baseline.md` | Come creare migration post-baseline |
