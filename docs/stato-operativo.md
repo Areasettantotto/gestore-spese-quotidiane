@@ -5,8 +5,8 @@
 | Voce | Valore |
 |------|--------|
 | Branch atteso | `main` |
-| Commit applicativo di riferimento | `1f633fccbeccddd5a1a3182acc4c5bd667513457` — *I4.2 correlate Stripe customers to tenants* |
-| Ultimo commit governance/documentale consolidato | `063cbf7` — *docs(governance): formalize prompt workflow and drive mirror* (GOVERNANCE-5-bis) |
+| Commit applicativo di riferimento | `18a4bf91001589c75fcf0796bde7f2da7d1b1c87` — *fix(billing): harden webhook event processing* — I4.3A |
+| Ultimo commit governance/documentale consolidato | `253affa095875c41e688430c2edf5e398680fd09` — *docs(governance): align operational state after drive mirror* — GOVERNANCE-6-bis |
 | Verifica Git richiesta | All’inizio di ogni task: `git rev-parse HEAD`, `git status`, `git branch --show-current` |
 
 Nota: l’HEAD reale deve essere verificato all’inizio di ogni task con `git rev-parse HEAD`. Il commit che aggiorna `stato-operativo.md` può essere successivo all’ultimo commit registrato nel documento; questo non costituisce automaticamente una divergenza. Branch, working tree e cronologia reale del repository prevalgono sempre sui valori storici riportati nel documento. Non riportare come HEAD stabile il futuro commit del task documentale corrente.
@@ -38,18 +38,19 @@ Stato attuale (sintesi):
 - Layer frontend expenses/tenancy/billing snapshot: FATTO.
 - Schema billing (tenant_billing_customers, tenant_subscriptions, billing_events) in produzione: FATTO (ex migration 006, ora nella baseline locale).
 - Supabase CLI baseline locale M8 (000_baseline_current_schema.sql): FATTO. Prossime migration additive da 007_*.
-- Stripe test-mode: checkout Edge Function operativa (create-checkout-session); webhook con firma + persistenza billing_events + correlazione customer→tenant su checkout.session.completed (I4.2).
-- Governance operativa (GOVERNANCE-4 / 4-bis / 5-bis): modello Supervisor/Architect (ChatGPT) + Execution Agent/Executor (Cursor); numerazione prompt e workflow `-bis`; GOVERNANCE-5-bis consolidato in 063cbf7 (docs/ai-context-mirror.md + regole 000); mirror Drive operativo come fonte di consultazione del progetto ChatGPT (non canonico); commit storici 1e83f19 e 14a8575.
-- ANCORA MANCANTE: hardening ciclo elaborazione billing_events (I4.3A); sync subscription → tenant_subscriptions + snapshot tenants (I4.3B); billing portal; UI checkout reale; feature gating piani; tenant switcher/inviti.
+- Stripe test-mode: checkout Edge Function operativa (create-checkout-session); webhook con firma + persistenza billing_events + correlazione customer→tenant su checkout.session.completed; I4.3A consolidato in 18a4bf9 (hardening ciclo billing_events).
+- I4.3A: processed_at è commit marker applicativo (non semplice ricevuta); eventi incompleti (processed_at nullo) ritentabili sulla stessa riga; eventi già completati = no-op idempotenti; billing_events.tenant_id valorizzato in modo verificato e non rimappabile silenziosamente; correlazione tenant_billing_customers senza upsert che cambi identità; conflitti customer–tenant non sovrascritti; processing_error sintetico/sanitizzato; update critici condizionati con record restituito o readback; race F1–F4 corrette. Eventi customer.subscription.* e invoice.* allowlist: solo persistiti, processed_at resta nullo (attendono I4.3B). Deploy webhook aggiornato e test runtime NON eseguiti né autorizzati.
+- Governance: GOVERNANCE-5-bis in 063cbf7; GOVERNANCE-6-bis consolidato in 253affa; mirror Drive = consultazione (non canonico); Git è canonico.
+- ANCORA MANCANTE: deploy/test controllato del webhook aggiornato; sync subscription → tenant_subscriptions + snapshot tenants (I4.3B, non avviato); billing portal; UI checkout reale; feature gating piani; tenant switcher/inviti.
 
-Riparti dal prossimo micro-task: I4.3A — hardening del ciclo di elaborazione billing_events e della correlazione tenant/customer. NON avviare I4.3B né sync subscription senza task esplicito.
+Riparti dal prossimo micro-task raccomandato: I4.3A-D1 — verifica stato remoto e deploy controllato della sola Edge Function stripe-webhook in Stripe test mode (operazione protetta; richiede autorizzazione esplicita dell’utente). NON avviare I4.3B né sync subscription senza task esplicito. Dopo il deploy: task separato I4.3A-T1 per test runtime controllati.
 
 Chiedimi conferma prima di: deploy Edge Functions, apply migration produzione, db push, live Stripe keys, cambi RLS su expenses.
 ```
 
 ---
 
-## 0. Governance operativa (GOVERNANCE-6-bis)
+## 0. Governance operativa
 
 ### Modello ruoli (regola `000`)
 
@@ -72,10 +73,11 @@ Chiedimi conferma prima di: deploy Edge Functions, apply migration produzione, d
 ### Mirror Google Drive
 
 - Documento operativo: [`docs/ai-context-mirror.md`](ai-context-mirror.md) — **versionato** in `063cbf7`.
-- Mirror Drive **operativo**: struttura `docs/` e `.cursor/rules/` creata; sincronizzati esclusivamente `docs/**/*.md` e `.cursor/rules/**/*.mdc`; assenza di file inattesi verificata dall’utente.
-- Link stabile della cartella aggiunto alle Fonti del progetto ChatGPT (upload manuali precedenti rimossi); lettura da ChatGPT verificata.
-- Drive = **mirror di consultazione**, non canonico; aggiornato esternamente dall’utente; **nessun monitoraggio automatico**; privo di segreti; da **rileggere** a ogni ripresa.
-- Repository / Git verificato prevale sul mirror. Non documentare percorsi assoluti del computer né credenziali.
+- Mirror Drive = **copia di consultazione**, non canonico; **Git è canonico**.
+- La sincronizzazione repository → Drive è **esterna** e gestita dall’utente; questo task **non** sincronizza Drive.
+- Il mirror può restare **arretrato** fino alla sincronizzazione successiva; nessuna riconciliazione Drive → repository è consentita.
+- Link stabile della cartella aggiunto alle Fonti del progetto ChatGPT (upload manuali precedenti rimossi); lettura da ChatGPT verificata in sessioni precedenti.
+- Privo di segreti; da **rileggere** a ogni ripresa. Non documentare percorsi assoluti del computer né credenziali.
 
 ### Fonte canonica e vincoli di processo
 
@@ -84,23 +86,22 @@ Chiedimi conferma prima di: deploy Edge Functions, apply migration produzione, d
 - I consigli in `Consigli a ChatGPT per i prossimi prompt` **non** autorizzano Cursor a implementare autonomamente la fase successiva.
 - `README.md` collega la documentazione di sviluppo a `docs/stato-operativo.md` (percorso relativo).
 
-### Stato Git dopo GOVERNANCE-5-bis (verifica preflight GOVERNANCE-6-bis)
+### Stato Git storico (governance e applicativo)
 
-| Voce | Valore verificato |
-|------|-------------------|
-| Branch | `main` |
-| HEAD | `063cbf722a36588f5a0235384a4182316d090740` |
-| `origin/main` | Allineato allo stesso commit |
-| Working tree | Pulita (al momento della verifica) |
-| Commit applicativo di riferimento | `1f633fccbeccddd5a1a3182acc4c5bd667513457` (*I4.2*) |
-| Ultimo commit governance/documentale consolidato | `063cbf7` — *docs(governance): formalize prompt workflow and drive mirror* (GOVERNANCE-5-bis) |
+| Voce | Valore |
+|------|--------|
+| Branch atteso | `main` (verificare sempre con `git branch --show-current`) |
+| HEAD reale | **Verificare** con `git rev-parse HEAD` — non dedurre dal documento |
+| GOVERNANCE-5-bis | Consolidato in `063cbf7` — *docs(governance): formalize prompt workflow and drive mirror* |
+| GOVERNANCE-6-bis | Consolidato in `253affa` — *docs(governance): align operational state after drive mirror* |
 | Commit storici governance | `14a8575` (GOVERNANCE-4-bis); `1e83f19` (fonti canoniche) |
+| Commit applicativo corrente | `18a4bf9` — *fix(billing): harden webhook event processing* (I4.3A, include fix review F1–F4) |
+| Commit applicativo precedente | `1f633fcc` (I4.2) |
 | `.cursor/rules/000-project-context.mdc` | Esteso e consolidato in `063cbf7` |
 | `docs/ai-context-mirror.md` | Creato e consolidato in `063cbf7` |
-| `docs/stato-operativo.md` | Questo snapshot (GOVERNANCE-6-bis); il relativo commit sarà registrato al prossimo aggiornamento significativo |
 | `README.md` | Collegamento a `docs/stato-operativo.md` **versionato** in `1e83f19` |
 
-GOVERNANCE-5-bis è **consolidato** in `063cbf7`. Il prossimo task applicativo resta **I4.3A**; **I4.3B** resta separato e non avviato. Nessuna sincronizzazione subscription, nessun aggiornamento dello snapshot `tenants`, nessun deploy, nessuna migration, nessuna modifica applicativa in questo task.
+L’HEAD reale e l’allineamento con `origin/main` vanno **sempre verificati** all’inizio di ogni task. **I4.3B** resta separato e non avviato. Nessuna sincronizzazione subscription, nessun aggiornamento dello snapshot `tenants`, nessun deploy del webhook aggiornato dichiarati come eseguiti in questo snapshot.
 
 ---
 
@@ -127,7 +128,7 @@ Project ref Supabase produzione (da sessioni operative): `dormvfiwgzyzslxybetb`.
 | Area | Stato |
 |------|--------|
 | Project Rules Cursor (`.cursor/rules/000`…`050`) | Completate |
-| Governance operativa (GOVERNANCE-1/2/3-bis/4/`1e83f19`/4-bis/`14a8575`/5-bis/`063cbf7`/6-bis) | Modello Supervisor/Executor; numerazione prompt e workflow `-bis`; mirror Drive operativo (consultazione); fonti canoniche in `1e83f19`; GOVERNANCE-4-bis in `14a8575`; GOVERNANCE-5-bis consolidato in `063cbf7` |
+| Governance operativa (GOVERNANCE-1/2/3-bis/4/`1e83f19`/4-bis/`14a8575`/5-bis/`063cbf7`/6-bis/`253affa`) | Modello Supervisor/Executor; numerazione prompt e workflow `-bis`; mirror Drive operativo (consultazione); fonti canoniche in `1e83f19`; GOVERNANCE-4-bis in `14a8575`; GOVERNANCE-5-bis in `063cbf7`; GOVERNANCE-6-bis consolidato in `253affa` |
 | Audit → piano SaaS | `docs/saas-audit.md`, `docs/saas-refactor-plan.md` |
 | Tenant RLS + signup provisioning | Schema + helper `is_tenant_member` / `has_tenant_role` |
 | Guard insert `tenant_id` su expenses | Trigger (ex 003) |
@@ -145,21 +146,24 @@ Project ref Supabase produzione (da sessioni operative): `dormvfiwgzyzslxybetb`.
 | Checkout Stripe subscription test (I3.0) | `create-checkout-session` |
 | Webhook firma + allowlist + solo test mode (I4.0) | `stripe-webhook` |
 | Persistenza idempotente `billing_events` (I4.1) | Nel webhook |
-| Correlazione customer↔tenant (I4.2) | Upsert `tenant_billing_customers` su `checkout.session.completed` |
+| Correlazione customer↔tenant (I4.2) | Su `checkout.session.completed` → `tenant_billing_customers` |
+| **I4.3A — hardening ciclo `billing_events`** | Commit `18a4bf9` (include fix review F1–F4): `processed_at` post-effetti (commit marker); retry eventi incompleti sulla stessa riga; `tenant_id` tracciabile e immutabile dopo la prima valorizzazione; correlazione customer–tenant idempotente e non rimappante; race condition gestite con filtri condizionali e readback; eventi `customer.subscription.*` / `invoice.*` allowlist solo persistiti (`processed_at` nullo, deferiti a I4.3B) |
 
 ### In corso / incompleto
 
 | Voce | Dettaglio |
 |------|-----------|
-| **I4.3A (prossimo)** | Hardening ciclo elaborazione `billing_events` + correlazione tenant/customer — **non completato** |
-| **I4.3B (dopo I4.3A)** | Sync subscription → `tenant_subscriptions` + snapshot `tenants` — fase **separata**, non avviata |
-| **Sync subscription** | Eventi `customer.subscription.*` / invoice: **non** aggiornano ancora `tenant_subscriptions` né lo snapshot su `tenants` |
+| **Deploy webhook aggiornato** | Codice I4.3A in repo (`18a4bf9`); **deploy della Edge Function `stripe-webhook` non verificato / non eseguito** in questo snapshot — non dichiarare deployato |
+| **Test runtime test-mode** | Non eseguiti (né autorizzati) dopo I4.3A |
+| **I4.3B (separato, non avviato)** | Sync `customer.subscription.*` → `tenant_subscriptions` + snapshot `tenants` — **non** avviato |
+| **Sync subscription** | Eventi `customer.subscription.*` / invoice: **solo persistiti** in `billing_events` con `processed_at` nullo; **non** aggiornano ancora `tenant_subscriptions` né lo snapshot su `tenants` |
 | **Billing portal** | `create-billing-portal-session` → ancora `501 Not Implemented` |
 | **Frontend checkout** | UI mostra “Gestione abbonamento in arrivo”; **non** invoca l’Edge Function |
-| **Deploy webhook** | In sessioni I3.1: checkout deployato; webhook/portal spesso **non** ancora deployati — verificare stato reale su Supabase prima di test end-to-end |
+| **Feature gating** | Non implementato |
+| **Tenant switcher / inviti** | Non implementati da UI |
 | **Smoke test post-H4** | Checklist produzione da chiudere manualmente se non già fatto |
 | **Staging dedicato** | Spesso assente: lavoro fatto su produzione con cautela |
-| **Docs drift** | `docs/billing-data-model.md` §16 descrive I4.0 “senza mutazioni DB”; I4.1/I4.2 le hanno introdotte — aggiornare la doc nella prossima fase billing |
+| **Docs drift** | `docs/billing-data-model.md` §16 descrive I4.0 “senza mutazioni DB”; I4.1/I4.2/I4.3A le hanno introdotte/estese — aggiornare la doc in una fase dedicata di allineamento documentazione billing |
 
 ### Esplicitamente fuori scope finché non richiesto
 
@@ -190,7 +194,7 @@ supabase/
   functions/
     create-checkout-session/   # Stripe Checkout mode=subscription (test)
     create-billing-portal-session/  # 501
-    stripe-webhook/            # firma + billing_events + tenant_billing_customers
+    stripe-webhook/            # firma + billing_events + correlazione tenant_billing_customers (I4.3A)
     _shared/auth.ts, http.ts
   snippets/demo/, snippets/drafts/
 ```
@@ -220,7 +224,8 @@ Ordine concettuale seguito nelle chat (May–Aug 2026):
 15. **I4.0** — webhook signature verification foundation
 16. **I4.1** — persistenza idempotente `billing_events`
 17. **I4.2** — correlazione Stripe customer → `tenant_billing_customers` (+ checkout già in mode subscription)
-18. **GOVERNANCE-1 / GOVERNANCE-2 / GOVERNANCE-3-bis / GOVERNANCE-4 (`1e83f19`) / GOVERNANCE-4-bis (`14a8575`) / GOVERNANCE-5-bis (`063cbf7`) / GOVERNANCE-6-bis** — modello operativo Supervisor/Executor; consolidamento fonti in `1e83f19`; normalizzazione stato in `14a8575`; GOVERNANCE-5-bis in `063cbf7` formalizza numerazione prompt, workflow `-bis`, report Cursor e `docs/ai-context-mirror.md`; GOVERNANCE-6-bis allinea lo stato operativo al consolidamento e al mirror Drive operativo, senza anticipare I4.3A/I4.3B
+18. **I4.3A** — hardening del ciclo `billing_events` e della correlazione Stripe customer–tenant, consolidato in `18a4bf9`, inclusi i fix di review F1–F4
+19. **GOVERNANCE-1 / GOVERNANCE-2 / GOVERNANCE-3-bis / GOVERNANCE-4 (`1e83f19`) / GOVERNANCE-4-bis (`14a8575`) / GOVERNANCE-5-bis (`063cbf7`) / GOVERNANCE-6-bis (`253affa`)** — modello operativo Supervisor/Executor; consolidamento fonti in `1e83f19`; normalizzazione stato in `14a8575`; GOVERNANCE-5-bis in `063cbf7`; GOVERNANCE-6-bis consolidato in `253affa` (allineamento stato operativo e mirror Drive di consultazione)
 
 Stile operativo ricorrente nei prompt: **micro-fasi**, “modifica SOLO questi file”, no deploy/migration senza conferma, Stripe solo `sk_test_`, nessun secret in repo.
 
@@ -251,30 +256,24 @@ File locali tipo `.env.edge.production.local` / `supabase/functions/.env*.local`
 
 ## 6. Prossimi passi consigliati
 
-### Punto di ripresa applicativo: I4.3A
+### Punto di ripresa raccomandato: I4.3A-D1 (protetto, non autorizzato)
 
-**I4.3A — hardening del ciclo di elaborazione `billing_events` e della correlazione tenant/customer**
+**I4.3A-D1 — verifica dello stato remoto e deploy controllato della sola Edge Function `stripe-webhook` in Stripe test mode**
 
-Obiettivi (da implementare in un task dedicato; **non** ancora eseguiti):
+- Operazione **protetta**: richiede **autorizzazione esplicita** dell’utente.
+- **Non** eseguire nel task documentale.
+- **Non** includere: migration, `db push`, rotazione/configurazione segreti, Stripe **live**.
+- Solo la Edge Function `stripe-webhook` (verificare stato remoto prima del deploy).
+- Dopo il deploy dovrà seguire un task **separato** **I4.3A-T1** per test runtime controllati in test mode.
+- **I4.3B** resta successivo e **non** deve essere avviato automaticamente né presentato come immediatamente autorizzato.
 
-- `billing_events.processed_at` deve essere valorizzato **soltanto** dopo il completamento riuscito degli effetti DB previsti.
-- In caso di errore: valutare e documentare `processing_error` e il comportamento dei retry.
-- `billing_events.tenant_id` deve essere valorizzato quando il tenant viene risolto.
-- La correlazione customer Stripe → tenant deve rispettare i vincoli di unicità e **non** rimappare silenziosamente customer o tenant incompatibili.
-- **Non** sincronizzare ancora `tenant_subscriptions`.
-- **Non** aggiornare ancora lo snapshot commerciale di `public.tenants`.
-- Nessun deploy nel task di implementazione.
-- Nessuna migration prevista salvo evidenza tecnica successiva.
-
-**I4.3 non è completato.** I4.3A è il prossimo micro-task applicativo.
-
-### Dopo I4.3A: I4.3B (fase separata)
+### Dopo deploy + test: I4.3B (fase separata, non avviata)
 
 **I4.3B — subscription sync e tenant snapshot**
 
 Punti ancora da progettare e implementare (non trasformare in implementazione ora):
 
-- Eventi `customer.subscription.created|updated|deleted`
+- Eventi `customer.subscription.created|updated|deleted` (oggi solo persistiti, `processed_at` nullo)
 - Upsert di `tenant_subscriptions`
 - Mapping del prodotto Stripe `pro_monthly` verso il piano interno `paid`
 - Mapping esplicito degli stati Stripe verso `tenants.subscription_status`
@@ -284,15 +283,41 @@ Punti ancora da progettare e implementare (non trasformare in implementazione or
 
 ### Altri passi (dopo I4.3B o in parallelo se priorità diversa)
 
-1. **Deploy + test** webhook in test mode (endpoint Stripe Dashboard → Edge Function; `verify_jwt=false` già previsto in `config.toml` per webhook).
-2. **I5** — implementare `create-billing-portal-session` (authz già presente).
-3. **UI** — CTA checkout/portal solo per ruolo `admin`/`billing`, chiamando le EF (senza secret client).
-4. **Doc sync** — aggiornare `docs/billing-data-model.md` e sezione “prossimi passi” di `docs/saas-refactor-plan.md` allo stato post-I4.3.
-5. **Prodotto SaaS non-billing**: tenant switcher, inviti, test RLS cross-tenant (`docs/saas-rls-test-plan.md`).
+1. **I5** — implementare `create-billing-portal-session` (authz già presente).
+2. **UI** — CTA checkout/portal solo per ruolo `admin`/`billing`, chiamando le EF (senza secret client).
+3. **Doc sync** — aggiornare `docs/billing-data-model.md` e sezione “prossimi passi” di `docs/saas-refactor-plan.md` allo stato post-I4.3.
+4. **Prodotto SaaS non-billing**: tenant switcher, inviti, test RLS cross-tenant (`docs/saas-rls-test-plan.md`).
 
 ---
 
-## 7. Guardrail non negoziabili
+## 7. Quality gate (I4.3A applicativo)
+
+Registrati dal consolidamento I4.3A (`18a4bf9`):
+
+| Gate | Esito |
+|------|--------|
+| `git diff --check` | Superato |
+| `npm run lint` (`tsc --noEmit`) | Superato |
+| `npm run build` | Superato |
+| Warning Vite chunk size | Preesistente, non bloccante |
+| `deno check` | **Non eseguito** (Deno non disponibile nell’ambiente del task) |
+| Test runtime Stripe / Supabase | **Non eseguiti** |
+| Deploy Edge Function | **Non eseguito** |
+
+---
+
+## 8. Rischi residui (I4.3A)
+
+- Il flusso webhook usa **più query Supabase** e **non** costituisce una singola transazione PostgreSQL; il retry è reso idempotente dalla riga `billing_events` e dalla correlazione non rimappante.
+- Eventi legacy di I4.1/I4.2 già marcati `processed_at` **prima** di una correlazione riuscita **non** vengono riparati automaticamente.
+- Conflitti permanenti customer–tenant possono continuare a generare retry finché non vengono diagnosticati.
+- Il nuovo codice **non** è ancora stato verificato a runtime dopo deploy.
+- `deno check` resta da eseguire in un ambiente idoneo.
+- Eventi `customer.subscription.*` / `invoice.*` persistiti con `processed_at` nullo attendono **I4.3B**.
+
+---
+
+## 9. Guardrail non negoziabili
 
 - Tenant-first: ogni operazione dati con `activeTenantId` / `tenant_id` tracciabile.
 - RLS sempre on; scritture billing **solo** server-side.
@@ -304,7 +329,7 @@ Punti ancora da progettare e implementare (non trasformare in implementazione or
 
 ---
 
-## 8. Comandi utili
+## 10. Comandi utili
 
 ```bash
 npm install
@@ -319,7 +344,7 @@ npx supabase db reset   # SOLO locale, dopo review baseline
 
 ---
 
-## 9. Documenti di riferimento
+## 11. Documenti di riferimento
 
 | Documento | Contenuto |
 |-----------|-----------|
@@ -327,7 +352,7 @@ npx supabase db reset   # SOLO locale, dopo review baseline
 | `.cursor/rules/000-project-context.mdc` | Contesto, ruoli, ciclo micro-fasi, numerazione prompt, report obbligatorio |
 | `docs/ai-context-mirror.md` | Mirror Google Drive di consultazione (non canonico) |
 | `docs/saas-refactor-plan.md` | Storia fasi A–M e decisioni |
-| `docs/billing-data-model.md` | Design billing + note I1–I4.0 (parziale drift post I4.1) |
+| `docs/billing-data-model.md` | Design billing + note I1–I4.0 (parziale drift post I4.1/I4.3A) |
 | `docs/supabase-cli-baseline.md` | Come creare migration post-baseline |
 | `docs/production-readiness.md` | Deploy / smoke / rollback |
 | `docs/demo-tenant.md` | Runbook demo |
