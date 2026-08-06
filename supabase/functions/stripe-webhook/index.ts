@@ -7,6 +7,7 @@ import {
   methodNotAllowed,
   jsonResponse,
   serviceUnavailable,
+  upstreamError,
 } from "../_shared/http.ts";
 
 declare const Deno: {
@@ -16,7 +17,27 @@ declare const Deno: {
   };
 };
 
+type SupabaseClient = ReturnType<typeof createClient>;
+
+type BillingEventRow = {
+  id: string;
+  processed_at: string | null;
+  tenant_id: string | null;
+  processing_error: string | null;
+};
+
+type TenantBillingCustomerRow = {
+  id: string;
+  tenant_id: string;
+  provider_customer_id: string;
+};
+
 const WEBHOOK_NOT_CONFIGURED_MESSAGE = "Stripe webhook is not configured.";
+const PROVIDER = "stripe";
+const MAX_PROCESSING_ERROR_LENGTH = 500;
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 const ALLOWED_EVENT_TYPES = new Set<string>([
   "checkout.session.completed",
   "customer.subscription.created",
@@ -25,6 +46,35 @@ const ALLOWED_EVENT_TYPES = new Set<string>([
   "invoice.payment_succeeded",
   "invoice.payment_failed",
 ]);
+
+const DEFERRED_EVENT_TYPES = new Set<string>([
+  "customer.subscription.created",
+  "customer.subscription.updated",
+  "customer.subscription.deleted",
+  "invoice.payment_succeeded",
+  "invoice.payment_failed",
+]);
+
+function receivedOk(event: Stripe.Event): Response {
+  return jsonResponse(
+    {
+      data: {
+        received: true,
+        event_id: event.id,
+        event_type: event.type,
+      },
+    },
+    200,
+  );
+}
+
+function sanitizeProcessingError(message: string): string {
+  return message.replace(/\s+/g, " ").trim().slice(0, MAX_PROCESSING_ERROR_LENGTH);
+}
+
+function isUniqueViolation(error: { code?: string } | null | undefined): boolean {
+  return error?.code === "23505";
+}
 
 function extractStripeCustomerIdString(customer: unknown): string | null {
   if (typeof customer === "string") {
@@ -41,64 +91,723 @@ function extractStripeCustomerIdString(customer: unknown): string | null {
   return null;
 }
 
-async function persistTenantBillingCustomerCorrelation(
-  supabase: ReturnType<typeof createClient>,
-  event: Stripe.Event,
-): Promise<{ ok: true } | { ok: false }> {
-  if (event.type !== "checkout.session.completed") {
-    return { ok: true };
-  }
-
-  const session = event.data.object as Stripe.Checkout.Session;
-  const customerId = extractStripeCustomerIdString(session.customer);
+function extractCheckoutTenantId(session: Stripe.Checkout.Session): string | null {
   const metaTenantId = session.metadata?.tenant_id;
-  const tenantId =
-    typeof metaTenantId === "string" && metaTenantId.trim().length > 0
-      ? metaTenantId.trim()
-      : null;
-
-  const has_customer = customerId !== null;
-  const has_tenant_id = tenantId !== null;
-
-  if (!has_customer || !has_tenant_id) {
-    console.warn(
-      "[stripe-webhook] tenant billing customer correlation skipped",
-      {
-        event_id: event.id,
-        event_type: event.type,
-        has_customer,
-        has_tenant_id,
-      },
-    );
-    return { ok: true };
+  if (typeof metaTenantId === "string" && metaTenantId.trim().length > 0) {
+    const trimmed = metaTenantId.trim();
+    return UUID_RE.test(trimmed) ? trimmed : null;
   }
+  return null;
+}
 
-  const { error } = await supabase
-    .from("tenant_billing_customers")
-    .upsert(
-      {
-        tenant_id: tenantId,
-        provider: "stripe",
-        provider_customer_id: customerId,
-        updated_at: new Date().toISOString(),
-      },
-      {
-        onConflict: "provider,provider_customer_id",
-      },
-    );
+async function fetchBillingEventByProviderEventId(
+  supabase: SupabaseClient,
+  providerEventId: string,
+): Promise<{ row: BillingEventRow | null; error: { code?: string; message?: string } | null }> {
+  const { data, error } = await supabase
+    .from("billing_events")
+    .select("id, processed_at, tenant_id, processing_error")
+    .eq("provider", PROVIDER)
+    .eq("provider_event_id", providerEventId)
+    .maybeSingle();
 
   if (error) {
-    console.error("[stripe-webhook] tenant_billing_customers upsert failed", {
+    return { row: null, error };
+  }
+
+  return { row: (data as BillingEventRow | null) ?? null, error: null };
+}
+
+async function ensureBillingEventRow(
+  supabase: SupabaseClient,
+  event: Stripe.Event,
+): Promise<
+  | { ok: true; row: BillingEventRow }
+  | { ok: false; response: Response }
+> {
+  const { data: inserted, error: insertError } = await supabase
+    .from("billing_events")
+    .insert({
+      provider: PROVIDER,
+      provider_event_id: event.id,
+      event_type: event.type,
+      tenant_id: null,
+      processed_at: null,
+      processing_error: null,
+      payload: event,
+    })
+    .select("id, processed_at, tenant_id, processing_error")
+    .maybeSingle();
+
+  if (!insertError && inserted) {
+    return { ok: true, row: inserted as BillingEventRow };
+  }
+
+  if (insertError && !isUniqueViolation(insertError)) {
+    console.error("[stripe-webhook] billing_events insert failed", {
       event_id: event.id,
       event_type: event.type,
+      error_code: insertError.code,
+    });
+    return {
+      ok: false,
+      response: upstreamError("Failed to persist billing event."),
+    };
+  }
+
+  const fetched = await fetchBillingEventByProviderEventId(supabase, event.id);
+  if (fetched.error || !fetched.row) {
+    console.error("[stripe-webhook] billing_events fetch after conflict failed", {
+      event_id: event.id,
+      event_type: event.type,
+      error_code: fetched.error?.code,
+    });
+    return {
+      ok: false,
+      response: upstreamError("Failed to load persisted billing event."),
+    };
+  }
+
+  return { ok: true, row: fetched.row };
+}
+
+type RecordProcessingErrorResult =
+  | { status: "recorded" }
+  | { status: "already_completed" }
+  | { status: "db_error" };
+
+async function fetchBillingEventById(
+  supabase: SupabaseClient,
+  billingEventId: string,
+): Promise<{ row: BillingEventRow | null; error: { code?: string; message?: string } | null }> {
+  const { data, error } = await supabase
+    .from("billing_events")
+    .select("id, processed_at, tenant_id, processing_error")
+    .eq("id", billingEventId)
+    .maybeSingle();
+
+  if (error) {
+    return { row: null, error };
+  }
+
+  return { row: (data as BillingEventRow | null) ?? null, error: null };
+}
+
+function isProcessedCompatible(
+  row: BillingEventRow,
+  tenantId: string,
+): boolean {
+  return (
+    row.processed_at !== null &&
+    row.tenant_id === tenantId &&
+    row.processing_error === null
+  );
+}
+
+async function recordProcessingError(
+  supabase: SupabaseClient,
+  billingEventId: string,
+  message: string,
+  tenantId: string | null,
+): Promise<RecordProcessingErrorResult> {
+  const sanitized = sanitizeProcessingError(message);
+
+  // When tenantId is known, recorded/already_completed require matching tenant_id.
+  const tenantCompatible = (row: BillingEventRow): boolean => {
+    if (tenantId === null) return true;
+    return row.tenant_id === tenantId;
+  };
+
+  const refuseIncompatibleTenant = (context: string): RecordProcessingErrorResult => {
+    console.error(`[stripe-webhook] processing_error refused: ${context}`, {
+      billing_event_id: billingEventId,
+    });
+    return { status: "db_error" };
+  };
+
+  const current = await fetchBillingEventById(supabase, billingEventId);
+  if (current.error || !current.row) {
+    console.error("[stripe-webhook] failed to load billing event before processing_error", {
+      billing_event_id: billingEventId,
+      error_code: current.error?.code,
+    });
+    return { status: "db_error" };
+  }
+
+  if (current.row.processed_at !== null) {
+    if (!tenantCompatible(current.row)) {
+      return refuseIncompatibleTenant("completed with incompatible or missing tenant_id");
+    }
+    return { status: "already_completed" };
+  }
+
+  // Refuse to mutate when a non-null tenantId conflicts with an existing tenant_id.
+  if (
+    tenantId !== null &&
+    current.row.tenant_id !== null &&
+    current.row.tenant_id !== tenantId
+  ) {
+    return refuseIncompatibleTenant("incompatible tenant_id");
+  }
+
+  const patch: { processing_error: string; tenant_id?: string } = {
+    processing_error: sanitized,
+  };
+  // Never assign processed_at. Only fill tenant_id when still null; never remap.
+  if (tenantId && current.row.tenant_id === null) {
+    patch.tenant_id = tenantId;
+  }
+
+  let updateQuery = supabase
+    .from("billing_events")
+    .update(patch)
+    .eq("id", billingEventId)
+    .is("processed_at", null);
+
+  // Pin observed tenant state: IS NULL when filling, else eq when already known.
+  if (patch.tenant_id) {
+    updateQuery = updateQuery.is("tenant_id", null);
+  } else if (tenantId !== null) {
+    updateQuery = updateQuery.eq("tenant_id", tenantId);
+  }
+
+  const { data: updatedRaw, error: updateError } = await updateQuery
+    .select("id, processed_at, tenant_id, processing_error")
+    .maybeSingle();
+
+  if (updateError) {
+    console.error("[stripe-webhook] failed to persist processing_error", {
+      billing_event_id: billingEventId,
+      error_code: updateError.code,
+    });
+    return { status: "db_error" };
+  }
+
+  const updated = updatedRaw as BillingEventRow | null;
+  const firstUpdateRecorded =
+    updated !== null &&
+    updated.processed_at === null &&
+    updated.processing_error === sanitized &&
+    tenantCompatible(updated);
+
+  if (firstUpdateRecorded) {
+    return { status: "recorded" };
+  }
+
+  // Update matched no row (or unexpected shape): concurrent completion, or
+  // tenant_id filled concurrently while we tried to set it.
+  const readback = await fetchBillingEventById(supabase, billingEventId);
+  if (readback.error || !readback.row) {
+    console.error("[stripe-webhook] processing_error readback failed", {
+      billing_event_id: billingEventId,
+      error_code: readback.error?.code,
+    });
+    return { status: "db_error" };
+  }
+
+  if (readback.row.processed_at !== null) {
+    if (!tenantCompatible(readback.row)) {
+      return refuseIncompatibleTenant("completed with incompatible or missing tenant_id after race");
+    }
+    return { status: "already_completed" };
+  }
+
+  if (patch.tenant_id && readback.row.tenant_id !== null) {
+    if (readback.row.tenant_id !== patch.tenant_id) {
+      return refuseIncompatibleTenant("incompatible tenant_id after race");
+    }
+
+    // Retry error-only update without touching tenant_id; pin expected tenant.
+    const { data: retryRaw, error: retryError } = await supabase
+      .from("billing_events")
+      .update({ processing_error: sanitized })
+      .eq("id", billingEventId)
+      .eq("tenant_id", patch.tenant_id)
+      .is("processed_at", null)
+      .select("id, processed_at, tenant_id, processing_error")
+      .maybeSingle();
+
+    if (retryError) {
+      console.error("[stripe-webhook] failed to persist processing_error (retry)", {
+        billing_event_id: billingEventId,
+        error_code: retryError.code,
+      });
+      return { status: "db_error" };
+    }
+
+    const retry = retryRaw as BillingEventRow | null;
+    if (
+      retry !== null &&
+      retry.processed_at === null &&
+      retry.processing_error === sanitized &&
+      retry.tenant_id === patch.tenant_id
+    ) {
+      return { status: "recorded" };
+    }
+
+    // Decision must use the post-retry state only — never the pre-retry readback.
+    const retryReadback = await fetchBillingEventById(supabase, billingEventId);
+    if (retryReadback.error || !retryReadback.row) {
+      console.error("[stripe-webhook] processing_error retry readback failed", {
+        billing_event_id: billingEventId,
+        error_code: retryReadback.error?.code,
+      });
+      return { status: "db_error" };
+    }
+
+    if (retryReadback.row.processed_at !== null) {
+      if (!tenantCompatible(retryReadback.row)) {
+        return refuseIncompatibleTenant(
+          "completed with incompatible or missing tenant_id on retry readback",
+        );
+      }
+      return { status: "already_completed" };
+    }
+
+    if (
+      retryReadback.row.processing_error === sanitized &&
+      tenantCompatible(retryReadback.row)
+    ) {
+      return { status: "recorded" };
+    }
+
+    if (!tenantCompatible(retryReadback.row)) {
+      return refuseIncompatibleTenant("incompatible or missing tenant_id on retry readback");
+    }
+
+    return { status: "db_error" };
+  }
+
+  if (readback.row.processing_error === sanitized) {
+    if (!tenantCompatible(readback.row)) {
+      return refuseIncompatibleTenant("recorded with incompatible or missing tenant_id");
+    }
+    return { status: "recorded" };
+  }
+
+  return { status: "db_error" };
+}
+
+async function markBillingEventProcessed(
+  supabase: SupabaseClient,
+  billingEventId: string,
+  tenantId: string,
+): Promise<{ ok: true } | { ok: false }> {
+  const { data: updatedRaw, error } = await supabase
+    .from("billing_events")
+    .update({
+      processed_at: new Date().toISOString(),
+      processing_error: null,
+    })
+    .eq("id", billingEventId)
+    .eq("tenant_id", tenantId)
+    .is("processed_at", null)
+    .select("id, processed_at, tenant_id, processing_error")
+    .maybeSingle();
+
+  if (error) {
+    console.error("[stripe-webhook] billing_events processed_at update failed", {
+      billing_event_id: billingEventId,
       tenant_id: tenantId,
-      customer_id: customerId,
       error_code: error.code,
     });
     return { ok: false };
   }
 
-  return { ok: true };
+  const updated = updatedRaw as BillingEventRow | null;
+  if (updated && isProcessedCompatible(updated, tenantId)) {
+    return { ok: true };
+  }
+
+  const readback = await fetchBillingEventById(supabase, billingEventId);
+  if (readback.error || !readback.row) {
+    console.error("[stripe-webhook] billing_events processed_at readback failed", {
+      billing_event_id: billingEventId,
+      tenant_id: tenantId,
+      error_code: readback.error?.code,
+    });
+    return { ok: false };
+  }
+
+  // Concurrent worker completed compatibly — treat as success.
+  if (isProcessedCompatible(readback.row, tenantId)) {
+    return { ok: true };
+  }
+
+  console.error("[stripe-webhook] billing_events processed_at not verified", {
+    billing_event_id: billingEventId,
+    tenant_id: tenantId,
+    readback_tenant_id: readback.row.tenant_id,
+    readback_processed_at: readback.row.processed_at,
+  });
+  return { ok: false };
+}
+
+async function resolveVerifiedTenantId(
+  supabase: SupabaseClient,
+  candidateTenantId: string,
+): Promise<{ ok: true; tenantId: string } | { ok: false; reason: string }> {
+  const { data, error } = await supabase
+    .from("tenants")
+    .select("id")
+    .eq("id", candidateTenantId)
+    .maybeSingle();
+
+  if (error) {
+    console.error("[stripe-webhook] tenant lookup failed", {
+      tenant_id: candidateTenantId,
+      error_code: error.code,
+    });
+    return { ok: false, reason: "Failed to verify tenant existence." };
+  }
+
+  if (!data?.id) {
+    return { ok: false, reason: "Resolved tenant_id does not exist." };
+  }
+
+  return { ok: true, tenantId: data.id as string };
+}
+
+async function ensureTenantIdOnBillingEvent(
+  supabase: SupabaseClient,
+  billingEvent: BillingEventRow,
+  tenantId: string,
+): Promise<{ ok: true } | { ok: false; conflict?: boolean; reason: string }> {
+  if (billingEvent.tenant_id === tenantId) {
+    return { ok: true };
+  }
+
+  if (billingEvent.tenant_id !== null && billingEvent.tenant_id !== tenantId) {
+    return {
+      ok: false,
+      conflict: true,
+      reason: "billing_events.tenant_id already set to a different tenant.",
+    };
+  }
+
+  const { data: updatedRaw, error } = await supabase
+    .from("billing_events")
+    .update({ tenant_id: tenantId })
+    .eq("id", billingEvent.id)
+    .is("tenant_id", null)
+    .select("id, processed_at, tenant_id, processing_error")
+    .maybeSingle();
+
+  if (error) {
+    console.error("[stripe-webhook] billing_events tenant_id update failed", {
+      billing_event_id: billingEvent.id,
+      tenant_id: tenantId,
+      error_code: error.code,
+    });
+    return { ok: false, reason: "Failed to persist billing_events.tenant_id." };
+  }
+
+  const updated = updatedRaw as BillingEventRow | null;
+  if (updated && updated.tenant_id === tenantId) {
+    return { ok: true };
+  }
+
+  const readback = await fetchBillingEventById(supabase, billingEvent.id);
+  if (readback.error || !readback.row) {
+    console.error("[stripe-webhook] billing_events tenant_id readback failed", {
+      billing_event_id: billingEvent.id,
+      tenant_id: tenantId,
+      error_code: readback.error?.code,
+    });
+    return { ok: false, reason: "Failed to verify billing_events.tenant_id update." };
+  }
+
+  if (readback.row.tenant_id === tenantId) {
+    return { ok: true };
+  }
+
+  if (readback.row.tenant_id !== null && readback.row.tenant_id !== tenantId) {
+    return {
+      ok: false,
+      conflict: true,
+      reason: "billing_events.tenant_id already set to a different tenant.",
+    };
+  }
+
+  return { ok: false, reason: "Failed to verify billing_events.tenant_id update." };
+}
+
+async function lookupTenantBillingCustomerMappings(
+  supabase: SupabaseClient,
+  params: { eventId: string; tenantId: string; customerId: string },
+): Promise<
+  | {
+      ok: true;
+      byCustomer: TenantBillingCustomerRow | null;
+      byTenant: TenantBillingCustomerRow | null;
+    }
+  | { ok: false; reason: string }
+> {
+  const { eventId, tenantId, customerId } = params;
+
+  const { data: byCustomerRaw, error: byCustomerError } = await supabase
+    .from("tenant_billing_customers")
+    .select("id, tenant_id, provider_customer_id")
+    .eq("provider", PROVIDER)
+    .eq("provider_customer_id", customerId)
+    .maybeSingle();
+
+  if (byCustomerError) {
+    console.error("[stripe-webhook] lookup by provider_customer_id failed", {
+      event_id: eventId,
+      error_code: byCustomerError.code,
+    });
+    return { ok: false, reason: "Failed to load billing customer by provider id." };
+  }
+
+  const { data: byTenantRaw, error: byTenantError } = await supabase
+    .from("tenant_billing_customers")
+    .select("id, tenant_id, provider_customer_id")
+    .eq("provider", PROVIDER)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+
+  if (byTenantError) {
+    console.error("[stripe-webhook] lookup by tenant_id failed", {
+      event_id: eventId,
+      error_code: byTenantError.code,
+    });
+    return { ok: false, reason: "Failed to load billing customer by tenant." };
+  }
+
+  return {
+    ok: true,
+    byCustomer: (byCustomerRaw as TenantBillingCustomerRow | null) ?? null,
+    byTenant: (byTenantRaw as TenantBillingCustomerRow | null) ?? null,
+  };
+}
+
+function evaluateTenantBillingCustomerMappings(
+  byCustomer: TenantBillingCustomerRow | null,
+  byTenant: TenantBillingCustomerRow | null,
+  tenantId: string,
+  customerId: string,
+):
+  | { kind: "absent" }
+  | { kind: "match" }
+  | { kind: "conflict"; reason: string }
+  | { kind: "inconclusive" } {
+  if (byCustomer && byCustomer.tenant_id !== tenantId) {
+    return {
+      kind: "conflict",
+      reason: "provider_customer_id already linked to a different tenant.",
+    };
+  }
+
+  if (byTenant && byTenant.provider_customer_id !== customerId) {
+    return {
+      kind: "conflict",
+      reason: "tenant already linked to a different provider_customer_id.",
+    };
+  }
+
+  if (byCustomer && byTenant && byCustomer.id !== byTenant.id) {
+    return {
+      kind: "conflict",
+      reason: "inconsistent tenant billing customer mappings.",
+    };
+  }
+
+  if (!byCustomer && !byTenant) {
+    return { kind: "absent" };
+  }
+
+  const existing = (byCustomer ?? byTenant)!;
+  if (
+    existing.tenant_id === tenantId &&
+    existing.provider_customer_id === customerId
+  ) {
+    return { kind: "match" };
+  }
+
+  return { kind: "inconclusive" };
+}
+
+async function correlateTenantBillingCustomer(
+  supabase: SupabaseClient,
+  params: {
+    eventId: string;
+    tenantId: string;
+    customerId: string;
+  },
+): Promise<{ ok: true } | { ok: false; reason: string; conflict?: boolean }> {
+  const { eventId, tenantId, customerId } = params;
+
+  const lookups = await lookupTenantBillingCustomerMappings(supabase, params);
+  if (lookups.ok === false) {
+    return { ok: false, reason: lookups.reason };
+  }
+
+  const evaluated = evaluateTenantBillingCustomerMappings(
+    lookups.byCustomer,
+    lookups.byTenant,
+    tenantId,
+    customerId,
+  );
+
+  if (evaluated.kind === "conflict") {
+    return { ok: false, conflict: true, reason: evaluated.reason };
+  }
+
+  if (evaluated.kind === "match") {
+    // Existing identical correlation — no updated_at touch (avoids unverified races).
+    return { ok: true };
+  }
+
+  if (evaluated.kind === "inconclusive") {
+    return {
+      ok: false,
+      reason: "Unable to safely conclude tenant billing customer correlation state.",
+    };
+  }
+
+  const { error: insertError } = await supabase.from("tenant_billing_customers").insert({
+    tenant_id: tenantId,
+    provider: PROVIDER,
+    provider_customer_id: customerId,
+    updated_at: new Date().toISOString(),
+  });
+
+  if (!insertError) {
+    return { ok: true };
+  }
+
+  if (!isUniqueViolation(insertError)) {
+    console.error("[stripe-webhook] tenant_billing_customers insert failed", {
+      event_id: eventId,
+      tenant_id: tenantId,
+      error_code: insertError.code,
+    });
+    return { ok: false, reason: "Failed to persist tenant billing customer correlation." };
+  }
+
+  // Concurrent insert raced on unique constraint — re-read before classifying conflict.
+  const recheck = await lookupTenantBillingCustomerMappings(supabase, params);
+  if (recheck.ok === false) {
+    return { ok: false, reason: recheck.reason };
+  }
+
+  const reEvaluated = evaluateTenantBillingCustomerMappings(
+    recheck.byCustomer,
+    recheck.byTenant,
+    tenantId,
+    customerId,
+  );
+
+  if (
+    reEvaluated.kind === "match" &&
+    recheck.byCustomer &&
+    recheck.byTenant &&
+    recheck.byCustomer.id === recheck.byTenant.id &&
+    recheck.byCustomer.tenant_id === tenantId &&
+    recheck.byCustomer.provider_customer_id === customerId
+  ) {
+    return { ok: true };
+  }
+
+  if (reEvaluated.kind === "conflict") {
+    return { ok: false, conflict: true, reason: reEvaluated.reason };
+  }
+
+  return {
+    ok: false,
+    reason: "Concurrent tenant billing customer correlation could not be verified.",
+  };
+}
+
+async function processCheckoutSessionCompleted(
+  supabase: SupabaseClient,
+  event: Stripe.Event,
+  billingEvent: BillingEventRow,
+): Promise<Response> {
+  const session = event.data.object as Stripe.Checkout.Session;
+  const customerId = extractStripeCustomerIdString(session.customer);
+  const candidateTenantId = extractCheckoutTenantId(session);
+
+  const respondAfterError = async (
+    message: string,
+    response: Response,
+    tenantIdForError: string | null,
+  ): Promise<Response> => {
+    const recorded = await recordProcessingError(
+      supabase,
+      billingEvent.id,
+      message,
+      tenantIdForError,
+    );
+    if (recorded.status === "already_completed") {
+      return receivedOk(event);
+    }
+    return response;
+  };
+
+  if (!customerId) {
+    return await respondAfterError(
+      "checkout.session.completed missing Stripe customer id.",
+      upstreamError("Checkout session missing Stripe customer id."),
+      null,
+    );
+  }
+
+  if (!candidateTenantId) {
+    return await respondAfterError(
+      "checkout.session.completed missing or invalid tenant_id metadata.",
+      upstreamError("Checkout session missing or invalid tenant_id."),
+      null,
+    );
+  }
+
+  const tenantResult = await resolveVerifiedTenantId(supabase, candidateTenantId);
+  if (tenantResult.ok === false) {
+    return await respondAfterError(
+      tenantResult.reason,
+      upstreamError(tenantResult.reason),
+      null,
+    );
+  }
+
+  const tenantId = tenantResult.tenantId;
+  const tenantPersist = await ensureTenantIdOnBillingEvent(
+    supabase,
+    billingEvent,
+    tenantId,
+  );
+  if (tenantPersist.ok === false) {
+    return await respondAfterError(
+      tenantPersist.reason,
+      upstreamError(tenantPersist.reason),
+      tenantPersist.conflict ? null : tenantId,
+    );
+  }
+
+  const correlation = await correlateTenantBillingCustomer(supabase, {
+    eventId: event.id,
+    tenantId,
+    customerId,
+  });
+  if (correlation.ok === false) {
+    return await respondAfterError(
+      correlation.reason,
+      upstreamError(correlation.reason),
+      tenantId,
+    );
+  }
+
+  const marked = await markBillingEventProcessed(supabase, billingEvent.id, tenantId);
+  if (marked.ok === false) {
+    return await respondAfterError(
+      "Failed to mark billing event as processed.",
+      upstreamError("Failed to mark billing event as processed."),
+      tenantId,
+    );
+  }
+
+  return receivedOk(event);
 }
 
 function getStripeWebhookSecret(): string | Response {
@@ -176,94 +885,39 @@ async function handler(req: Request): Promise<Response> {
   const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   if (!supabaseUrl || !supabaseServiceRoleKey) {
     console.error("[stripe-webhook] Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.");
-    return jsonResponse(
-      {
-        error: {
-          code: "SERVICE_UNAVAILABLE",
-          message: "Billing event persistence is not configured.",
-        },
-      },
-      500,
-    );
+    return serviceUnavailable("Billing event persistence is not configured.");
   }
 
   const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
 
-  const { data, error } = await supabase
-    .from("billing_events")
-    .upsert(
-      {
-        provider: "stripe",
-        provider_event_id: event.id,
-        event_type: event.type,
-        tenant_id: null,
-        processed_at: new Date().toISOString(),
-        processing_error: null,
-        payload: event,
-      },
-      {
-        onConflict: "provider,provider_event_id",
-        ignoreDuplicates: true,
-      },
-    )
-    .select("id");
-
-  if (error) {
-    console.error("[stripe-webhook] billing_events upsert failed", {
-      event_id: event.id,
-      event_type: event.type,
-      livemode: event.livemode,
-      error_code: error.code,
-    });
-    return jsonResponse(
-      {
-        error: {
-          code: "UPSTREAM_ERROR",
-          message: "Failed to persist billing event.",
-        },
-      },
-      500,
-    );
+  const ensured = await ensureBillingEventRow(supabase, event);
+  if (ensured.ok === false) {
+    return ensured.response;
   }
 
-  const rows = data ?? [];
-  const duplicate = rows.length === 0;
-  const stored = !duplicate;
+  const billingEvent = ensured.row;
 
-  console.info("[stripe-webhook] billing_events persisted", {
+  console.info("[stripe-webhook] billing_events ready", {
     event_id: event.id,
     event_type: event.type,
-    livemode: event.livemode,
-    stored,
-    duplicate,
+    billing_event_id: billingEvent.id,
+    already_processed: billingEvent.processed_at !== null,
   });
 
-  const tenantBillingCustomerResult = await persistTenantBillingCustomerCorrelation(
-    supabase,
-    event,
-  );
-  if (!tenantBillingCustomerResult.ok) {
-    return jsonResponse(
-      {
-        error: {
-          code: "UPSTREAM_ERROR",
-          message: "Failed to persist tenant billing customer correlation.",
-        },
-      },
-      500,
-    );
+  if (billingEvent.processed_at !== null) {
+    return receivedOk(event);
   }
 
-  return jsonResponse(
-    {
-      data: {
-        received: true,
-        event_id: event.id,
-        event_type: event.type,
-      },
-    },
-    200,
-  );
+  if (DEFERRED_EVENT_TYPES.has(event.type)) {
+    // I4.3B: intentionally deferred. Persist only; do not mark processed_at.
+    return receivedOk(event);
+  }
+
+  if (event.type === "checkout.session.completed") {
+    return await processCheckoutSessionCompleted(supabase, event, billingEvent);
+  }
+
+  return receivedOk(event);
 }
 
 Deno.serve(handler);
