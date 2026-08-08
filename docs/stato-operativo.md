@@ -6,7 +6,7 @@
 |------|--------|
 | Branch atteso | `main` |
 | Commit applicativo di riferimento | `18a4bf91001589c75fcf0796bde7f2da7d1b1c87` — *fix(billing): harden webhook event processing* — I4.3A |
-| Ultimo commit governance/documentale consolidato | `87d410ca85da705fbf8ec8b6efe266a1d0621738` — *docs(context): record webhook idempotency runtime pass* — I4.3A-T1D-bis |
+| Ultimo commit governance/documentale consolidato | `8615cda331ad1c7125bbb3a0b2e51483997fce4b` — *docs(context): record incomplete webhook retry runtime pass* — I4.3A-T1E-bis |
 | Verifica Git richiesta | All’inizio di ogni task: `git rev-parse HEAD`, `git status`, `git branch --show-current` |
 
 Nota: l’HEAD reale deve essere verificato all’inizio di ogni task con `git rev-parse HEAD`. Il commit che aggiorna `stato-operativo.md` può essere successivo all’ultimo commit registrato nel documento; questo non costituisce automaticamente una divergenza. Branch, working tree e cronologia reale del repository prevalgono sempre sui valori storici riportati nel documento. Non riportare come HEAD stabile il futuro commit del task documentale corrente.
@@ -49,12 +49,14 @@ Stato attuale (sintesi):
 - I4.3A-T1D: PASS — idempotenza runtime verificata con un solo Resend Workbench dello stesso checkout.session.completed già processato (evt_1U1p9GFOUoE38beBvxBWm69d); HTTP 200; billing_events/customer/tenant invarianti; nessun secondo resend; I4.3B non avviato.
 - I4.3A-T1D-bis: consolidato in 87d410c — *docs(context): record webhook idempotency runtime pass*.
 - I4.3A-T1E: PASS — retry runtime di billing_event incompleto (evt_1U1o48FOUoE38beB2KuEcYKQ) verificato fail-closed: una sola riga; processed_at/tenant_id NULL; customer NULL; processing_error coerente; payload invariato; nessuna correlazione/subscription/snapshot commerciale; HTTP 502; lacuna minore due POST 502 senza event ID nei log (non bloccante); nessun ulteriore resend; I4.3B non avviato.
-- I4.3A-T1 complessivo: parzialmente completato (T1A+T1B+T1C+T1D+T1E PASS), ancora aperto per test runtime residui da decidere separatamente (conflitti customer–tenant; race).
-- Governance: GOVERNANCE-5-bis in 063cbf7; GOVERNANCE-6-bis in 253affa; I4.3A-bis in 99dc1f6; GOVERNANCE-7 consolidato in 8ff556d; GOVERNANCE-7-bis consolidato in a380ce9; I4.3A-D1-bis consolidato in 751852b; I4.3A-T1-bis consolidato in b4da681; I4.3A-T1C-bis consolidato in 2c0c060; I4.3A-T1D-bis consolidato in 87d410c.
-- Mirror: Git canonico, Drive = consultazione. Il mirror pre-task non contiene ancora T1E (differenza attesa). Commit/push restano dell’utente. Dopo conferma del commit, Cursor esegue dry-run poi apply (obbligatoria dopo ogni -bis). Config locale non versionata (AI_CONTEXT_MIRROR_DIR o .git/ai-context-mirror-path). Nessun --delete, nessuna sync inversa. Verifica byte-per-byte. Prima sync controllata completata su 15 file. Propagazione cloud = Google Drive Desktop. ChatGPT rilegge il mirror a ogni ripresa.
-- ANCORA MANCANTE: test runtime residui di I4.3A-T1 da decidere con ChatGPT (conflitti customer–tenant; race); sync subscription → tenant_subscriptions + snapshot tenants (I4.3B, non avviato); billing portal; UI checkout reale; feature gating piani; tenant switcher/inviti. Drift storico di production-readiness.md e billing-data-model.md ancora presente.
+- I4.3A-T1E-bis: consolidato in 8615cda — *docs(context): record incomplete webhook retry runtime pass*.
+- I4.3A-T1F: CHIUSO SU EVIDENZA STATICA SUFFICIENTE (non runtime PASS). Conflitto customer–tenant: path deterministico fail-closed; mapping customer→tenant A non sovrascritto/rimappato verso B; detection prima di INSERT/UPDATE su tenant_billing_customers; billing_events può avere tenant_id=B prima della detection; processed_at resta NULL; processing_error valorizzato; tenant_subscriptions/tenants invariati; retry stesso event ID ancora fail-closed; HTTP 502. Nessun runtime conflict test eseguito (non necessario; scenario CASO 3). I4.3B non avviato.
+- I4.3A-T1 complessivo: parzialmente completato (T1A+T1B+T1C+T1D+T1E PASS; T1F chiuso su evidenza statica). Unico residuo da valutare separatamente: race condition. Nessun runtime race autorizzato da questo aggiornamento.
+- Governance: GOVERNANCE-5-bis in 063cbf7; GOVERNANCE-6-bis in 253affa; I4.3A-bis in 99dc1f6; GOVERNANCE-7 consolidato in 8ff556d; GOVERNANCE-7-bis consolidato in a380ce9; I4.3A-D1-bis consolidato in 751852b; I4.3A-T1-bis consolidato in b4da681; I4.3A-T1C-bis consolidato in 2c0c060; I4.3A-T1D-bis consolidato in 87d410c; I4.3A-T1E-bis consolidato in 8615cda.
+- Mirror: Git canonico, Drive = consultazione. Il mirror pre-task non contiene ancora T1F (differenza attesa). Commit/push restano dell’utente. Dopo conferma del commit, Cursor esegue dry-run poi apply (obbligatoria dopo ogni -bis). Config locale non versionata (AI_CONTEXT_MIRROR_DIR o .git/ai-context-mirror-path). Nessun --delete, nessuna sync inversa. Verifica byte-per-byte. Prima sync controllata completata su 15 file. Propagazione cloud = Google Drive Desktop. ChatGPT rilegge il mirror a ogni ripresa.
+- ANCORA MANCANTE: unico residuo I4.3A-T1 = valutazione race condition (separata; nessun runtime race autorizzato); sync subscription → tenant_subscriptions + snapshot tenants (I4.3B, non avviato); billing portal; UI checkout reale; feature gating piani; tenant switcher/inviti. Drift storico di production-readiness.md e billing-data-model.md ancora presente.
 
-Prossimo micro-task da decidere con ChatGPT tra i test runtime residui di I4.3A-T1. T1A/T1B/T1C/T1D/T1E = PASS. I4.3A-T1 resta aperto. I4.3B resta separato e non avviato. NON avviare I4.3B né sync subscription senza task esplicito. I4.3A-D1 (deploy amministrativo) è concluso.
+Prossimo punto di ripresa: valutazione separata della race condition I4.3A-T1 (ricognizione statica zero-write consigliata). T1A/T1B/T1C/T1D/T1E = PASS; T1F = CHIUSO SU EVIDENZA STATICA. I4.3A-T1 resta aperto solo per race. I4.3B resta separato e non avviato. NON avviare I4.3B né sync subscription senza task esplicito. I4.3A-D1 (deploy amministrativo) è concluso.
 
 Chiedimi conferma prima di: deploy Edge Functions, apply migration produzione, db push, live Stripe keys, cambi RLS su expenses, test runtime Stripe/webhook.
 ```
@@ -119,6 +121,7 @@ Chiedimi conferma prima di: deploy Edge Functions, apply migration produzione, d
 | I4.3A-T1-bis | Consolidato in `b4da681` — *docs(context): record webhook runtime verification* |
 | I4.3A-T1C-bis | Consolidato in `2c0c060` — *docs(context): record checkout correlation runtime pass* |
 | I4.3A-T1D-bis | Consolidato in `87d410c` — *docs(context): record webhook idempotency runtime pass* |
+| I4.3A-T1E-bis | Consolidato in `8615cda` — *docs(context): record incomplete webhook retry runtime pass* |
 | Commit storici governance | `14a8575` (GOVERNANCE-4-bis); `1e83f19` (fonti canoniche) |
 | Commit applicativo corrente | `18a4bf9` — *fix(billing): harden webhook event processing* (I4.3A, include fix review F1–F4) |
 | Commit applicativo precedente | `1f633fcc` (I4.2) |
@@ -127,7 +130,7 @@ Chiedimi conferma prima di: deploy Edge Functions, apply migration produzione, d
 | `scripts/sync-ai-context-mirror.sh` | Introdotto in `8ff556d` (mode Git `100755`) |
 | `README.md` | Collegamento a `docs/stato-operativo.md` **versionato** in `1e83f19` |
 
-L’HEAD reale e l’allineamento con `origin/main` vanno **sempre verificati** all’inizio di ogni task. Durante I4.3A-D1 l’HEAD locale è rimasto `a380ce9` (nessuna modifica locale; nessun commit applicativo). I4.3A-D1-bis consolidato in `751852b`. I4.3A-T1-bis consolidato in `b4da681`. I4.3A-T1C-bis consolidato in `2c0c060`. I4.3A-T1D-bis consolidato in `87d410c`. La freschezza server di `origin/main` **non** è stata aggiornata con `git fetch` (né in D1 né nei test T1A/T1B/T1C/T1D/T1E). **I4.3A-D1** (deploy amministrativo `stripe-webhook`) è concluso. **I4.3A-T1A**, **I4.3A-T1B**, **I4.3A-T1C**, **I4.3A-T1D** e **I4.3A-T1E** (PASS) sono completati; **I4.3A-T1** complessivo resta **parzialmente aperto** (test runtime residui da decidere: conflitti customer–tenant, race). **I4.3B** resta separato e **non avviato**. Nessuna sincronizzazione subscription, nessun aggiornamento dello snapshot `tenants`.
+L’HEAD reale e l’allineamento con `origin/main` vanno **sempre verificati** all’inizio di ogni task. Durante I4.3A-D1 l’HEAD locale è rimasto `a380ce9` (nessuna modifica locale; nessun commit applicativo). I4.3A-D1-bis consolidato in `751852b`. I4.3A-T1-bis consolidato in `b4da681`. I4.3A-T1C-bis consolidato in `2c0c060`. I4.3A-T1D-bis consolidato in `87d410c`. I4.3A-T1E-bis consolidato in `8615cda`. La freschezza server di `origin/main` **non** è stata aggiornata con `git fetch` (né in D1 né nei test T1A/T1B/T1C/T1D/T1E né in T1F). **I4.3A-D1** (deploy amministrativo `stripe-webhook`) è concluso. **I4.3A-T1A**, **I4.3A-T1B**, **I4.3A-T1C**, **I4.3A-T1D** e **I4.3A-T1E** (PASS) sono completati; **I4.3A-T1F** è **CHIUSO SU EVIDENZA STATICA SUFFICIENTE** (nessun runtime conflict test; CASO 3). **I4.3A-T1** complessivo resta **parzialmente aperto** con unico residuo: race condition. **I4.3B** resta separato e **non avviato**. Nessuna sincronizzazione subscription, nessun aggiornamento dello snapshot `tenants`.
 
 ---
 
@@ -154,7 +157,7 @@ Project ref Supabase produzione (da sessioni operative): `dormvfiwgzyzslxybetb`.
 | Area | Stato |
 |------|--------|
 | Project Rules Cursor (`.cursor/rules/000`…`050`) | Completate |
-| Governance operativa (GOVERNANCE-1/2/3-bis/4/`1e83f19`/4-bis/`14a8575`/5-bis/`063cbf7`/6-bis/`253affa`/I4.3A-bis/`99dc1f6`/7/`8ff556d`/7-bis/`a380ce9`/I4.3A-D1-bis/`751852b`/I4.3A-T1-bis/`b4da681`/I4.3A-T1C-bis/`2c0c060`/I4.3A-T1D-bis/`87d410c`) | Modello Supervisor/Executor; numerazione prompt e workflow `-bis`; fonti canoniche in `1e83f19`; GOVERNANCE-4-bis in `14a8575`; GOVERNANCE-5-bis in `063cbf7`; GOVERNANCE-6-bis in `253affa`; I4.3A-bis in `99dc1f6`; GOVERNANCE-7 in `8ff556d`; GOVERNANCE-7-bis in `a380ce9`; I4.3A-D1-bis in `751852b`; I4.3A-T1-bis in `b4da681`; I4.3A-T1C-bis in `2c0c060`; I4.3A-T1D-bis in `87d410c` |
+| Governance operativa (GOVERNANCE-1/2/3-bis/4/`1e83f19`/4-bis/`14a8575`/5-bis/`063cbf7`/6-bis/`253affa`/I4.3A-bis/`99dc1f6`/7/`8ff556d`/7-bis/`a380ce9`/I4.3A-D1-bis/`751852b`/I4.3A-T1-bis/`b4da681`/I4.3A-T1C-bis/`2c0c060`/I4.3A-T1D-bis/`87d410c`/I4.3A-T1E-bis/`8615cda`) | Modello Supervisor/Executor; numerazione prompt e workflow `-bis`; fonti canoniche in `1e83f19`; GOVERNANCE-4-bis in `14a8575`; GOVERNANCE-5-bis in `063cbf7`; GOVERNANCE-6-bis in `253affa`; I4.3A-bis in `99dc1f6`; GOVERNANCE-7 in `8ff556d`; GOVERNANCE-7-bis in `a380ce9`; I4.3A-D1-bis in `751852b`; I4.3A-T1-bis in `b4da681`; I4.3A-T1C-bis in `2c0c060`; I4.3A-T1D-bis in `87d410c`; I4.3A-T1E-bis in `8615cda` |
 | **GOVERNANCE-7 — sync controllata mirror** | Commit `8ff556d`: script `scripts/sync-ai-context-mirror.sh`; delega post-commit a Cursor (dopo conferma utente); dry-run → apply; apply solo con working tree pulita; perimetro Git tracciato (`docs/**/*.md`, `.cursor/rules/**/*.mdc`); privacy-safe (no percorsi personali); no `--delete` / no sync inversa; verifica byte-per-byte; **prima sync controllata completata su 15 file** |
 | **GOVERNANCE-7-bis** | Commit `a380ce9` — stato operativo aggiornato dopo GOVERNANCE-7 / sync controllata mirror |
 | **I4.3A-bis** | Commit `99dc1f6` — stato operativo aggiornato dopo hardening billing I4.3A |
@@ -186,13 +189,15 @@ Project ref Supabase produzione (da sessioni operative): `dormvfiwgzyzslxybetb`.
 | **I4.3A-T1D — idempotenza su evento già processato** | **PASS** (sandbox/test-mode). Un solo Resend Workbench effettuato personalmente dall’utente sullo stesso event ID già processato `evt_1U1p9GFOUoE38beBvxBWm69d` (`checkout.session.completed`); stessa `stripe-webhook`; HTTP 200; nessun secondo resend; nessun nuovo checkout/trigger. Ramo applicativo: `ensureBillingEventRow` → riga `billing_events` esistente → `processed_at !== null` → return immediato `receivedOk` → nessuna riesecuzione di `processCheckoutSessionCompleted` → nessuna nuova correlazione customer → nessuna modifica tenant/subscription. Before/after: `billing_events` count 1→1 (id/provider/`provider_event_id`/`event_type`/`tenant_id`/`processed_at`/`created_at`/fingerprint invariati; `processing_error` NULL→NULL); `tenant_billing_customers` count 1→1 (mapping e timestamp invariati); `tenant_subscriptions` 0→0; snapshot demo invariato (`plan_code=demo`, `subscription_status=active`, `is_demo=true`, `trial_ends_at=NULL`); fingerprint non-target invariati. Lacuna probatoria minore: il nuovo delivery attempt non è stato serializzato direttamente dalla UI Workbench nel report; HTTP 200 osservato nei log Edge Function, coerente con l’unico resend utente e con le invarianti SQL — Supervisor: T1D PASS. Nessuna modifica repository; nessun deploy/migration/secret/cleanup; I4.3B non avviato |
 | **I4.3A-T1D-bis** | Commit `87d410c` — *docs(context): record webhook idempotency runtime pass* |
 | **I4.3A-T1E — retry runtime di billing_event incompleto** | **PASS** (sandbox/test-mode). Target: `evt_1U1o48FOUoE38beB2KuEcYKQ` (`checkout.session.completed`; fixture diagnostica storica non rappresentativa: `mode=payment`, `customer=NULL`, `billing_event` incompleto; prima delivery HTTP 502 fail-closed; non bug applicativo). Sequenza: **T1EA** ricognizione statica locale (evento già presente + `processed_at=NULL` → recupero riga esistente; `processed_at=NULL` non attiva no-op T1D; processing prosegue; fallisce su customer mancante; `session.mode` non è gate; HTTP 502 atteso; `processed_at`/`tenant_id` restano NULL; correlazione/subscription/tenants non toccati; unica mutazione prevista = `processing_error`; zero accesso remoto/Stripe; zero-diff) → **T1EB** baseline SQL remota read-only pre-resend (`target_event_count=1`; `processed_at`/`tenant_id` NULL; `processing_error` non-NULL length 54 fingerprint `af24fa91a17a58a4`; `checkout_mode=payment`; `customer=NULL`; payload fingerprint `a31b92ca81bb6a77`; `tenant_billing_customers` count 2 / distinct tenants 2 / fingerprint `262cdc77bd94942c`; `tenant_subscriptions` 0 / fingerprint `d41d8cd98f00b204`; `tenants` count 3 / demo 1 / commercial fingerprint `0de87c9da37af418`; nessuna mutation) → **T1EC** Workbench read-only/manuale (utente): stesso event ID; stessa `stripe-webhook`; un solo delivery attempt osservabile; HTTP 502 ERR; nessun retry automatico aggiuntivo/pending osservabile; **CASO 2**; nessun resend in T1EC → **T1ED** un solo Resend Workbench utente (Cursor non ha usato Stripe) + verifica post SQL read-only: tutte le invarianti DB identiche (count 1→1; `processed_at`/`tenant_id` NULL→NULL; `processing_error` coerente length/fingerprint; payload/`checkout_mode`/`customer` invariati; `tenant_billing_customers`/`tenant_subscriptions`/snapshot commerciale `tenants` invariati). Log post-resend: due nuovi POST HTTP 502 sulla `stripe-webhook` (~18s); log senza event ID → non attribuibili entrambi con certezza allo stesso evento; Supervisor: lacuna minore non bloccante (resend confermato; almeno un 502 temporalmente coerente; invarianti DB intatte; **nessun ulteriore resend**). Nessun cleanup/manual DB mutation; I4.3B non avviato |
+| **I4.3A-T1E-bis** | Commit `8615cda` — *docs(context): record incomplete webhook retry runtime pass* |
+| **I4.3A-T1F — conflitto customer–tenant** | **CHIUSO SU EVIDENZA STATICA SUFFICIENTE** (Supervisor). **Non** runtime PASS: nessun test runtime del conflitto eseguito; runtime non necessario (decisione Supervisor); scenario classificato **CASO 3**. Evidenze statiche: conflict path deterministico e fail-closed; mapping Stripe customer già associato al tenant A non viene sovrascritto/rimappato verso tenant B; detection prima di qualsiasi INSERT/UPDATE su `tenant_billing_customers`; `billing_events` creata/recuperata e può avere `tenant_id`=B prima della detection; `processed_at` resta NULL; `processing_error` valorizzato; `tenant_billing_customers` invariata (nessun INSERT/UPDATE/remap); `tenant_subscriptions` e `tenants` non modificati; retry dello stesso event ID resta sulla stessa riga e fallisce nuovamente senza remap; HTTP 502; il normale `create-checkout-session` non riutilizza un customer Stripe esistente (provocare il conflitto reale richiederebbe evento craftato / manipolazione preparatoria / configurazione artificiale — valore probatorio aggiuntivo non giustifica inquinamento dati/rischio operativo). Debito minore (non vulnerabilità/leak PII): messaggio pubblico del conflitto usa terminologia tecnica interna. Nessun runtime race autorizzato; I4.3B non avviato |
 
 ### In corso / incompleto
 
 | Voce | Dettaglio |
 |------|-----------|
-| **Test runtime post-deploy (I4.3A-T1)** | **Parzialmente completato**: T1A, T1B, T1C, T1D e T1E (PASS) conclusi. Restano da decidere separatamente (non autorizzati da questo aggiornamento): conflitti customer–tenant runtime; race condition corrette in I4.3A. **I4.3A-T1 non è integralmente chiuso** |
-| **I4.3B (separato, non avviato)** | Sync `customer.subscription.*` → `tenant_subscriptions` + snapshot `tenants` — **non** avviato; resta **successivo** ai test runtime residui |
+| **Test runtime post-deploy (I4.3A-T1)** | **Parzialmente completato**: T1A–T1E PASS; T1F **CHIUSO SU EVIDENZA STATICA SUFFICIENTE** (nessun runtime conflict; CASO 3). **Unico residuo**: race condition (valutazione separata; nessun runtime race autorizzato da questo aggiornamento). **I4.3A-T1 non è integralmente chiuso** |
+| **I4.3B (separato, non avviato)** | Sync `customer.subscription.*` → `tenant_subscriptions` + snapshot `tenants` — **non** avviato; resta **successivo** alla chiusura dei residui I4.3A-T1 |
 | **Sync subscription** | Eventi `customer.subscription.*` / invoice: **solo persistiti** in `billing_events` con `processed_at` nullo; **non** aggiornano ancora `tenant_subscriptions` né lo snapshot su `tenants` (verificato in T1B: `tenant_subscriptions` = 0 per la subscription target; riconfermato in T1C/T1D/T1E: demo/commercial invariati; T1E: `tenant_subscriptions` ancora 0) |
 | **Billing portal** | `create-billing-portal-session` → ancora `501 Not Implemented` |
 | **Frontend checkout** | UI mostra “Gestione abbonamento in arrivo”; **non** invoca l’Edge Function |
@@ -200,7 +205,7 @@ Project ref Supabase produzione (da sessioni operative): `dormvfiwgzyzslxybetb`.
 | **Tenant switcher / inviti** | Non implementati da UI |
 | **Smoke test post-H4** | Checklist produzione da chiudere manualmente se non già fatto |
 | **Staging dedicato** | Spesso assente: lavoro fatto su produzione con cautela |
-| **Docs drift** | Drift storico **ancora presente e non corretto** in questo task: `docs/production-readiness.md` e `docs/billing-data-model.md` (§16 descrive ancora I4.0 “senza mutazioni DB”; I4.1/I4.2/I4.3A le hanno introdotte/estese). Fuori scope di I4.3A-T1E-bis — allineare in fase documentale dedicata |
+| **Docs drift** | Drift storico **ancora presente e non corretto** in questo task: `docs/production-readiness.md` e `docs/billing-data-model.md` (§16 descrive ancora I4.0 “senza mutazioni DB”; I4.1/I4.2/I4.3A le hanno introdotte/estese). Fuori scope di I4.3A-T1F-bis — allineare in fase documentale dedicata |
 | **Prerequisiti / limiti operativi mirror** | Config locale necessaria per ogni clone/macchina; apply bloccato da qualsiasi modifica o file untracked (fail-closed); Google Drive Desktop può richiedere tempo per propagare al cloud; lo script è versionato nel repo ma **non** fa parte del perimetro mirror docs/rules |
 
 ### Esplicitamente fuori scope finché non richiesto
@@ -280,6 +285,8 @@ Ordine concettuale seguito nelle chat (May–Aug 2026):
 30. **I4.3A-T1D** — test runtime idempotenza su evento già processato (PASS): un solo Resend Workbench di `evt_1U1p9GFOUoE38beBvxBWm69d`; HTTP 200; invarianti DB/customer/tenant; I4.3B non avviato
 31. **I4.3A-T1D-bis** — aggiornamento stato operativo dopo T1D, consolidato in `87d410c`
 32. **I4.3A-T1E** — test runtime retry di billing_event incompleto (PASS): target `evt_1U1o48FOUoE38beB2KuEcYKQ`; T1EA–T1ED; un solo resend Workbench; fail-closed HTTP 502; invarianti DB; lacuna minore due POST 502 senza event ID; I4.3B non avviato
+33. **I4.3A-T1E-bis** — aggiornamento stato operativo dopo T1E, consolidato in `8615cda`
+34. **I4.3A-T1F** — conflitto customer–tenant **CHIUSO SU EVIDENZA STATICA SUFFICIENTE** (non runtime PASS; CASO 3; nessun runtime conflict eseguito); I4.3B non avviato
 
 Stile operativo ricorrente nei prompt: **micro-fasi**, “modifica SOLO questi file”, no deploy/migration senza conferma, Stripe solo `sk_test_`, nessun secret in repo.
 
@@ -310,7 +317,7 @@ File locali tipo `.env.edge.production.local` / `supabase/functions/.env*.local`
 
 ## 6. Prossimi passi consigliati
 
-### Punto di ripresa: test runtime residui I4.3A-T1 (da decidere; protetto)
+### Punto di ripresa: valutazione separata race condition I4.3A-T1 (protetto; nessun runtime race autorizzato)
 
 **I4.3A applicativo:** completato e consolidato in `18a4bf9`.
 
@@ -324,13 +331,15 @@ File locali tipo `.env.edge.production.local` / `supabase/functions/.env*.local`
 
 **I4.3A-T1D:** **PASS** — idempotenza runtime sul medesimo evento positivo già processato. Modalità: **un solo** Resend Workbench effettuato personalmente dall’utente su `evt_1U1p9GFOUoE38beBvxBWm69d` (`checkout.session.completed`, sandbox/test-mode); stessa `stripe-webhook`; HTTP 200; **nessun** secondo resend; nessun nuovo checkout/trigger. Ramo: `ensureBillingEventRow` → riga esistente → `processed_at !== null` → return immediato `receivedOk` → nessuna riesecuzione di `processCheckoutSessionCompleted` → nessuna nuova correlazione customer → nessuna modifica tenant/subscription. Before/after read-only: `billing_events` 1→1 (id/provider/`provider_event_id`/`event_type`/`tenant_id`/`processed_at`/`created_at`/fingerprint invariati; `processing_error` NULL→NULL); `tenant_billing_customers` 1→1 (mapping e timestamp invariati); `tenant_subscriptions` 0→0; snapshot demo invariato (`plan_code=demo`, `subscription_status=active`, `is_demo=true`, `trial_ends_at=NULL`); fingerprint non-target invariati. Lacuna minore: attempt non serializzato direttamente dalla UI Workbench nel report; HTTP 200 da log Edge Function, coerente con unico resend utente e invarianti SQL — Supervisor: T1D PASS. Nessuna modifica repository; nessun deploy/migration/secret/cleanup; I4.3B non avviato. Documentato in I4.3A-T1D-bis (`87d410c`).
 
-**I4.3A-T1E:** **PASS** — retry runtime di `billing_event` incompleto, fail-closed. Target: `evt_1U1o48FOUoE38beB2KuEcYKQ` (`checkout.session.completed`; sandbox/test-mode; fixture diagnostica storica non rappresentativa: `mode=payment`, `customer=NULL`, evento incompleto, prima delivery HTTP 502; non bug applicativo). **T1EA** statico locale: riga esistente + `processed_at=NULL` → non no-op T1D; processing prosegue; fallisce su customer mancante; HTTP 502; `processed_at`/`tenant_id` restano NULL; correlazione/subscription/tenants non raggiunti; unica mutazione prevista = `processing_error`. **T1EB** baseline SQL read-only: count 1; `processed_at`/`tenant_id` NULL; `processing_error` non-NULL (length 54, fingerprint `af24fa91a17a58a4`); `checkout_mode=payment`; `customer=NULL`; payload fingerprint `a31b92ca81bb6a77`; `tenant_billing_customers` 2/2 / `262cdc77bd94942c`; `tenant_subscriptions` 0 / `d41d8cd98f00b204`; `tenants` 3 (demo 1) / commercial `0de87c9da37af418`. **T1EC** Workbench read-only (utente): CASO 2; un solo attempt; HTTP 502; nessun resend. **T1ED** un solo Resend Workbench utente + post-check SQL: tutte le invarianti identiche (count 1→1; NULL→NULL; error/payload/customer invariati; correlazioni/subscriptions/snapshot commerciale invariati). Log: due POST 502 post-resend (~18s) senza event ID — lacuna attributiva minore non bloccante; **nessun ulteriore resend**. Nessun cleanup/manual DB mutation; Cursor senza Stripe; I4.3B non avviato.
+**I4.3A-T1E:** **PASS** — retry runtime di `billing_event` incompleto, fail-closed. Target: `evt_1U1o48FOUoE38beB2KuEcYKQ` (`checkout.session.completed`; sandbox/test-mode; fixture diagnostica storica non rappresentativa: `mode=payment`, `customer=NULL`, evento incompleto, prima delivery HTTP 502; non bug applicativo). **T1EA** statico locale: riga esistente + `processed_at=NULL` → non no-op T1D; processing prosegue; fallisce su customer mancante; HTTP 502; `processed_at`/`tenant_id` restano NULL; correlazione/subscription/tenants non raggiunti; unica mutazione prevista = `processing_error`. **T1EB** baseline SQL read-only: count 1; `processed_at`/`tenant_id` NULL; `processing_error` non-NULL (length 54, fingerprint `af24fa91a17a58a4`); `checkout_mode=payment`; `customer=NULL`; payload fingerprint `a31b92ca81bb6a77`; `tenant_billing_customers` 2/2 / `262cdc77bd94942c`; `tenant_subscriptions` 0 / `d41d8cd98f00b204`; `tenants` 3 (demo 1) / commercial `0de87c9da37af418`. **T1EC** Workbench read-only (utente): CASO 2; un solo attempt; HTTP 502; nessun resend. **T1ED** un solo Resend Workbench utente + post-check SQL: tutte le invarianti identiche (count 1→1; NULL→NULL; error/payload/customer invariati; correlazioni/subscriptions/snapshot commerciale invariati). Log: due POST 502 post-resend (~18s) senza event ID — lacuna attributiva minore non bloccante; **nessun ulteriore resend**. Nessun cleanup/manual DB mutation; Cursor senza Stripe; I4.3B non avviato. Documentato in I4.3A-T1E-bis (`8615cda`).
 
-**I4.3A-T1 complessivo:** **parzialmente completato**, **non** integralmente chiuso. Completati/PASS: T1A, T1B, T1C, T1D, T1E. Restano da decidere separatamente (nessuno autorizzato da questo aggiornamento): conflitti customer–tenant runtime; race condition di I4.3A.
+**I4.3A-T1F:** **CHIUSO SU EVIDENZA STATICA SUFFICIENTE** (Supervisor). **Non** runtime PASS. Nessun test runtime del conflitto customer–tenant eseguito; runtime non necessario secondo decisione Supervisor; scenario classificato **CASO 3**. Evidenze statiche: path conflict deterministico e fail-closed; mapping Stripe customer già associato al tenant A non sovrascritto/rimappato quando un evento tenta di associarlo al tenant B; detection prima di qualsiasi INSERT/UPDATE su `tenant_billing_customers`; `billing_events` creata/recuperata e può essere già parzialmente valorizzata con `tenant_id`=B prima della detection; `processed_at` resta NULL; `processing_error` valorizzato; `tenant_billing_customers` resta invariata; `tenant_subscriptions` e `tenants` non modificati; retry dello stesso event ID resta sulla stessa riga e fallisce nuovamente senza remap; HTTP 502; il normale `create-checkout-session` non riutilizza un customer Stripe esistente (provocare il conflitto reale richiederebbe evento craftato / manipolazione preparatoria / configurazione artificiale — valore probatorio aggiuntivo non giustifica inquinamento dati/rischio operativo). Debito minore (non vulnerabilità né leak PII): messaggio pubblico del conflitto usa terminologia tecnica interna. Nessun runtime race autorizzato da questo aggiornamento; I4.3B non avviato.
 
-**Prossimo micro-task da decidere con ChatGPT tra i test runtime residui di I4.3A-T1. T1A/T1B/T1C/T1D/T1E = PASS. I4.3A-T1 resta aperto. I4.3B resta separato e non avviato.** Nessun test successivo è autorizzato da questo aggiornamento. Qualunque resend/test webhook resta operazione runtime **protetta** e richiede **autorizzazione esplicita** dell’utente.
+**I4.3A-T1 complessivo:** **parzialmente completato**, **non** integralmente chiuso. Completati/PASS: T1A, T1B, T1C, T1D, T1E. T1F = **CHIUSO SU EVIDENZA STATICA**. **Unico residuo**: race condition di I4.3A (valutazione separata; nessun runtime race autorizzato da questo aggiornamento). Il conflitto customer–tenant runtime **non** è più tra i test residui da eseguire.
 
-**I4.3B:** non avviato e non autorizzato; resta **successivo** ai test runtime residui.
+**Prossimo punto di ripresa:** valutazione separata della race condition I4.3A-T1 (ricognizione statica zero-write consigliata). T1A/T1B/T1C/T1D/T1E = PASS; T1F = CHIUSO SU EVIDENZA STATICA. I4.3A-T1 resta aperto solo per race. I4.3B resta separato e non avviato. Nessun test runtime successivo è autorizzato da questo aggiornamento. Qualunque resend/test webhook resta operazione runtime **protetta** e richiede **autorizzazione esplicita** dell’utente.
+
+**I4.3B:** non avviato e non autorizzato; resta **successivo** alla chiusura dei residui I4.3A-T1.
 
 Vincoli permanenti da mantenere:
 
@@ -429,7 +438,7 @@ Registrati dal report operativo T1B e dalle verifiche manuali utente (Workbench 
 | `billing_events` (SQL Editor, read-only) | Esattamente **2** righe target; `tenant_id` / `processed_at` / `processing_error` tutti `NULL` |
 | `tenant_subscriptions` per subscription target | **0** righe |
 | Eventi live | Nessuno |
-| Idempotenza / retry / conflitti / race | Idempotenza su evento già processato verificata in T1D (PASS); retry incompleto verificato in T1E (PASS); conflitti / race restano da decidere in I4.3A-T1 |
+| Idempotenza / retry / conflitti / race | Idempotenza su evento già processato verificata in T1D (PASS); retry incompleto verificato in T1E (PASS); conflitto customer–tenant chiuso su evidenza statica in T1F (CASO 3; non runtime PASS); unico residuo I4.3A-T1 = race |
 | I4.3B | **Non avviato** |
 
 ### I4.3A-T1C (correlazione positiva `checkout.session.completed`)
@@ -494,6 +503,29 @@ Registrati dal report operativo T1E (T1EA–T1ED) e dalle verifiche manuali uten
 | Esito complessivo T1E | **PASS** |
 | I4.3B | **Non avviato** |
 
+### I4.3A-T1F (conflitto customer–tenant — chiusura statica)
+
+Registrati dalla decisione Supervisor su evidenza statica (I4.3A-T1FA / chiusura T1F); **nessun** runtime conflict test:
+
+| Gate | Esito |
+|------|--------|
+| Modalità | Chiusura su evidenza **statica**; **non** runtime PASS |
+| Runtime conflict test | **Non** eseguito; runtime **non** necessario (decisione Supervisor) |
+| Classificazione scenario | **CASO 3** |
+| Path conflict | Deterministico e fail-closed |
+| Mapping customer→tenant | Customer già associato al tenant A **non** sovrascritto/rimappato verso B |
+| Detection | Prima di qualsiasi INSERT/UPDATE su `tenant_billing_customers` |
+| `billing_events` | Creata/recuperata; `tenant_id` può essere valorizzato con tenant B prima della detection; `processed_at` resta NULL; `processing_error` valorizzato |
+| `tenant_billing_customers` | Invariata — nessun INSERT/UPDATE/remap |
+| `tenant_subscriptions` / `tenants` | Non modificati |
+| Retry stesso event ID | Stessa riga; fallisce nuovamente senza remap; HTTP 502 |
+| Checkout normale | `create-checkout-session` non riutilizza un customer Stripe esistente |
+| Motivazione no-runtime | Provocare il conflitto reale richiederebbe evento craftato / manipolazione preparatoria / configurazione artificiale; valore probatorio aggiuntivo non giustifica inquinamento dati/rischio operativo |
+| Debito minore | Messaggio pubblico del conflitto usa terminologia tecnica interna (non vulnerabilità / non leak PII) |
+| File / deploy / migration / secret / Stripe / Workbench / mutation DB | **Nessuno** / **non** eseguiti in T1F |
+| Esito complessivo T1F | **CHIUSO SU EVIDENZA STATICA SUFFICIENTE** |
+| I4.3B | **Non avviato** |
+
 ### GOVERNANCE-7
 
 Registrati dal consolidamento GOVERNANCE-7 (`8ff556d`, inclusi F1/F2) e dalla prima sync post-commit:
@@ -517,12 +549,14 @@ Registrati dal consolidamento GOVERNANCE-7 (`8ff556d`, inclusi F1/F2) e dalla pr
 ### I4.3A / post-deploy / runtime parziale
 
 - Il flusso webhook usa **più query Supabase** e **non** costituisce una singola transazione PostgreSQL; il retry è reso idempotente dalla riga `billing_events` e dalla correlazione non rimappante. **Rischio multi-query non-transazionale ancora aperto.**
+- Nota intenzionale fail-closed/tracciabile (T1F): `billing_events` può conservare `tenant_id`=B anche se la correlazione customer fallisce per conflitto con mapping già esistente sul tenant A; `processed_at` resta NULL e `processing_error` è valorizzato — comportamento considerato intenzionalmente fail-closed e tracciabile, non remap silenzioso.
+- Debito minore (T1F, senza aprire fix): il messaggio pubblico del conflitto customer–tenant usa terminologia tecnica interna; **non** classificato come vulnerabilità o leak PII.
 - Eventi legacy di I4.1/I4.2 già marcati `processed_at` **prima** di una correlazione riuscita **non** vengono riparati automaticamente.
-- Conflitti permanenti customer–tenant possono continuare a generare retry finché non vengono diagnosticati.
-- Il codice I4.3A è **deployato** (`stripe-webhook` remota v4). Runtime **parzialmente** verificato: firma negativa (T1A); percorso differito `customer.subscription.*` / `invoice.*` con persistenza `billing_events` (T1B + Workbench HTTP 200 + SQL Editor); correlazione positiva `checkout.session.completed` → `tenant_billing_customers` via percorso reale (T1C PASS); idempotenza su evento positivo già processato con un solo Resend Workbench (T1D PASS); retry runtime di evento incompleto fail-closed con un solo Resend Workbench (T1E PASS). **Non** ancora verificati sul remoto: conflitti customer–tenant; race condition di I4.3A.
+- Conflitti permanenti customer–tenant possono continuare a generare retry finché non vengono diagnosticati; path conflict chiuso su evidenza statica in T1F (CASO 3; nessun runtime conflict eseguito).
+- Il codice I4.3A è **deployato** (`stripe-webhook` remota v4). Runtime **parzialmente** verificato: firma negativa (T1A); percorso differito `customer.subscription.*` / `invoice.*` con persistenza `billing_events` (T1B + Workbench HTTP 200 + SQL Editor); correlazione positiva `checkout.session.completed` → `tenant_billing_customers` via percorso reale (T1C PASS); idempotenza su evento positivo già processato con un solo Resend Workbench (T1D PASS); retry runtime di evento incompleto fail-closed con un solo Resend Workbench (T1E PASS). Conflitto customer–tenant: **CHIUSO SU EVIDENZA STATICA** in T1F (non runtime PASS; CASO 3). **Unico residuo runtime/valutazione I4.3A-T1**: race condition.
 - Firma Stripe valida verificata **indirettamente** tramite consegna Workbench HTTP 200 (T1B/T1C) e, per T1D/T1E, tramite log Edge Function sul resend (non tramite firma costruita localmente in T1A).
 - La verifica remota di I4.3A-D1 è limitata a **metadati amministrativi** (versione, timestamp, stato `ACTIVE`); **non** è stato eseguito un confronto byte-per-byte del bundle deployato.
-- La freschezza server di `origin/main` **non** è stata aggiornata (`git fetch` non eseguito in D1, D1-bis, T1A, T1B, T1C, T1D né T1E).
+- La freschezza server di `origin/main` **non** è stata aggiornata (`git fetch` non eseguito in D1, D1-bis, T1A, T1B, T1C, T1D, T1E né T1F).
 - `deno check` resta da eseguire in un ambiente idoneo (non eseguito in I4.3A né in I4.3A-D1).
 - Eventi `customer.subscription.*` / `invoice.*` persistiti con `processed_at` nullo attendono **I4.3B** (non avviato); T1B ha confermato `tenant_subscriptions` = 0 per la subscription target; T1C/T1D hanno confermato `tenant_subscriptions` demo = 0 e snapshot demo invariato (`plan_code` = `demo`, `subscription_status` = `active`); T1E ha riconfermato `tenant_subscriptions` = 0 e snapshot commerciale `tenants` invariato.
 - Fixture T1B: eventi non-allowlist sandbox generati dalla fixture restano fuori scope di cleanup in questo ciclo; nessun evento live.
@@ -550,8 +584,9 @@ Registrati dal consolidamento GOVERNANCE-7 (`8ff556d`, inclusi F1/F2) e dalla pr
 - I4.3A-T1-bis consolidato in `b4da681` — *docs(context): record webhook runtime verification*; sync post-commit secondo workflow governance.
 - I4.3A-T1C-bis consolidato in `2c0c060` — *docs(context): record checkout correlation runtime pass*; sync post-commit secondo workflow governance.
 - I4.3A-T1D-bis consolidato in `87d410c` — *docs(context): record webhook idempotency runtime pass*; sync post-commit secondo workflow governance.
-- **Divergenza mirror / Git attesa pre-task I4.3A-T1E-bis:** il mirror Google Drive non contiene ancora T1E. Git reale è la fonte canonica; la differenza è attesa. Nessuna riconciliazione Drive → repository.
-- `docs/stato-operativo.md` viene aggiornato da questo task (I4.3A-T1E-bis) e sarà sincronizzato **solo dopo** il relativo commit (e conferma utente secondo workflow governance). Il commit documentale corrente **non** è registrato come ultimo consolidato in questo stesso aggiornamento.
+- I4.3A-T1E-bis consolidato in `8615cda` — *docs(context): record incomplete webhook retry runtime pass*; sync post-commit secondo workflow governance.
+- **Divergenza mirror / Git attesa pre-task I4.3A-T1F-bis:** il mirror Google Drive non contiene ancora T1F. Git reale è la fonte canonica; la differenza è attesa. Nessuna riconciliazione Drive → repository.
+- `docs/stato-operativo.md` viene aggiornato da questo task (I4.3A-T1F-bis) e sarà sincronizzato **solo dopo** il relativo commit (e conferma utente secondo workflow governance). Il commit documentale corrente **non** è registrato come ultimo consolidato in questo stesso aggiornamento.
 - Nessuna riconciliazione Drive → repository è consentita.
 
 ---
