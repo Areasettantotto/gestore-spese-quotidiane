@@ -1,0 +1,519 @@
+/**
+ * Deno tests for normalizeStripeSubscription (I4.3BE).
+ *
+ * Run (when Deno is available):
+ *   deno test supabase/functions/_shared/normalizeStripeSubscription_test.ts
+ *
+ * No new dependencies. Does not touch DB / Stripe / network.
+ */
+
+import {
+  extractStripeCustomerId,
+  normalizeStripeSubscription,
+  unixSecondsToTimestamptz,
+  type NormalizeStripeSubscriptionResult,
+  type StripeSubscriptionLike,
+} from "./normalizeStripeSubscription.ts";
+
+declare const Deno: {
+  test: (name: string, fn: () => void) => void;
+};
+
+const SUPPORTED_PRICE = "price_test_pro_monthly_supported";
+
+function assert(condition: boolean, message: string): void {
+  if (!condition) {
+    throw new Error(message);
+  }
+}
+
+function assertEquals(actual: unknown, expected: unknown, message: string): void {
+  const actualJson = JSON.stringify(actual);
+  const expectedJson = JSON.stringify(expected);
+  if (actualJson !== expectedJson) {
+    throw new Error(`${message}\n  actual:   ${actualJson}\n  expected: ${expectedJson}`);
+  }
+}
+
+function baseSubscription(
+  overrides: Partial<StripeSubscriptionLike> = {},
+): StripeSubscriptionLike {
+  return {
+    id: "sub_test_1",
+    customer: "cus_test_1",
+    status: "active",
+    current_period_start: 1_700_000_000,
+    current_period_end: 1_700_267_200,
+    cancel_at_period_end: false,
+    trial_end: null,
+    metadata: { plan_code: "pro_monthly" },
+    items: {
+      data: [{ price: { id: SUPPORTED_PRICE } }],
+    },
+    ...overrides,
+  };
+}
+
+function expectSuccess(
+  result: NormalizeStripeSubscriptionResult,
+): asserts result is Extract<NormalizeStripeSubscriptionResult, { ok: true }> {
+  assert(result.ok === true, `expected success, got ${JSON.stringify(result)}`);
+}
+
+function expectFailure(
+  result: NormalizeStripeSubscriptionResult,
+  reason: string,
+): void {
+  if (result.ok !== false) {
+    throw new Error(`expected failure, got ${JSON.stringify(result)}`);
+  }
+  assertEquals(result.reason, reason, "failure reason");
+}
+
+Deno.test("1. active + supported paid product → success", () => {
+  const result = normalizeStripeSubscription(baseSubscription(), {
+    supportedProMonthlyPriceId: SUPPORTED_PRICE,
+  });
+  expectSuccess(result);
+  assertEquals(result.value.status, "active", "status");
+  assertEquals(result.value.plan_code, "paid", "plan_code");
+  assertEquals(result.value.provider_subscription_id, "sub_test_1", "subscription id");
+  assertEquals(result.value.provider_customer_id, "cus_test_1", "customer id");
+});
+
+Deno.test("2. trialing + valid trial_end + supported product → success, plan_code paid", () => {
+  const result = normalizeStripeSubscription(
+    baseSubscription({
+      status: "trialing",
+      trial_end: 1_700_100_000,
+    }),
+    { supportedProMonthlyPriceId: SUPPORTED_PRICE },
+  );
+  expectSuccess(result);
+  assertEquals(result.value.status, "trialing", "status");
+  assertEquals(result.value.plan_code, "paid", "plan_code stays paid (NP-A / D7)");
+  assertEquals(
+    result.value.trial_ends_at,
+    "2023-11-16T02:00:00.000Z",
+    "trial_ends_at",
+  );
+});
+
+Deno.test("3. trialing without valid trial_end → failure", () => {
+  expectFailure(
+    normalizeStripeSubscription(
+      baseSubscription({ status: "trialing", trial_end: null }),
+      { supportedProMonthlyPriceId: SUPPORTED_PRICE },
+    ),
+    "missing_trial_end",
+  );
+  expectFailure(
+    normalizeStripeSubscription(
+      baseSubscription({ status: "trialing", trial_end: -1 }),
+      { supportedProMonthlyPriceId: SUPPORTED_PRICE },
+    ),
+    "invalid_trial_end",
+  );
+});
+
+Deno.test("4. past_due → detailed status preserved", () => {
+  const result = normalizeStripeSubscription(
+    baseSubscription({ status: "past_due" }),
+    { supportedProMonthlyPriceId: SUPPORTED_PRICE },
+  );
+  expectSuccess(result);
+  assertEquals(result.value.status, "past_due", "status");
+});
+
+Deno.test("5. unpaid → unpaid, NOT suspended", () => {
+  const result = normalizeStripeSubscription(
+    baseSubscription({ status: "unpaid" }),
+    { supportedProMonthlyPriceId: SUPPORTED_PRICE },
+  );
+  expectSuccess(result);
+  assertEquals(result.value.status, "unpaid", "status");
+});
+
+Deno.test("6. paused → paused, NOT suspended", () => {
+  const result = normalizeStripeSubscription(
+    baseSubscription({ status: "paused" }),
+    { supportedProMonthlyPriceId: SUPPORTED_PRICE },
+  );
+  expectSuccess(result);
+  assertEquals(result.value.status, "paused", "status");
+});
+
+Deno.test("7. incomplete → incomplete, NOT suspended", () => {
+  const result = normalizeStripeSubscription(
+    baseSubscription({ status: "incomplete" }),
+    { supportedProMonthlyPriceId: SUPPORTED_PRICE },
+  );
+  expectSuccess(result);
+  assertEquals(result.value.status, "incomplete", "status");
+});
+
+Deno.test("8. canceled → canceled", () => {
+  const result = normalizeStripeSubscription(
+    baseSubscription({ status: "canceled" }),
+    { supportedProMonthlyPriceId: SUPPORTED_PRICE },
+  );
+  expectSuccess(result);
+  assertEquals(result.value.status, "canceled", "status");
+});
+
+Deno.test("9. incomplete_expired → incomplete_expired", () => {
+  const result = normalizeStripeSubscription(
+    baseSubscription({ status: "incomplete_expired" }),
+    { supportedProMonthlyPriceId: SUPPORTED_PRICE },
+  );
+  expectSuccess(result);
+  assertEquals(result.value.status, "incomplete_expired", "status");
+});
+
+Deno.test("10. unexpected provider status → failure", () => {
+  expectFailure(
+    normalizeStripeSubscription(
+      baseSubscription({ status: "something_else" }),
+      { supportedProMonthlyPriceId: SUPPORTED_PRICE },
+    ),
+    "unsupported_status",
+  );
+  expectFailure(
+    normalizeStripeSubscription(
+      baseSubscription({ status: "suspended" }),
+      { supportedProMonthlyPriceId: SUPPORTED_PRICE },
+    ),
+    "unsupported_status",
+  );
+  expectFailure(
+    normalizeStripeSubscription(
+      baseSubscription({ status: "unknown" }),
+      { supportedProMonthlyPriceId: SUPPORTED_PRICE },
+    ),
+    "unsupported_status",
+  );
+});
+
+Deno.test("11. unsupported product/price → failure", () => {
+  expectFailure(
+    normalizeStripeSubscription(
+      baseSubscription({
+        items: { data: [{ price: { id: "price_other_unsupported" } }] },
+      }),
+      { supportedProMonthlyPriceId: SUPPORTED_PRICE },
+    ),
+    "unsupported_price",
+  );
+});
+
+Deno.test("12. incompatible plan metadata → failure", () => {
+  expectFailure(
+    normalizeStripeSubscription(
+      baseSubscription({ metadata: { plan_code: "trial" } }),
+      { supportedProMonthlyPriceId: SUPPORTED_PRICE },
+    ),
+    "incompatible_plan_metadata",
+  );
+  expectFailure(
+    normalizeStripeSubscription(
+      baseSubscription({ metadata: { plan_code: "free" } }),
+      { supportedProMonthlyPriceId: SUPPORTED_PRICE },
+    ),
+    "incompatible_plan_metadata",
+  );
+  expectFailure(
+    normalizeStripeSubscription(
+      baseSubscription({ metadata: { plan_code: "demo" } }),
+      { supportedProMonthlyPriceId: SUPPORTED_PRICE },
+    ),
+    "incompatible_plan_metadata",
+  );
+  expectFailure(
+    normalizeStripeSubscription(
+      baseSubscription({ metadata: { plan_code: "internal" } }),
+      { supportedProMonthlyPriceId: SUPPORTED_PRICE },
+    ),
+    "incompatible_plan_metadata",
+  );
+  expectFailure(
+    normalizeStripeSubscription(
+      baseSubscription({ metadata: { plan_code: "paid" } }),
+      { supportedProMonthlyPriceId: SUPPORTED_PRICE },
+    ),
+    "incompatible_plan_metadata",
+  );
+  expectFailure(
+    normalizeStripeSubscription(
+      baseSubscription({ metadata: { plan_code: "enterprise_yearly" } }),
+      { supportedProMonthlyPriceId: SUPPORTED_PRICE },
+    ),
+    "incompatible_plan_metadata",
+  );
+  // Checkout request alias `pro` is NOT accepted as Subscription metadata.
+  expectFailure(
+    normalizeStripeSubscription(
+      baseSubscription({ metadata: { plan_code: "pro" } }),
+      { supportedProMonthlyPriceId: SUPPORTED_PRICE },
+    ),
+    "incompatible_plan_metadata",
+  );
+  // No casing / whitespace canonicalization of provider metadata.
+  expectFailure(
+    normalizeStripeSubscription(
+      baseSubscription({ metadata: { plan_code: "PRO_MONTHLY" } }),
+      { supportedProMonthlyPriceId: SUPPORTED_PRICE },
+    ),
+    "incompatible_plan_metadata",
+  );
+  expectFailure(
+    normalizeStripeSubscription(
+      baseSubscription({ metadata: { plan_code: " pro_monthly " } }),
+      { supportedProMonthlyPriceId: SUPPORTED_PRICE },
+    ),
+    "incompatible_plan_metadata",
+  );
+});
+
+Deno.test("13. customer as string → extracted", () => {
+  const result = normalizeStripeSubscription(
+    baseSubscription({ customer: "cus_string_form" }),
+    { supportedProMonthlyPriceId: SUPPORTED_PRICE },
+  );
+  expectSuccess(result);
+  assertEquals(result.value.provider_customer_id, "cus_string_form", "customer");
+});
+
+Deno.test("14. customer as expanded object → extracted", () => {
+  const result = normalizeStripeSubscription(
+    baseSubscription({ customer: { id: "cus_expanded_form", object: "customer" } }),
+    { supportedProMonthlyPriceId: SUPPORTED_PRICE },
+  );
+  expectSuccess(result);
+  assertEquals(result.value.provider_customer_id, "cus_expanded_form", "customer");
+  assertEquals(
+    extractStripeCustomerId({ id: "cus_helper" }),
+    "cus_helper",
+    "helper expanded",
+  );
+});
+
+Deno.test("15. missing/invalid customer → failure", () => {
+  expectFailure(
+    normalizeStripeSubscription(
+      baseSubscription({ customer: null }),
+      { supportedProMonthlyPriceId: SUPPORTED_PRICE },
+    ),
+    "invalid_customer",
+  );
+  expectFailure(
+    normalizeStripeSubscription(
+      baseSubscription({ customer: "" }),
+      { supportedProMonthlyPriceId: SUPPORTED_PRICE },
+    ),
+    "invalid_customer",
+  );
+  expectFailure(
+    normalizeStripeSubscription(
+      baseSubscription({ customer: { id: 123 } }),
+      { supportedProMonthlyPriceId: SUPPORTED_PRICE },
+    ),
+    "invalid_customer",
+  );
+});
+
+Deno.test("16. valid timestamp → deterministic ISO/timestamptz-compatible", () => {
+  const converted = unixSecondsToTimestamptz(1_700_000_000);
+  if (converted.ok !== true) {
+    throw new Error("conversion ok");
+  }
+  assertEquals(converted.value, "2023-11-14T22:13:20.000Z", "fixed unix → fixed ISO");
+
+  const result = normalizeStripeSubscription(baseSubscription(), {
+    supportedProMonthlyPriceId: SUPPORTED_PRICE,
+  });
+  expectSuccess(result);
+  assertEquals(result.value.current_period_start, "2023-11-14T22:13:20.000Z", "period start");
+  assertEquals(result.value.current_period_end, "2023-11-18T00:26:40.000Z", "period end");
+});
+
+Deno.test("17. invalid timestamp → failure", () => {
+  expectFailure(
+    normalizeStripeSubscription(
+      baseSubscription({ current_period_start: 1.5 }),
+      { supportedProMonthlyPriceId: SUPPORTED_PRICE },
+    ),
+    "invalid_timestamp",
+  );
+  expectFailure(
+    normalizeStripeSubscription(
+      baseSubscription({ current_period_end: -10 }),
+      { supportedProMonthlyPriceId: SUPPORTED_PRICE },
+    ),
+    "invalid_timestamp",
+  );
+  expectFailure(
+    normalizeStripeSubscription(
+      baseSubscription({ current_period_start: "1700000000" }),
+      { supportedProMonthlyPriceId: SUPPORTED_PRICE },
+    ),
+    "invalid_timestamp",
+  );
+});
+
+Deno.test("18. cancel_at_period_end preserved", () => {
+  const resultTrue = normalizeStripeSubscription(
+    baseSubscription({ cancel_at_period_end: true }),
+    { supportedProMonthlyPriceId: SUPPORTED_PRICE },
+  );
+  expectSuccess(resultTrue);
+  assertEquals(resultTrue.value.cancel_at_period_end, true, "true preserved");
+
+  const resultFalse = normalizeStripeSubscription(
+    baseSubscription({ cancel_at_period_end: false }),
+    { supportedProMonthlyPriceId: SUPPORTED_PRICE },
+  );
+  expectSuccess(resultFalse);
+  assertEquals(resultFalse.value.cancel_at_period_end, false, "false preserved");
+
+  expectFailure(
+    normalizeStripeSubscription(
+      baseSubscription({ cancel_at_period_end: "true" }),
+      { supportedProMonthlyPriceId: SUPPORTED_PRICE },
+    ),
+    "invalid_cancel_at_period_end",
+  );
+});
+
+Deno.test("19. no dependency on now()/current Date in result", () => {
+  const input = baseSubscription({
+    current_period_start: 1_600_000_000,
+    current_period_end: 1_600_086_400,
+  });
+  const first = normalizeStripeSubscription(input, {
+    supportedProMonthlyPriceId: SUPPORTED_PRICE,
+  });
+  const second = normalizeStripeSubscription(input, {
+    supportedProMonthlyPriceId: SUPPORTED_PRICE,
+  });
+  expectSuccess(first);
+  expectSuccess(second);
+  assertEquals(first, second, "deterministic across calls");
+  assertEquals(first.value.current_period_start, "2020-09-13T12:26:40.000Z", "fixed start");
+  assertEquals(first.value.current_period_end, "2020-09-14T12:26:40.000Z", "fixed end");
+});
+
+Deno.test("extra: price as string id + missing metadata plan_code still paid", () => {
+  const result = normalizeStripeSubscription(
+    baseSubscription({
+      metadata: {},
+      items: { data: [{ price: SUPPORTED_PRICE }] },
+    }),
+    { supportedProMonthlyPriceId: SUPPORTED_PRICE },
+  );
+  expectSuccess(result);
+  assertEquals(result.value.plan_code, "paid", "plan_code");
+});
+
+Deno.test("extra: null period timestamps allowed → null output", () => {
+  const result = normalizeStripeSubscription(
+    baseSubscription({
+      current_period_start: null,
+      current_period_end: null,
+    }),
+    { supportedProMonthlyPriceId: SUPPORTED_PRICE },
+  );
+  expectSuccess(result);
+  assertEquals(result.value.current_period_start, null, "start null");
+  assertEquals(result.value.current_period_end, null, "end null");
+});
+
+Deno.test("extra: empty supported price config → failure", () => {
+  expectFailure(
+    normalizeStripeSubscription(baseSubscription(), {
+      supportedProMonthlyPriceId: "   ",
+    }),
+    "invalid_config",
+  );
+});
+
+Deno.test("F1: multi-item both supported → invalid_items", () => {
+  expectFailure(
+    normalizeStripeSubscription(
+      baseSubscription({
+        items: {
+          data: [
+            { price: { id: SUPPORTED_PRICE } },
+            { price: { id: SUPPORTED_PRICE } },
+          ],
+        },
+      }),
+      { supportedProMonthlyPriceId: SUPPORTED_PRICE },
+    ),
+    "invalid_items",
+  );
+});
+
+Deno.test("F1: multi-item one supported one other → invalid_items", () => {
+  expectFailure(
+    normalizeStripeSubscription(
+      baseSubscription({
+        items: {
+          data: [
+            { price: { id: SUPPORTED_PRICE } },
+            { price: { id: "price_other_unsupported" } },
+          ],
+        },
+      }),
+      { supportedProMonthlyPriceId: SUPPORTED_PRICE },
+    ),
+    "invalid_items",
+  );
+});
+
+Deno.test("F1: zero items → invalid_items", () => {
+  expectFailure(
+    normalizeStripeSubscription(
+      baseSubscription({ items: { data: [] } }),
+      { supportedProMonthlyPriceId: SUPPORTED_PRICE },
+    ),
+    "invalid_items",
+  );
+});
+
+/** Just beyond ECMAScript Date TimeClip (±8.64e15 ms); still under MAX_SAFE_UNIX_SECONDS. */
+const UNIX_OUTSIDE_DATE_RANGE = 8_640_000_000_001;
+
+Deno.test("F1: unixSecondsToTimestamptz outside Date range → {ok:false} without throw", () => {
+  let threw = false;
+  let converted: ReturnType<typeof unixSecondsToTimestamptz> | undefined;
+  try {
+    converted = unixSecondsToTimestamptz(UNIX_OUTSIDE_DATE_RANGE);
+  } catch {
+    threw = true;
+  }
+  assert(threw === false, "must not throw");
+  assertEquals(converted, { ok: false }, "out-of-range Date → fail closed");
+});
+
+Deno.test("F1: current_period_start outside Date range → invalid_timestamp", () => {
+  expectFailure(
+    normalizeStripeSubscription(
+      baseSubscription({ current_period_start: UNIX_OUTSIDE_DATE_RANGE }),
+      { supportedProMonthlyPriceId: SUPPORTED_PRICE },
+    ),
+    "invalid_timestamp",
+  );
+});
+
+Deno.test("F1: trial_end outside Date range while trialing → invalid_trial_end", () => {
+  expectFailure(
+    normalizeStripeSubscription(
+      baseSubscription({
+        status: "trialing",
+        trial_end: UNIX_OUTSIDE_DATE_RANGE,
+      }),
+      { supportedProMonthlyPriceId: SUPPORTED_PRICE },
+    ),
+    "invalid_trial_end",
+  );
+});
