@@ -1,15 +1,15 @@
 # Stato operativo — Gestore Spese Quotidiane
 
-**Data snapshot:** 2026-08-08
+**Data snapshot:** 2026-08-09
 
 | Voce | Valore |
 |------|--------|
 | Branch atteso | `main` |
 | Commit applicativo di riferimento | `18a4bf91001589c75fcf0796bde7f2da7d1b1c87` — *fix(billing): harden webhook event processing* — I4.3A |
-| Ultimo commit governance/documentale consolidato | `30da6a5b6144a8f4732a0ab80113e7943c71988d` — *docs(context): record webhook race static closure* — I4.3A-T1G-bis |
+| Ultimo commit governance/documentale consolidato | `436d58752eec09ef8008feff7f3f74ebd504f7ff` — *docs(context): record subscription sync architecture findings* — I4.3BA-bis |
 | Verifica Git richiesta | All’inizio di ogni task: `git rev-parse HEAD`, `git status`, `git branch --show-current` |
 
-Nota: l’HEAD reale deve essere verificato all’inizio di ogni task con `git rev-parse HEAD`. Il commit che aggiorna `stato-operativo.md` può essere successivo all’ultimo commit registrato nel documento; questo non costituisce automaticamente una divergenza. Branch, working tree e cronologia reale del repository prevalgono sempre sui valori storici riportati nel documento. Non riportare come HEAD stabile il futuro commit del task documentale corrente (I4.3BA-bis).
+Nota: l’HEAD reale deve essere verificato all’inizio di ogni task con `git rev-parse HEAD`. Il commit che aggiorna `stato-operativo.md` può essere successivo all’ultimo commit registrato nel documento; questo non costituisce automaticamente una divergenza. Branch, working tree e cronologia reale del repository prevalgono sempre sui valori storici riportati nel documento. Non riportare come HEAD stabile il futuro commit del task documentale corrente (I4.3BB-bis).
 
 **Scopo di questo file:** dare a un altro agente (ChatGPT / Cursor) il contesto minimo per **riprendere lo sviluppo senza rieseguire fasi già fatte**. Fonte canonica dinamica del progetto (vedi `.cursor/rules/000-project-context.mdc`).
 
@@ -54,12 +54,13 @@ Stato attuale (sintesi):
 - I4.3A-T1G: CHIUSO SU EVIDENZA STATICA SUFFICIENTE (non runtime PASS). Nessun runtime race test eseguito; runtime non necessario (decisione Supervisor); classificazione CASO 3. Race R1–R8 neutralizzate rispetto agli invarianti del flusso corrente; UNIQUE DB su billing_events e tenant_billing_customers; update condizionali + readback; 23505 → re-lookup/riclassificazione; recordProcessingError non riscrive eventi completed; markBillingEventProcessed azzera processing_error; stati intermedi multi-query ritentabili; nessuno stato permanente incoerente individuato.
 - I4.3A-T1G-bis: consolidato in 30da6a5 — *docs(context): record webhook race static closure*.
 - I4.3A-T1 complessivo: CHIUSO COMPLESSIVAMENTE con evidenza mista — T1A–T1E runtime PASS; T1F e T1G chiusure statiche. NON dichiarare «I4.3A-T1 runtime PASS» nel complesso. Nessun residuo I4.3A-T1.
-- I4.3BA: completato — ricognizione architetturale zero-code su subscription sync (schema tenant_subscriptions, risoluzione tenant via tenant_billing_customers, plan vocabulary pro_monthly≠paid, rischio out-of-order concreto, classificazione schema M2). Nessuna modifica repository; nessun runtime Stripe/Supabase; nessuna migration. I4.3B resta NON IMPLEMENTATO.
-- Governance: GOVERNANCE-5-bis in 063cbf7; GOVERNANCE-6-bis in 253affa; I4.3A-bis in 99dc1f6; GOVERNANCE-7 consolidato in 8ff556d; GOVERNANCE-7-bis consolidato in a380ce9; I4.3A-D1-bis consolidato in 751852b; I4.3A-T1-bis consolidato in b4da681; I4.3A-T1C-bis consolidato in 2c0c060; I4.3A-T1D-bis consolidato in 87d410c; I4.3A-T1E-bis consolidato in 8615cda; I4.3A-T1F-bis consolidato in d4a2889; I4.3A-T1G-bis consolidato in 30da6a5.
-- Mirror: Git canonico, Drive = consultazione. Il mirror pre-task non contiene ancora I4.3BA-bis (differenza attesa). Commit/push restano dell’utente. Dopo conferma del commit, Cursor esegue dry-run poi apply (obbligatoria dopo ogni -bis). Config locale non versionata (AI_CONTEXT_MIRROR_DIR o .git/ai-context-mirror-path). Nessun --delete, nessuna sync inversa. Verifica byte-per-byte. Prima sync controllata completata su 15 file. Propagazione cloud = Google Drive Desktop. ChatGPT rilegge il mirror a ogni ripresa.
-- ANCORA MANCANTE: sync subscription → tenant_subscriptions + snapshot tenants (I4.3B, NON IMPLEMENTATO; classificazione schema M2; migration non ancora approvata; decisioni D3/D4/D5/D7 aperte, D5 bloccante); invoice fuori scope I4.3B; billing portal; UI checkout reale; feature gating piani; tenant switcher/inviti. Drift storico di production-readiness.md e billing-data-model.md ancora presente.
+- I4.3BA: completato — ricognizione architetturale zero-code su subscription sync; classificazione schema M2. I4.3BA-bis consolidato in 436d587 — *docs(context): record subscription sync architecture findings*; sync repository → mirror post-commit completata (dry-run OK, apply OK, verifica byte/hash OK su 15 file; cloud mirror verificato da ChatGPT; nessuna sync inversa; nessun --delete).
+- I4.3BB / I4.3BB-R / F1–F3: completati ZERO-CODE / ZERO-DIFF. Strategia anti-stale: provider re-fetch + admission watermark Event + CAS/readback/re-fetch (**K2**). W_sub = (last_applied_provider_event_created_at, last_applied_provider_event_id) — admission watermark + CAS token, NON versione Stripe né clock. processed_at = unico commit marker Event; W_sub = prova effetto per-subscription (partial retry F1). Race snapshot cross-subscription (F2) → design revision-on-snapshot **superseded** da F3. Design tecnico approvato (**R2** / A2): tenants.billing_state_revision = generazione locale monotona del SET tenant_subscriptions; bump atomico via trigger DB su INSERT/UPDATE/DELETE (G1); snapshot CAS H2 NON incrementa revision; double-read non obbligatorio; billing_snapshot_revision NON richiesta. Forma M2 architetturale candidata approvata (NON implementata). SECURITY DEFINER del trigger NON congelato. Guardrail: Snapshot(S) deterministica sui dati catturati/protetti. D4: predicate/readback fail-closed necessari; is_demo non scritto dal webhook. Decisioni aperte: D3/D4/D5/D7/unpaid (D5 bloccante). I4.3B resta NON IMPLEMENTATO.
+- Governance: GOVERNANCE-5-bis in 063cbf7; GOVERNANCE-6-bis in 253affa; I4.3A-bis in 99dc1f6; GOVERNANCE-7 consolidato in 8ff556d; GOVERNANCE-7-bis consolidato in a380ce9; I4.3A-D1-bis consolidato in 751852b; I4.3A-T1-bis consolidato in b4da681; I4.3A-T1C-bis consolidato in 2c0c060; I4.3A-T1D-bis consolidato in 87d410c; I4.3A-T1E-bis consolidato in 8615cda; I4.3A-T1F-bis consolidato in d4a2889; I4.3A-T1G-bis consolidato in 30da6a5; I4.3BA-bis consolidato in 436d587.
+- Mirror: Git canonico, Drive = consultazione. Il mirror pre-task non contiene ancora I4.3BB-bis (differenza attesa). Commit/push restano dell’utente. Dopo conferma del commit, Cursor esegue dry-run poi apply (obbligatoria dopo ogni -bis). Config locale non versionata (AI_CONTEXT_MIRROR_DIR o .git/ai-context-mirror-path). Nessun --delete, nessuna sync inversa. Verifica byte-per-byte. Prima sync controllata completata su 15 file. Propagazione cloud = Google Drive Desktop. ChatGPT rilegge il mirror a ogni ripresa.
+- ANCORA MANCANTE: sync subscription → tenant_subscriptions + snapshot tenants (I4.3B, NON IMPLEMENTATO; forma M2 architetturale candidata approvata ma migration/trigger/mapper/wiring assenti; decisioni D3/D4/D5/D7/unpaid aperte, D5 bloccante); invoice fuori scope I4.3B; billing portal; UI checkout reale; feature gating piani; tenant switcher/inviti. Drift storico di production-readiness.md e billing-data-model.md ancora presente.
 
-Prossimo punto di ripresa: I4.3BB — ricognizione/decisione architetturale zero-code (freshness/out-of-order, watermark vs alternative, multiple subscriptions / subscription corrente, D3/D4/D5/D7). I4.3B resta NON IMPLEMENTATO. NON avviare I4.3B1 mapping puro. I4.3A-T1 = CHIUSO COMPLESSIVAMENTE. I4.3A-D1 concluso. I4.3BA chiuso.
+Prossimo punto di ripresa: I4.3BC — decisione prodotto zero-code pre-implementazione (chiudere D3/D4/D5/D7/unpaid, priorità D5; verificare determinismo Snapshot(S)). I4.3B resta NON IMPLEMENTATO. NON avviare migration M2 / I4.3B1 mapper / webhook wiring. I4.3A-T1 = CHIUSO COMPLESSIVAMENTE. I4.3A-D1 concluso. I4.3BA / I4.3BB / I4.3BB-R / F1–F3 chiusi.
 
 Chiedimi conferma prima di: deploy Edge Functions, apply migration produzione, db push, live Stripe keys, cambi RLS su expenses, test runtime Stripe/webhook.
 ```
@@ -127,6 +128,7 @@ Chiedimi conferma prima di: deploy Edge Functions, apply migration produzione, d
 | I4.3A-T1E-bis | Consolidato in `8615cda` — *docs(context): record incomplete webhook retry runtime pass* |
 | I4.3A-T1F-bis | Consolidato in `d4a2889` — *docs(context): record customer tenant conflict static closure* |
 | I4.3A-T1G-bis | Consolidato in `30da6a5` — *docs(context): record webhook race static closure* |
+| I4.3BA-bis | Consolidato in `436d587` — *docs(context): record subscription sync architecture findings* |
 | Commit storici governance | `14a8575` (GOVERNANCE-4-bis); `1e83f19` (fonti canoniche) |
 | Commit applicativo corrente | `18a4bf9` — *fix(billing): harden webhook event processing* (I4.3A, include fix review F1–F4) |
 | Commit applicativo precedente | `1f633fcc` (I4.2) |
@@ -135,7 +137,7 @@ Chiedimi conferma prima di: deploy Edge Functions, apply migration produzione, d
 | `scripts/sync-ai-context-mirror.sh` | Introdotto in `8ff556d` (mode Git `100755`) |
 | `README.md` | Collegamento a `docs/stato-operativo.md` **versionato** in `1e83f19` |
 
-L’HEAD reale e l’allineamento con `origin/main` vanno **sempre verificati** all’inizio di ogni task. Durante I4.3A-D1 l’HEAD locale è rimasto `a380ce9` (nessuna modifica locale; nessun commit applicativo). I4.3A-D1-bis consolidato in `751852b`. I4.3A-T1-bis consolidato in `b4da681`. I4.3A-T1C-bis consolidato in `2c0c060`. I4.3A-T1D-bis consolidato in `87d410c`. I4.3A-T1E-bis consolidato in `8615cda`. I4.3A-T1F-bis consolidato in `d4a2889`. I4.3A-T1G-bis consolidato in `30da6a5`. La freschezza server di `origin/main` **non** è stata aggiornata con `git fetch` (né in D1 né nei test T1A–T1G né in I4.3BA). **I4.3A-D1** (deploy amministrativo `stripe-webhook`) è concluso. **I4.3A-T1A**–**T1E** = runtime PASS; **I4.3A-T1F** e **I4.3A-T1G** = **CHIUSO SU EVIDENZA STATICA SUFFICIENTE** (non runtime PASS; CASO 3). **I4.3A-T1** = **CHIUSO COMPLESSIVAMENTE** (evidenza mista; **non** «runtime PASS» nel complesso; nessun residuo). **I4.3BA** = ricognizione architetturale zero-code **completata** (classificazione schema **M2**; migration non ancora approvata). **I4.3B** resta **NON IMPLEMENTATO**. Nessuna sincronizzazione subscription, nessun aggiornamento dello snapshot `tenants`. Prossimo punto: **I4.3BB** (zero-code).
+L’HEAD reale e l’allineamento con `origin/main` vanno **sempre verificati** all’inizio di ogni task. Durante I4.3A-D1 l’HEAD locale è rimasto `a380ce9` (nessuna modifica locale; nessun commit applicativo). I4.3A-D1-bis consolidato in `751852b`. I4.3A-T1-bis consolidato in `b4da681`. I4.3A-T1C-bis consolidato in `2c0c060`. I4.3A-T1D-bis consolidato in `87d410c`. I4.3A-T1E-bis consolidato in `8615cda`. I4.3A-T1F-bis consolidato in `d4a2889`. I4.3A-T1G-bis consolidato in `30da6a5`. I4.3BA-bis consolidato in `436d587` (sync mirror post-commit: dry-run OK, apply OK, verifica byte/hash OK su 15 file; cloud mirror verificato da ChatGPT; nessuna sync inversa; nessun `--delete`). La freschezza server di `origin/main` **non** è stata aggiornata con `git fetch` (né in D1 né nei test T1A–T1G né in I4.3BA/I4.3BB). **I4.3A-D1** (deploy amministrativo `stripe-webhook`) è concluso. **I4.3A-T1A**–**T1E** = runtime PASS; **I4.3A-T1F** e **I4.3A-T1G** = **CHIUSO SU EVIDENZA STATICA SUFFICIENTE** (non runtime PASS; CASO 3). **I4.3A-T1** = **CHIUSO COMPLESSIVAMENTE** (evidenza mista; **non** «runtime PASS» nel complesso; nessun residuo). **I4.3BA** / **I4.3BB** / **I4.3BB-R** / **F1–F3** = ricognizioni/decisioni architetturali zero-code **completate** (forma M2 architetturale candidata approvata; migration **non** implementata). **I4.3B** resta **NON IMPLEMENTATO**. Nessuna sincronizzazione subscription, nessun aggiornamento dello snapshot `tenants`. Prossimo punto: **I4.3BC** (decisione prodotto zero-code).
 
 ---
 
@@ -162,7 +164,7 @@ Project ref Supabase produzione (da sessioni operative): `dormvfiwgzyzslxybetb`.
 | Area | Stato |
 |------|--------|
 | Project Rules Cursor (`.cursor/rules/000`…`050`) | Completate |
-| Governance operativa (GOVERNANCE-1/2/3-bis/4/`1e83f19`/4-bis/`14a8575`/5-bis/`063cbf7`/6-bis/`253affa`/I4.3A-bis/`99dc1f6`/7/`8ff556d`/7-bis/`a380ce9`/I4.3A-D1-bis/`751852b`/I4.3A-T1-bis/`b4da681`/I4.3A-T1C-bis/`2c0c060`/I4.3A-T1D-bis/`87d410c`/I4.3A-T1E-bis/`8615cda`/I4.3A-T1F-bis/`d4a2889`/I4.3A-T1G-bis/`30da6a5`) | Modello Supervisor/Executor; numerazione prompt e workflow `-bis`; fonti canoniche in `1e83f19`; GOVERNANCE-4-bis in `14a8575`; GOVERNANCE-5-bis in `063cbf7`; GOVERNANCE-6-bis in `253affa`; I4.3A-bis in `99dc1f6`; GOVERNANCE-7 in `8ff556d`; GOVERNANCE-7-bis in `a380ce9`; I4.3A-D1-bis in `751852b`; I4.3A-T1-bis in `b4da681`; I4.3A-T1C-bis in `2c0c060`; I4.3A-T1D-bis in `87d410c`; I4.3A-T1E-bis in `8615cda`; I4.3A-T1F-bis in `d4a2889`; I4.3A-T1G-bis in `30da6a5` |
+| Governance operativa (GOVERNANCE-1/2/3-bis/4/`1e83f19`/4-bis/`14a8575`/5-bis/`063cbf7`/6-bis/`253affa`/I4.3A-bis/`99dc1f6`/7/`8ff556d`/7-bis/`a380ce9`/I4.3A-D1-bis/`751852b`/I4.3A-T1-bis/`b4da681`/I4.3A-T1C-bis/`2c0c060`/I4.3A-T1D-bis/`87d410c`/I4.3A-T1E-bis/`8615cda`/I4.3A-T1F-bis/`d4a2889`/I4.3A-T1G-bis/`30da6a5`/I4.3BA-bis/`436d587`) | Modello Supervisor/Executor; numerazione prompt e workflow `-bis`; fonti canoniche in `1e83f19`; GOVERNANCE-4-bis in `14a8575`; GOVERNANCE-5-bis in `063cbf7`; GOVERNANCE-6-bis in `253affa`; I4.3A-bis in `99dc1f6`; GOVERNANCE-7 in `8ff556d`; GOVERNANCE-7-bis in `a380ce9`; I4.3A-D1-bis in `751852b`; I4.3A-T1-bis in `b4da681`; I4.3A-T1C-bis in `2c0c060`; I4.3A-T1D-bis in `87d410c`; I4.3A-T1E-bis in `8615cda`; I4.3A-T1F-bis in `d4a2889`; I4.3A-T1G-bis in `30da6a5`; I4.3BA-bis in `436d587` |
 | **GOVERNANCE-7 — sync controllata mirror** | Commit `8ff556d`: script `scripts/sync-ai-context-mirror.sh`; delega post-commit a Cursor (dopo conferma utente); dry-run → apply; apply solo con working tree pulita; perimetro Git tracciato (`docs/**/*.md`, `.cursor/rules/**/*.mdc`); privacy-safe (no percorsi personali); no `--delete` / no sync inversa; verifica byte-per-byte; **prima sync controllata completata su 15 file** |
 | **GOVERNANCE-7-bis** | Commit `a380ce9` — stato operativo aggiornato dopo GOVERNANCE-7 / sync controllata mirror |
 | **I4.3A-bis** | Commit `99dc1f6` — stato operativo aggiornato dopo hardening billing I4.3A |
@@ -200,26 +202,33 @@ Project ref Supabase produzione (da sessioni operative): `dormvfiwgzyzslxybetb`.
 | **I4.3A-T1G — race condition webhook** | **CHIUSO SU EVIDENZA STATICA SUFFICIENTE** (Supervisor). **Non** runtime PASS: nessun runtime race test eseguito; runtime non necessario (decisione Supervisor); classificazione **CASO 3**. Conclusioni T1GA: una sola `billing_events` per provider/`provider_event_id` garantita dal DB (UNIQUE); `tenant_id` non rimappato dal codice corrente; customer Stripe non rimappabile tra tenant grazie a DB + codice; un customer per tenant/provider protetto dal DB; `processed_at` valorizzato dal codice solo dopo gli effetti applicativi richiesti; failure concorrente non può riscrivere `processing_error` dopo `processed_at` (`recordProcessingError` opera con `processed_at IS NULL` + readback); `markBillingEventProcessed` imposta `processed_at` e azzera `processing_error`; retry converge grazie a idempotenza, conditional update e readback; race possono produrre risposte HTTP temporaneamente differenti; possono esistere stati parziali multi-query ritentabili; nessuno stato permanente incoerente individuato. Un doppio resend non dimostrerebbe vera concorrenza; un runtime race affidabile richiederebbe harness/timing/instrumentation artificiale con valore probatorio insufficiente. Guardrail architetturale residuo (non bug corrente): I2 tenant binding immutabile, I5 `processed_at` come commit marker, I6 protezione da failure concorrente dipendono dal codice privilegiato/server-side e non da CHECK/constraint DB completi — da preservare nelle evoluzioni server-side. I4.3B non avviato |
 | **I4.3A-T1G-bis** | Commit `30da6a5` — *docs(context): record webhook race static closure* |
 | **I4.3A-T1 — chiusura complessiva** | **CHIUSO COMPLESSIVAMENTE** con evidenza mista: T1A–T1E = runtime PASS; T1F = chiusura statica; T1G = chiusura statica. **Non** dichiarare «I4.3A-T1 runtime PASS» nel complesso. Nessun residuo I4.3A-T1 |
-| **I4.3BA — ricognizione architetturale subscription sync** | **Completata** (zero-code). Nessuna modifica repository; nessun runtime Stripe/Supabase; nessuna migration; nessun deploy. Conclusioni Supervisor approvate: eventi `customer.subscription.*` / `invoice.*` allowlist persistiti in `billing_events` ma deferred (no `tenant_id`, `processed_at` NULL, no handler business, no `tenant_subscriptions`/snapshot; HTTP 200 deferred); `checkout.session.completed` resta ramo I4.3A. Schema `tenant_subscriptions`: UNIQUE(`provider`,`provider_subscription_id`); **nessun** UNIQUE(`tenant_id`,`provider`) → più subscription per tenant/provider ammesse; status dettagliati Stripe; snapshot `tenants` vocabolario più ristretto; **nessun** watermark/`last_provider_event_*`; `updated_at` senza trigger dedicato. Risoluzione tenant primaria: `subscription.customer` → `provider_customer_id` → `tenant_billing_customers` → `tenant_id`; metadata `tenant_id` solo cross-check futuro, non trust boundary autonomo; mapping assente/incoerente/conflict → fail-closed. Plan vocabulary: `pro_monthly` = codice prodotto/prezzo checkout; `paid` = tier commerciale interno; non intercambiabili; non scrivere `pro_monthly` nei campi DB a vocabolario interno. Rischio **out-of-order / stale overwrite concreto**: idempotenza `billing_events` deduplica lo stesso `provider_event_id` ma **non** ordina eventi distinti. Classificazione schema **M2** (quasi sufficiente; serve hardening additivo freshness/order **prima** del wiring completo) — forma migration **non** ancora approvata; proposta watermark `last_provider_event_id`/`last_provider_event_created_at` = possibile soluzione da riesaminare, non decisione consolidata. Aperti: semantica `event.created`; equal-timestamp; `provider_event_id` **non** è ordinamento cronologico; alternativa provider re-fetch; strategie DB/code diverse. **D5 bloccante**: regola subscription corrente / derivazione snapshot quando esistono più righe per tenant/provider. Watermark per-subscription ≠ garanzia snapshot cross-subscription. Decisioni aperte pre-wiring: **D3** (piano dopo canceled/incomplete_expired), **D4** (policy demo/internal), **D5** (subscription corrente — bloccante), **D7** (semantica trialing). Demo/internal: schema non impedisce overwrite; futuro codice fail-closed / nessuna auto-promozione. `processed_at` resta commit marker I4.3A. Invoice fuori scope primo I4.3B. Concorrenza: riusare pattern I4.3A (conditional update, readback, 23505, ownership immutabile). I4.3B **NON IMPLEMENTATO** |
+| **I4.3BA — ricognizione architetturale subscription sync** | **Completata** (zero-code). Nessuna modifica repository; nessun runtime Stripe/Supabase; nessuna migration; nessun deploy. Conclusioni Supervisor approvate: eventi `customer.subscription.*` / `invoice.*` allowlist persistiti in `billing_events` ma deferred (no `tenant_id`, `processed_at` NULL, no handler business, no `tenant_subscriptions`/snapshot; HTTP 200 deferred); `checkout.session.completed` resta ramo I4.3A. Schema `tenant_subscriptions`: UNIQUE(`provider`,`provider_subscription_id`); **nessun** UNIQUE(`tenant_id`,`provider`) → più subscription per tenant/provider ammesse; status dettagliati Stripe; snapshot `tenants` vocabolario più ristretto; **nessun** watermark/`last_provider_event_*` nello schema attuale; `updated_at` senza trigger dedicato. Risoluzione tenant primaria: `subscription.customer` → `provider_customer_id` → `tenant_billing_customers` → `tenant_id`; metadata `tenant_id` solo cross-check futuro, non trust boundary autonomo; mapping assente/incoerente/conflict → fail-closed. Plan vocabulary: `pro_monthly` = codice prodotto/prezzo checkout; `paid` = tier commerciale interno; non intercambiabili; non scrivere `pro_monthly` nei campi DB a vocabolario interno. Rischio **out-of-order / stale overwrite concreto**: idempotenza `billing_events` deduplica lo stesso `provider_event_id` ma **non** ordina eventi distinti. Classificazione schema **M2** (quasi sufficiente; serve hardening additivo freshness/order **prima** del wiring completo). La forma migration watermark iniziale proposta in BA è stata **superseded** dalle decisioni I4.3BB/R/F1–F3 (vedi sotto). **D5 bloccante**. `processed_at` resta commit marker I4.3A. Invoice fuori scope primo I4.3B. I4.3B **NON IMPLEMENTATO** |
+| **I4.3BA-bis** | Commit `436d587` — *docs(context): record subscription sync architecture findings*. Sync repository → mirror post-commit completata: dry-run OK; apply OK; verifica byte/hash OK su **15 file**; cloud mirror successivamente verificato da ChatGPT; nessuna sync inversa; nessun `--delete`; nessuna modifica repository durante la sync |
+| **I4.3BB — ricognizione/decisione anti-stale** | **Completata** (ZERO-CODE / ZERO-DIFF). Nessuna modifica repository; nessuna migration; nessun runtime Stripe/Supabase; nessun deploy. Conclusioni: (1) Event payload e provider state sono concetti distinti; (2) `event.created` = timestamp dell’Event, utilizzabile come admission watermark per-subscription, **NON** versione nativa dello snapshot Subscription re-fetched; (3) `event.id` = identificatore univoco, **NON** clock cronologico, **NON** ordinare lessicograficamente per freshness; (4) strategia anti-stale scelta: **provider re-fetch + admission watermark + CAS/readback/re-fetch**; (5) il solo provider re-fetch **non** elimina le race concorrenti; (6) Event stale non deve sovrascrivere stato più recente; (7) Provider API temporaneamente indisponibile → nessun fallback al payload webhook; failure ritentabile; `processed_at` resta NULL; HTTP candidato 502; `processing_error` sanitizzato; (8) `customer.subscription.deleted`: retrieve post-cancel supportato; non è più capacità fondamentale da validare prima del design; restano failure transient/ownership/CAS. Decisioni prodotto D3/D4/D5/D7/unpaid restano aperte |
+| **I4.3BB-R — correzione K2** | **Completata** (ZERO-CODE). Classificazione **K2**: provider re-fetch + Event watermark è corretto **solo** con CAS sull’osservazione W0, conditional update, readback, nuovo provider re-fetch dopo CAS failure se l’Event resta candidato, retry locale limitato, fail/retry se contention non converge. **W_sub** = (`last_applied_provider_event_created_at`, `last_applied_provider_event_id`). Semantica: `last_applied_provider_event_created_at` = admission watermark dell’Event applicato (**NON** versione/freshness dello stato Stripe re-fetched); `last_applied_provider_event_id` = identificatore dell’ultimo Event applicato e CAS token locale (**NON** clock cronologico). Equal timestamp: stesso ts + stesso event id → distinguere billing_event completed da partial retry; stesso ts + event id diverso → re-fetch provider, CAS sulla coppia W osservata, CAS failure → readback, non riusare snapshot provider vecchio, nuovo re-fetch se ancora candidato. **NON** registrare `event.id` come tie-break cronologico |
+| **I4.3BB-R-F1 — partial retry** | **Completata** (ZERO-CODE). Invariante: `billing_events.processed_at` = **UNICO** commit marker dell’intero processing applicativo dell’Event; W_sub = prova esclusivamente dello stato dell’effetto per-subscription. Quindi W_sub == Event corrente **AND** `processed_at IS NULL` **NON** significa completed: significa subscription effect già applicato, downstream effects ancora da completare. Retry: non riscrivere ciecamente la subscription; rileggere/riclassificare W_sub; recompute snapshot dal set locale corrente; completare effetti downstream; solo dopo successo impostare `processed_at`. Se snapshot o mark falliscono: `processed_at` resta NULL; failure ritentabile; HTTP candidato 502. **ROW_ABSENT** ≠ **ROW_PRESENT con W NULL/NULL**. ROW_ABSENT: provider re-fetch → INSERT `tenant_subscriptions`; UNIQUE(`provider`,`provider_subscription_id`) gestisce race; **23505 non è automaticamente fatal** → re-lookup, tenant ownership check, riclassificazione W, eventuale CAS/re-fetch. Se re-lookup mostra tenant diverso: **FAIL-CLOSED**; nessun remap `tenant_id`; `processed_at` NULL; `processing_error` sanitizzato; HTTP candidato 502 |
+| **I4.3BB-R-F2 — race snapshot cross-subscription** | **Completata** (ZERO-CODE). Il semplice «read tutte `tenant_subscriptions` → derive Snapshot(S) → UPDATE `tenants`» è **INSUFFICIENTE** sotto concorrenza: due handler su subscription diverse possono leggere generazioni differenti del set e invertire l’ordine delle snapshot write, lasciando uno snapshot tenant stale. Il CAS W_sub protegge la singola subscription ma **NON** lo snapshot aggregato cross-subscription. F2 individuò correttamente la necessità di una revision tenant-side; la **prima proposta F2** (revision incrementata dallo snapshot writer) era **INCOMPLETA** ed è **superseded** da F3. Non usare F2 come design corrente della revision |
+| **I4.3BB-R-F3 — design tecnico approvato (R2 / A2)** | **Completata** (ZERO-CODE). Classificazione finale **R2**; **M2** resta classificazione schema. Semantica approvata: `tenants.billing_state_revision` = generazione **LOCALE** monotona del SET `tenant_subscriptions` del tenant — **NON** event watermark, **NON** Stripe timestamp, **NON** snapshot-write counter, **NON** provider ordering token. La revision deve avanzare **atomicamente** con le mutation committed di `tenant_subscriptions`. Soluzione architetturale approvata **G1**: trigger DB locale + K2 mantenuto nella Edge Function (accoppiamento atomico mutation+bump nella stessa transazione PostgreSQL; preferito a RPC ampia). **Regola bump conservativa**: ogni INSERT/UPDATE/DELETE committed su `tenant_subscriptions` fa avanzare `billing_state_revision` del tenant interessato (D3/D5/D7 non congelate → non lista fragile di colonne business-relevant; UPDATE no-op può produrre bump extra: inefficiente ma corretto). Ownership `tenant_id` immutabile/fail-closed; trigger futuro da progettare correttamente rispetto a OLD/NEW se mutazione `tenant_id` fosse tecnicamente possibile. **Snapshot CAS H2**: lo snapshot write **NON** incrementa `billing_state_revision`. Flusso: (1) read revision = expected; (2) read `tenant_subscriptions` del tenant; (3) derive Snapshot(S); (4) UPDATE `tenants` snapshot WHERE tenant id AND `billing_state_revision = expected` (+ predicate D4); (5) CAS 0 row → readback/recompute/retry limitato; (6) solo dopo snapshot CAS accettato → mark `billing_event` processed. Double-read della revision: **non obbligatorio** (eventuale fail-fast; CAS finale = correctness boundary). **NON** introdurre ora `billing_snapshot_revision`. Forma M2 architetturale candidata (NON implementata): colonne W_sub su `tenant_subscriptions` (bigint NULL + text NULL); `tenants.billing_state_revision bigint NOT NULL DEFAULT 0`; funzione trigger locale + trigger sulle mutation. Migration futura additiva da `007_*`; nessun backfill remoto automatico; righe esistenti: revision default 0; W_sub nullable. **SECURITY DEFINER NON congelato** come requisito: security mode da verificare in migration; preferire least privilege; DEFINER solo se tecnicamente necessario (search_path fisso, privilegi minimi, review RLS). **Guardrail determinismo**: H2 presuppone Snapshot(S) deterministica rispetto agli input DB catturati/protetti; non dipendere da ordering Event, `event.id`, wall-clock, input esterno non versionato. **D4 technical guard**: `billing_state_revision` non protegge automaticamente `is_demo` / `plan_code` internal/demo / altri flag esterni al set subscription → snapshot CAS deve includere predicate/readback fail-closed; nessuna seconda revision per D4; `is_demo` **NON** scritto automaticamente dal billing webhook. I4.3B **NON IMPLEMENTATO** |
 
 ### In corso / incompleto
 
 | Voce | Dettaglio |
 |------|-----------|
 | **I4.3A-T1 (test post-deploy)** | **CHIUSO COMPLESSIVAMENTE** — evidenza mista: T1A–T1E runtime PASS; T1F e T1G **CHIUSO SU EVIDENZA STATICA SUFFICIENTE** (non runtime PASS). Nessun residuo I4.3A-T1. **Non** dichiarare «I4.3A-T1 runtime PASS» nel complesso |
-| **I4.3BA** | **Completata** — ricognizione architetturale zero-code; classificazione **M2**; I4.3B **NON IMPLEMENTATO** |
-| **I4.3BB (prossimo)** | Ricognizione/decisione architetturale **zero-code** su freshness/out-of-order, forma eventuale watermark vs alternative (re-fetch, equal-timestamp, ordering), multiple subscriptions / subscription corrente (**D5 bloccante**), derivazione snapshot tenant, decisioni **D3/D4/D5/D7**. **NON** avviare I4.3B1 mapping puro. Solo dopo I4.3BB il Supervisor decide se confermare migration M2, forma esatta, mapping e primo task implementativo |
-| **I4.3B (separato)** | Sync `customer.subscription.*` → `tenant_subscriptions` + snapshot `tenants` — **NON IMPLEMENTATO**. Schema classificato **M2** (hardening additivo freshness/order richiesto prima del wiring completo); forma migration **non** ancora approvata/progettata definitivamente. Decisioni aperte: D3/D4/D5/D7 (D5 bloccante). Invoice fuori scope del primo I4.3B |
-| **Sync subscription** | Eventi `customer.subscription.*` / invoice: **solo persistiti** in `billing_events` con `processed_at` nullo; **non** risolvono `tenant_id`; **non** eseguono handler business; **non** aggiornano `tenant_subscriptions` né lo snapshot su `tenants`; rispondono HTTP 200 deferred. Rischio stale/out-of-order **concreto** (dedup stesso `provider_event_id` ≠ ordinamento eventi distinti). Watermark per-subscription e selezione snapshot cross-subscription = problemi collegati ma distinti |
+| **I4.3BA / I4.3BA-bis** | **Completate** — ricognizione + consolidamento documentale in `436d587`; sync mirror post-commit OK |
+| **I4.3BB / I4.3BB-R / F1–F3** | **Completate** (ZERO-CODE) — architettura anti-stale K2 + snapshot R2/A2 approvata Supervisor; forma M2 candidata architetturale; **nessuna** implementazione |
+| **I4.3BC (prossimo)** | Decisione prodotto **zero-code** pre-implementazione: chiudere **D3 / D4 / D5 / D7 / unpaid** (priorità **D5** bloccante); verificare che le policy rispettino il guardrail Snapshot(S) deterministica. **NON** avviare migration M2, I4.3B1 mapper, webhook wiring, deploy o runtime test |
+| **I4.3B (separato)** | Sync `customer.subscription.*` → `tenant_subscriptions` + snapshot `tenants` — **NON IMPLEMENTATO**. Non esiste ancora: migration M2, trigger, mapper, subscription persistence, snapshot derivation, wiring `customer.subscription.*`, runtime test I4.3B, deploy I4.3B. Forma M2 architetturale candidata approvata (W_sub + `billing_state_revision` + trigger mutation→revision); SQL/migration **non** creati. Decisioni aperte: D3/D4/D5/D7/unpaid (**D5 bloccante**). Invoice fuori scope del primo I4.3B |
+| **Sync subscription** | Eventi `customer.subscription.*` / invoice: **solo persistiti** in `billing_events` con `processed_at` nullo; **non** risolvono `tenant_id`; **non** eseguono handler business; **non** aggiornano `tenant_subscriptions` né lo snapshot su `tenants`; rispondono HTTP 200 deferred. Architettura anti-stale/snapshot progettata (K2+R2) ma **non** wired. Watermark per-subscription (W_sub) e snapshot CAS cross-subscription (`billing_state_revision`) = problemi collegati ma distinti |
 | **Billing portal** | `create-billing-portal-session` → ancora `501 Not Implemented` |
 | **Frontend checkout** | UI mostra “Gestione abbonamento in arrivo”; **non** invoca l’Edge Function |
 | **Feature gating** | Non implementato |
 | **Tenant switcher / inviti** | Non implementati da UI |
 | **Smoke test post-H4** | Checklist produzione da chiudere manualmente se non già fatto |
 | **Staging dedicato** | Spesso assente: lavoro fatto su produzione con cautela |
-| **Docs drift** | Drift storico **ancora presente e non corretto** in questo task: `docs/production-readiness.md` e `docs/billing-data-model.md` (§16 descrive ancora I4.0 “senza mutazioni DB”; I4.1/I4.2/I4.3A le hanno introdotte/estese). Fuori scope di I4.3BA-bis — allineare in fase documentale dedicata |
+| **Docs drift** | Drift storico **ancora presente e non corretto** in questo task: `docs/production-readiness.md` e `docs/billing-data-model.md` (§16 descrive ancora I4.0 “senza mutazioni DB”; I4.1/I4.2/I4.3A le hanno introdotte/estese). Fuori scope di I4.3BB-bis — allineare in fase documentale dedicata |
 | **Prerequisiti / limiti operativi mirror** | Config locale necessaria per ogni clone/macchina; apply bloccato da qualsiasi modifica o file untracked (fail-closed); Google Drive Desktop può richiedere tempo per propagare al cloud; lo script è versionato nel repo ma **non** fa parte del perimetro mirror docs/rules |
-| **Debito operativo `processed_at=NULL`** | Oggi significa sia deferred intenzionale sia evento incompleto — da affrontare separatamente; non in I4.3BA-bis |
+| **Debito operativo `processed_at=NULL`** | Oggi significa sia deferred intenzionale sia evento incompleto — da affrontare separatamente; non in I4.3BB-bis |
 
 ### Esplicitamente fuori scope finché non richiesto
 
@@ -304,6 +313,12 @@ Ordine concettuale seguito nelle chat (May–Aug 2026):
 36. **I4.3A-T1G** — race condition webhook **CHIUSO SU EVIDENZA STATICA SUFFICIENTE** (non runtime PASS; CASO 3; nessun runtime race eseguito; runtime non necessario); I4.3A-T1 **CHIUSO COMPLESSIVAMENTE** (evidenza mista); I4.3B non avviato
 37. **I4.3A-T1G-bis** — aggiornamento stato operativo dopo T1G, consolidato in `30da6a5`
 38. **I4.3BA** — ricognizione architetturale zero-code su subscription sync: stato deferred eventi; schema `tenant_subscriptions`; risoluzione tenant; plan vocabulary; rischio out-of-order concreto; classificazione **M2**; decisioni D3/D4/D5/D7 aperte (D5 bloccante). Nessuna modifica repository; I4.3B **NON IMPLEMENTATO**
+39. **I4.3BA-bis** — aggiornamento stato operativo dopo I4.3BA, consolidato in `436d587` — *docs(context): record subscription sync architecture findings*; sync mirror post-commit (dry-run/apply/byte-hash OK su 15 file; cloud mirror verificato da ChatGPT)
+40. **I4.3BB** — ricognizione/decisione anti-stale ZERO-CODE: Event payload ≠ provider state; `event.created` admission watermark; `event.id` non clock; strategia provider re-fetch + watermark + CAS; no fallback payload su API down; deleted retrieve supportato
+41. **I4.3BB-R** — correzione **K2** (CAS/readback/re-fetch obbligatori su W_sub); equal-timestamp senza tie-break cronologico su `event.id`
+42. **I4.3BB-R-F1** — partial retry: `processed_at` unico commit marker Event; W_sub prova effetto per-subscription; ROW_ABSENT/INSERT/23505/ownership fail-closed
+43. **I4.3BB-R-F2** — race snapshot cross-subscription individuata; proposta revision-on-snapshot **INCOMPLETA** (superseded da F3)
+44. **I4.3BB-R-F3** — design tecnico approvato **R2/A2**: `billing_state_revision` monotona locale; trigger G1 mutation→revision obbligatorio; snapshot CAS H2 senza bump; forma M2 candidata; SECURITY DEFINER non congelato; determinismo Snapshot(S); D4 technical predicate
 
 Stile operativo ricorrente nei prompt: **micro-fasi**, “modifica SOLO questi file”, no deploy/migration senza conferma, Stripe solo `sk_test_`, nessun secret in repo.
 
@@ -334,7 +349,7 @@ File locali tipo `.env.edge.production.local` / `supabase/functions/.env*.local`
 
 ## 6. Prossimi passi consigliati
 
-### Punto di ripresa: I4.3BB (ricognizione/decisione zero-code)
+### Punto di ripresa: I4.3BC (decisione prodotto zero-code)
 
 **I4.3A applicativo:** completato e consolidato in `18a4bf9`.
 
@@ -342,29 +357,35 @@ File locali tipo `.env.edge.production.local` / `supabase/functions/.env*.local`
 
 **I4.3A-T1 complessivo:** **CHIUSO COMPLESSIVAMENTE** con evidenza mista. T1A–T1E = runtime PASS; T1F = chiusura statica; T1G = chiusura statica. **Non** dichiarare «I4.3A-T1 runtime PASS» nel complesso. **Nessun residuo** I4.3A-T1. I4.3A-T1G-bis consolidato in `30da6a5` — *docs(context): record webhook race static closure*.
 
-**I4.3BA:** **completata** — ricognizione architetturale **zero-code** (nessuna modifica repository; nessun runtime Stripe/Supabase; nessuna migration; nessun deploy). Sintesi conclusioni Supervisor:
+**I4.3BA:** **completata** — ricognizione architetturale **zero-code**. I4.3BA-bis consolidato in `436d587` — *docs(context): record subscription sync architecture findings*; sync mirror post-commit: dry-run OK, apply OK, verifica byte/hash OK su 15 file; cloud mirror verificato da ChatGPT; nessuna sync inversa; nessun `--delete`.
 
-- Eventi deferred `customer.subscription.created|updated|deleted` e `invoice.payment_succeeded|failed`: allowlist + persistenza `billing_events`, ma senza risoluzione `tenant_id`, senza handler business, senza scrittura `tenant_subscriptions`/snapshot `tenants`; `processed_at`/`processing_error` NULL (in assenza di failure); HTTP 200 deferred. `checkout.session.completed` = ramo I4.3A già completato.
-- Schema `tenant_subscriptions`: UNIQUE(`provider`,`provider_subscription_id`); più subscription per tenant/provider ammesse; nessun watermark persistito; status Stripe dettagliati vs snapshot `tenants` più ristretto.
-- Risoluzione tenant primaria via `tenant_billing_customers` (`subscription.customer` → `provider_customer_id` → `tenant_id`); metadata `tenant_id` non è trust boundary autonomo; fail-closed su mapping assente/incoerente/conflict; preservare guardrail I4.3A sul binding `billing_events.tenant_id`.
-- Plan vocabulary: `pro_monthly` ≠ `paid`; `STRIPE_PRICE_ID_PRO_MONTHLY` solo server-side per mapping, mai esposto.
-- Rischio **out-of-order / stale overwrite concreto**: dedup stesso `provider_event_id` ≠ ordinamento eventi distinti.
-- Classificazione schema **M2** — forma migration **non** ancora approvata; campi watermark proposti = possibile soluzione da riesaminare (non decisione consolidata). Da verificare in I4.3BB: robustezza `event.created`; equal-timestamp; `provider_event_id` non cronologico; alternativa provider re-fetch; altre strategie DB/code.
-- Problemi distinti: freshness per-subscription vs selezione snapshot tenant cross-subscription.
-- Decisioni aperte pre-wiring snapshot: **D3**, **D4**, **D5 (bloccante)**, **D7**. Demo/internal: fail-closed / nessuna auto-promozione. Invoice fuori scope. `processed_at` = commit marker. Pattern concorrenza I4.3A da riusare.
+**I4.3BB / I4.3BB-R / F1–F3:** **completati** (ZERO-CODE / ZERO-DIFF). Nessuna modifica repository; nessuna migration; nessun runtime; nessun deploy. Sintesi decisioni Supervisor approvate:
 
-**I4.3B:** **NON IMPLEMENTATO**.
+- **Anti-stale (I4.3BB + K2):** Event payload ≠ provider state; `event.created` = admission watermark per-subscription (non versione Subscription); `event.id` = id univoco (**non** clock; **non** ordinare lessicograficamente); strategia = provider re-fetch + admission watermark + CAS/readback/re-fetch; re-fetch da solo non elimina race; Event stale non sovrascrive; API Stripe down → no fallback payload webhook, `processed_at` NULL, HTTP 502 candidato; `customer.subscription.deleted` retrieve post-cancel supportato.
+- **W_sub:** (`last_applied_provider_event_created_at`, `last_applied_provider_event_id`) — watermark di admission + CAS token; **non** freshness Stripe; **non** clock.
+- **Partial retry (F1):** `processed_at` = unico commit marker Event; W_sub = prova effetto per-subscription; W_sub==Event AND `processed_at` NULL = partial (non completed); ROW_ABSENT ≠ ROW_PRESENT W NULL; INSERT + 23505 → re-lookup/ownership/riclassificazione; tenant diverso → fail-closed no remap.
+- **Snapshot race (F2→F3):** read-all→derive→UPDATE insufficiente sotto concorrenza; CAS W_sub non protegge aggregato cross-sub; proposta F2 revision-on-snapshot writer = **superseded**.
+- **R2 / A2 (F3):** `tenants.billing_state_revision` = generazione locale monotona del SET `tenant_subscriptions`; bump atomico via **trigger G1** su ogni INSERT/UPDATE/DELETE committed; K2 resta in Edge Function; snapshot CAS **H2** non incrementa revision; double-read non obbligatorio; `billing_snapshot_revision` non richiesta; forma M2 candidata (colonne W_sub + revision + trigger) **non implementata**; SECURITY DEFINER **non** congelato; Snapshot(S) deve essere deterministica sui dati catturati/protetti; D4 richiede predicate/readback (`is_demo` non scritto dal webhook).
 
-**Prossimo punto di ripresa: I4.3BB** — ricognizione/decisione architetturale **zero-code** su:
+**Decisioni prodotto ancora aperte** (non inventare risposta; non cristallizzare D1/D2 o mapper finché non chiuse):
 
-- freshness provider e strategia anti out-of-order;
-- forma eventuale watermark vs alternative (re-fetch, strategie DB/code);
-- equal-timestamp e semantica ordering (`event.created`; non assumere cronologia da `provider_event_id`);
-- multiple subscriptions e definizione **subscription corrente** (**D5 bloccante**);
-- derivazione deterministica fail-closed dello snapshot `tenants`;
-- decisioni prodotto/architetturali **D3/D4/D5/D7**.
+| ID | Tema | Note |
+|----|------|------|
+| **D3** | Semantica `canceled` / `incomplete_expired` e piano risultante | Aperta |
+| **D4** | Demo/internal: registrazione subscription sì/no e preservazione snapshot | Aperta; vincolo tecnico: predicate CAS + `is_demo` non auto-scritto |
+| **D5** | Subscription corrente / winner cross-subscription | **BLOCCANTE** per wiring snapshot |
+| **D7** | `trialing` e relazione `plan_code`/`status` | Aperta |
+| **unpaid** | Mapping tenant snapshot / entitlement | Aperta |
 
-**NON** avviare I4.3B1 mapping puro. Solo dopo I4.3BB il Supervisor decide: conferma/forma migration M2; mapping applicativo; primo task implementativo. Qualunque resend/test webhook resta operazione runtime **protetta** e richiede **autorizzazione esplicita** dell’utente.
+**I4.3B:** **NON IMPLEMENTATO**. Non esiste ancora: migration M2; trigger; mapper; subscription persistence; snapshot derivation; wiring `customer.subscription.*`; runtime test I4.3B; deploy I4.3B. Invoice fuori scope del primo I4.3B.
+
+**Prossimo punto di ripresa: I4.3BC** — decisione prodotto **zero-code** pre-implementazione:
+
+- chiudere **D3 / D4 / D5 / D7 / unpaid** con particolare priorità a **D5**;
+- verificare che le policy scelte rispettino il guardrail **Snapshot(S) deterministica** sui dati catturati/protetti dal CAS;
+- **senza** implementazione, migration, mapper, webhook wiring, deploy o runtime.
+
+Dopo I4.3BC e relativo consolidamento se necessario, il Supervisor potrà autorizzare il primo task schema M2. **NON** impostare come prossimo: I4.3B1 mapper; migration `007`; webhook wiring; deploy; runtime test.
 
 Vincoli permanenti da mantenere:
 
@@ -372,27 +393,29 @@ Vincoli permanenti da mantenere:
 - Billing **tenant-first**
 - Secrets e `service_role` esclusivamente **server-side**; nessun secret in `VITE_*`
 - `billing_events` **non** leggibile direttamente dal frontend; nessuna scrittura billing privilegiata dal frontend
-- Nessun avvio della sincronizzazione `tenant_subscriptions` o snapshot `tenants` senza task esplicito post-I4.3BB
+- Nessun avvio della sincronizzazione `tenant_subscriptions` o snapshot `tenants` senza task esplicito post-I4.3BC + approvazione schema
 - Protezione `is_demo` / `plan_code=demo|internal` da sovrascritture commerciali automatiche (fail-closed)
 - Nessun uso di Stripe **live**
 - Nessuna modifica della baseline `supabase/migrations/000_baseline_current_schema.sql`
-- Future migration soltanto **additive** da `007_*` o timestamp equivalente — **non** creare migration finché non approvata in I4.3BB+
+- Future migration soltanto **additive** da `007_*` o timestamp equivalente — **non** creare migration finché non autorizzata post-I4.3BC
 - Nessun `supabase db push`
 
-### Dopo I4.3BB: I4.3B (fase separata, non implementata)
+### Dopo I4.3BC: I4.3B (fase separata, non implementata)
 
-**I4.3B — subscription sync e tenant snapshot** (solo dopo decisioni I4.3BB)
+**I4.3B — subscription sync e tenant snapshot** (solo dopo decisioni I4.3BC e task schema M2 autorizzato)
 
 Punti ancora da progettare e implementare (non trasformare in implementazione ora):
 
 - Eventi `customer.subscription.created|updated|deleted` (oggi solo persistiti, `processed_at` nullo)
-- Upsert di `tenant_subscriptions` con protezione freshness/order
+- Upsert di `tenant_subscriptions` con protezione K2 / W_sub
+- Trigger + `billing_state_revision` (G1) e snapshot CAS H2
 - Mapping del prodotto Stripe `pro_monthly` verso il piano interno `paid`
 - Mapping esplicito degli stati Stripe verso `tenants.subscription_status`
 - Regola subscription corrente / snapshot quando esistono più righe (D5)
 - Protezione dei tenant `demo` e `internal` (D4)
 - Gestione di `trial_ends_at` e semantica trialing (D7)
 - Piano interno dopo canceled / incomplete_expired (D3)
+- Mapping `unpaid`
 - Eventi invoice inizialmente fuori scope, salvo decisione esplicita
 
 ### Altri passi (dopo I4.3B o in parallelo se priorità diversa)
@@ -580,19 +603,41 @@ Registrati dalla decisione Supervisor su evidenza statica (I4.3A-T1GA / chiusura
 
 ### I4.3BA (ricognizione architetturale zero-code)
 
-Registrati dal report I4.3BA (zero-code; nessuna modifica repository) e dalla chiusura documentale I4.3BA-bis:
+Registrati dal report I4.3BA (zero-code; nessuna modifica repository) e dalla chiusura documentale I4.3BA-bis (`436d587`):
 
 | Gate | Esito |
 |------|--------|
 | Modalità | Ricognizione architetturale **zero-code**; **nessuna** implementazione I4.3B |
 | Runtime Stripe / Supabase / Workbench | **Non** eseguiti |
 | Migration / deploy / secret / RLS / DB mutation | **Non** eseguiti |
-| Classificazione schema | **M2** (approvata Supervisor); forma migration **non** ancora approvata |
-| Rischio out-of-order / stale overwrite | **Concreto** — da risolvere prima del wiring completo |
-| Decisioni aperte | D3/D4/D5/D7; **D5 bloccante** |
+| Classificazione schema | **M2** (approvata Supervisor); forma migration iniziale BA **superseded** da I4.3BB/R/F3 |
+| Rischio out-of-order / stale overwrite | **Concreto** — strategia anti-stale definita in I4.3BB+ (K2) |
+| Decisioni aperte | D3/D4/D5/D7/unpaid; **D5 bloccante** |
 | Invoice | Fuori scope primo I4.3B |
 | I4.3B | **NON IMPLEMENTATO** |
-| Prossimo punto | **I4.3BB** zero-code |
+| Sync mirror post I4.3BA-bis | dry-run OK; apply OK; byte/hash OK su 15 file; cloud mirror verificato ChatGPT |
+| `npm run lint` / `npm run build` / `deno check` | **Non necessari** (task documentale/ricognizione) |
+
+### I4.3BB / I4.3BB-R / F1–F3 (architettura anti-stale + snapshot)
+
+Registrati dai report ZERO-CODE / ZERO-DIFF (nessuna modifica repository) e dalla chiusura documentale I4.3BB-bis:
+
+| Gate | Esito |
+|------|--------|
+| Modalità | Ricognizione/decisione architetturale **zero-code**; **nessuna** implementazione |
+| Runtime / migration / deploy / secret | **Non** eseguiti |
+| Strategia anti-stale | Provider re-fetch + admission watermark + CAS/readback/re-fetch (**K2**) |
+| W_sub | Due colonne; `event.id` **non** clock / **non** tie-break cronologico |
+| Partial retry F1 | `processed_at` unico commit marker; ROW_ABSENT/23505/ownership fail-closed |
+| Race snapshot F2 | Individuata; design revision-on-snapshot writer **superseded** |
+| Design F3 / R2 | `billing_state_revision` A2; trigger G1 obbligatorio; snapshot H2 senza bump; double-read non obbligatorio; `billing_snapshot_revision` non richiesta |
+| Forma M2 | Candidata architetturale approvata; SQL/migration **non** creati |
+| SECURITY DEFINER | **Non** congelato come requisito |
+| Determinismo Snapshot(S) | Guardrail registrato |
+| D4 technical guard | Predicate/readback; `is_demo` non auto-scritto |
+| Decisioni prodotto | D3/D4/D5/D7/unpaid aperte; **D5 bloccante** |
+| I4.3B | **NON IMPLEMENTATO** |
+| Prossimo punto | **I4.3BC** zero-code |
 | `npm run lint` / `npm run build` / `deno check` | **Non necessari** (task documentale/ricognizione) |
 
 ### GOVERNANCE-7
@@ -629,9 +674,12 @@ Registrati dal consolidamento GOVERNANCE-7 (`8ff556d`, inclusi F1/F2) e dalla pr
 - La freschezza server di `origin/main` **non** è stata aggiornata (`git fetch` non eseguito in D1, D1-bis, T1A, T1B, T1C, T1D, T1E, T1F né T1G).
 - `deno check` resta da eseguire in un ambiente idoneo (non eseguito in I4.3A né in I4.3A-D1).
 - Eventi `customer.subscription.*` / `invoice.*` persistiti con `processed_at` nullo attendono **I4.3B** (**NON IMPLEMENTATO**); T1B ha confermato `tenant_subscriptions` = 0 per la subscription target; T1C/T1D hanno confermato `tenant_subscriptions` demo = 0 e snapshot demo invariato (`plan_code` = `demo`, `subscription_status` = `active`); T1E ha riconfermato `tenant_subscriptions` = 0 e snapshot commerciale `tenants` invariato.
-- **I4.3BA — rischio out-of-order / stale overwrite concreto:** l’idempotenza di `billing_events` deduplica lo stesso `provider_event_id` ma **non** ordina eventi Stripe distinti (updated nuovo prima di updated vecchio; deleted prima di updated ritardato; retry di evento vecchio dopo uno più recente). Senza protezione aggiuntiva può verificarsi stale overwrite. Classificazione schema **M2**; forma migration watermark **non** ancora approvata. `provider_event_id` **non** va assunto come ordinamento cronologico; equal-timestamp e robustezza di `event.created` restano aperti (I4.3BB).
-- **I4.3BA — multiple subscriptions / snapshot:** più righe `tenant_subscriptions` per tenant/provider sono ammesse; la regola della **subscription corrente** (**D5**) è **bloccante** prima del wiring snapshot. Un watermark per-subscription non garantisce da solo che un evento su S1 non sovrascriva uno snapshot che dovrebbe essere governato da S2.
-- **I4.3BA — decisioni aperte pre-wiring:** D3 (piano dopo canceled/incomplete_expired); D4 (policy demo/internal); D5 (subscription corrente — bloccante); D7 (semantica trialing). Demo/internal: schema non impedisce overwrite commerciale; futuro codice fail-closed / nessuna auto-promozione. Invoice fuori scope del primo I4.3B. Debito: `processed_at=NULL` oggi = deferred intenzionale **oppure** incompleto.
+- **I4.3BB+ — architettura anti-stale consolidata (non implementata):** rischio out-of-order/stale overwrite resta concreto finché I4.3B non è wired. Strategia approvata **K2**: provider re-fetch + admission watermark Event (`event.created`) + CAS/readback/re-fetch su **W_sub**; `event.id` **non** è clock né tie-break cronologico. Provider API down → no fallback payload; `processed_at` NULL; HTTP 502 candidato.
+- **I4.3BB-R-F1 — partial retry:** `processed_at` è l’unico commit marker dell’Event; W_sub prova solo l’effetto per-subscription. Stati parziali (W_sub aggiornato, `processed_at` NULL) sono ritentabili e non equivalgono a completed. ROW_ABSENT / INSERT / 23505 richiedono re-lookup + ownership fail-closed (nessun remap tenant).
+- **I4.3BB-R-F2/F3 — snapshot cross-subscription:** CAS W_sub non protegge lo snapshot aggregato. F2 individuò la race; la proposta «revision incrementata dallo snapshot writer» è **superseded**. Design corrente **R2/A2**: `billing_state_revision` monotona locale del SET, bump atomico via trigger G1 su mutation `tenant_subscriptions`; snapshot CAS H2 **non** incrementa revision. Double-read non obbligatorio. `billing_snapshot_revision` non richiesta. SECURITY DEFINER del trigger **non** congelato.
+- **Guardrail determinismo Snapshot(S):** H2 presuppone derivazione deterministica rispetto agli input DB catturati/protetti; non dipendere da ordering Event / `event.id` / wall-clock / input esterno non versionato. Se D3/D5/D7 introducessero dipendenze temporali o esterne, serve invalidazione/reconciliation esplicita.
+- **D4 technical guard:** `billing_state_revision` non protegge automaticamente `is_demo` / plan demo|internal / flag esterni al set subscription → predicate/readback fail-closed nel futuro snapshot CAS; `is_demo` non auto-scritto dal webhook.
+- **Decisioni prodotto ancora aperte pre-wiring:** D3; D4; **D5 (bloccante)**; D7; unpaid. Forma M2 architetturale candidata approvata ma **non** implementata (nessuna migration/SQL). Invoice fuori scope del primo I4.3B. Debito: `processed_at=NULL` oggi = deferred intenzionale **oppure** incompleto.
 - Fixture T1B: eventi non-allowlist sandbox generati dalla fixture restano fuori scope di cleanup in questo ciclo; nessun evento live.
 - Fixture failed diagnostica T1C/T1E (`evt_1U1o48FOUoE38beB2KuEcYKQ`): HTTP 502 fail-closed su fixture default non rappresentativa; distinta dal path positivo; non trasformata in bug applicativo; non ripulita manualmente; retry controllato in T1E ha mantenuto fail-closed senza correlazione/subscription.
 - Lacuna T1D minore: attempt di delivery non serializzato dalla UI Workbench nel report; HTTP 200 da log Edge Function — non eleva a failure (Supervisor: T1D PASS).
@@ -660,8 +708,9 @@ Registrati dal consolidamento GOVERNANCE-7 (`8ff556d`, inclusi F1/F2) e dalla pr
 - I4.3A-T1E-bis consolidato in `8615cda` — *docs(context): record incomplete webhook retry runtime pass*; sync post-commit secondo workflow governance.
 - I4.3A-T1F-bis consolidato in `d4a2889` — *docs(context): record customer tenant conflict static closure*; sync post-commit secondo workflow governance.
 - I4.3A-T1G-bis consolidato in `30da6a5` — *docs(context): record webhook race static closure*; sync post-commit secondo workflow governance.
-- **Divergenza mirror / Git attesa pre-task I4.3BA-bis:** il mirror Google Drive non contiene ancora I4.3BA-bis. Git reale è la fonte canonica; la differenza è attesa. Nessuna riconciliazione Drive → repository.
-- `docs/stato-operativo.md` viene aggiornato da questo task (I4.3BA-bis) e sarà sincronizzato **solo dopo** il relativo commit (e conferma utente secondo workflow governance). Il commit documentale corrente **non** è registrato come ultimo consolidato in questo stesso aggiornamento.
+- I4.3BA-bis consolidato in `436d587` — *docs(context): record subscription sync architecture findings*; sync repository → mirror post-commit completata (dry-run OK; apply OK; verifica byte/hash OK su **15 file**; cloud mirror successivamente verificato da ChatGPT; nessuna sync inversa; nessun `--delete`; nessuna modifica repository durante la sync).
+- **Divergenza mirror / Git attesa pre-task I4.3BB-bis:** il mirror Google Drive non contiene ancora I4.3BB-bis. Git reale è la fonte canonica; la differenza è attesa. Nessuna riconciliazione Drive → repository.
+- `docs/stato-operativo.md` viene aggiornato da questo task (I4.3BB-bis) e sarà sincronizzato **solo dopo** il relativo commit (e conferma utente secondo workflow governance). Il commit documentale corrente **non** è registrato come ultimo consolidato in questo stesso aggiornamento.
 - Nessuna riconciliazione Drive → repository è consentita.
 
 ---
@@ -674,7 +723,7 @@ Registrati dal consolidamento GOVERNANCE-7 (`8ff556d`, inclusi F1/F2) e dalla pr
 - Baseline `000_*` immutabile per cambi futuri; niente rewrite storia produzione.
 - `npm run lint` (= `tsc --noEmit`) e `npm run build` dopo modifiche rilevanti.
 - Nessun commit di `.env` / chiavi reali.
-- Cursor esegue solo il micro-task assegnato; non anticipa I4.3B / I4.3BB implementativo o altre fasi dai “Consigli a ChatGPT”.
+- Cursor esegue solo il micro-task assegnato; non anticipa I4.3BC, I4.3B o altre fasi dai “Consigli a ChatGPT”.
 
 ---
 
