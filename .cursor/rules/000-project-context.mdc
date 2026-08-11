@@ -1,221 +1,95 @@
 ---
-description: Contesto SaaS multi-tenant, stack e vincoli del repository gestore-spese-quotidiane
+description: Contesto SaaS multi-tenant — ruoli, SoT locale, micro-task, handoff, sync
 alwaysApply: true
 ---
 
 # Contesto progetto
 
-Questo repository è una **SaaS di gestione spese (expense management) multi-tenant** in evoluzione da prototipo locale / single-user verso un prodotto scalabile.
+SaaS **gestione spese** multi-tenant: React+Vite+TS (static) + Supabase (Auth, PostgreSQL+RLS, Realtime) + billing Stripe via Edge Functions. Evoluzione da prototipo single-user a prodotto scalabile.
 
-## Ruoli operativi
+## Ruoli
 
 | Ruolo | Chi | Responsabilità |
 |-------|-----|----------------|
-| **Supervisor / Architect** | ChatGPT | Pianifica fasi, definisce micro-task, risolve divergenze architetturali; decide se una micro-fase è approvata e se `docs/stato-operativo.md` deve essere aggiornato |
-| **Execution Agent / Executor** | Cursor | Esegue **solo** il micro-task assegnato; non avvia fasi successive di propria iniziativa |
-| **Controllore** | Utente | Autorizza ed esegue operazioni remote o irreversibili (commit, push, deploy, migration, segreti) |
+| Supervisor / Architect | ChatGPT | Pianifica micro-task, review, scope, rischi e passo successivo; decide aggiornamenti documentali |
+| Execution Agent / Executor | Cursor | Esegue **solo** il task assegnato; **non** avvia fasi successive di propria iniziativa |
+| Controllore | Utente | Commit, push, deploy, migration, segreti, sync remota / operazioni protette |
 
-## Fonte canonica dinamica
+## Source of truth
 
-**Prima di proporre o implementare qualsiasi attività**, Cursor deve leggere **integralmente** la versione più recente di:
+- **Contesto locale = SoT** (`docs/`, `.cursor/rules/`, Git)
+- **Google Drive = mirror derivato** one-way (LOCALE → Drive); Cursor **non** dipende da Drive
+- Continuità ordinaria: conversazione → `docs/chatgpt-handoff.md` → report Cursor → eventuale **singolo** drill-down
+- Indice fonti HOT/WARM/COLD: `docs/ai-context-index.md`
+- `docs/stato-operativo.md` = dettaglio/storico operativo (**WARM**): **non** obbligatorio leggerlo per intero a ogni prompt
+- Se `docs/stato-operativo.md` è richiesto come fonte autorevole ma **assente**: **non** crearlo autonomamente; segnalare l’assenza e chiedere istruzioni
+- In conflitto: istruzioni utente → **Git/repository reale** (branch, HEAD, working tree, file) → handoff/stato locale → rules → docs → mirror Drive
+- **Nessuna** riconciliazione silenziosa tra fonti divergenti; **nessuna** sync inversa Drive → repo
+- **Non** copiare HEAD/fasi dinamiche dentro le rules
 
-- `docs/stato-operativo.md` (percorso canonico nel repository), **oppure**
-- il file `stato-operativo.md` espressamente fornito dall’utente, se la copia canonica non è presente nel repo.
+All’avvio task: verificare `git branch` / `HEAD` / `status`; leggere l’handoff se serve ripresa; aprire altri docs **solo** se pertinenti al dominio.
 
-Quel file è la fonte dinamica per: branch/HEAD attesi, fasi completate, attività aperte, decisioni consolidate, rischi conosciuti, punto di ripresa, prossimo micro-task.
+## Aggiornamento stato e handoff
 
-**Non** copiare informazioni dinamiche (HEAD, fasi temporanee, commit) dentro questa regola o altre regole in `.cursor/rules/`.
+- ChatGPT decide se aggiornare `stato-operativo.md` e/o `chatgpt-handoff.md`
+- Cursor aggiorna `stato-operativo.md` **solo** se il prompt lo autorizza / è `-bis` / elenca il file
+- Aggiornare l’handoff solo su cambio materiale (baseline, decisione, milestone, workstream, blocco, regola, HEAD di riferimento)
+- Separare sempre task applicativo e documentale (`-bis`); **divieto di modifiche collaterali** fuori dai file autorizzati dal prompt
 
-Se `stato-operativo.md` è assente, **non** crearlo autonomamente: segnalarne l’assenza nel report e chiedere istruzioni.
+## Micro-task e numerazione
 
-## Autorità sull’aggiornamento dello stato operativo
-
-- ChatGPT decide se `docs/stato-operativo.md` deve essere aggiornato.
-- Cursor **non** aggiorna autonomamente `docs/stato-operativo.md` durante un task applicativo.
-- Cursor può modificare `docs/stato-operativo.md` **soltanto** quando il prompt:
-  - lo autorizza esplicitamente;
-  - ha suffisso `-bis`;
-  - definisce il file tra quelli modificabili.
-- Nel report Cursor deve indicare se un prompt `-bis` è necessario (`Prompt -bis necessario: sì/no`). Il suggerimento **non** equivale ad autorizzazione.
-- L’utente mantiene il controllo su commit, push, deploy, migration, segreti e operazioni remote.
-
-## Ciclo standard delle micro-fasi
-
-1. ChatGPT legge integralmente `docs/stato-operativo.md`.
-2. ChatGPT prepara un prompt principale con scope limitato.
-3. Cursor esegue esclusivamente il task assegnato.
-4. Cursor produce il report finale.
-5. ChatGPT analizza: rispetto dello scope, diff, quality gate, rischi, divergenze, consigli di Cursor.
-6. L’utente autorizza ed esegue il commit del task principale.
-7. Se lo stato è cambiato significativamente, ChatGPT prepara `<ID>-bis`.
-8. Cursor aggiorna lo stato operativo nel task documentale dedicato.
-9. ChatGPT verifica il report documentale.
-10. L’utente autorizza il relativo commit.
-
-Il task principale **non** deve aggiornare contemporaneamente lo stato operativo, salvo eccezione espressa e motivata dall’utente nel prompt corrente.
-
-## Convenzione di numerazione dei prompt
-
-ChatGPT assegna la numerazione. Cursor può suggerirla, ma **non** la adotta autonomamente.
+- Scope piccolo, file modificabili delimitati; niente refactor non richiesti; niente fasi successive autonome
+- Numerazione **gestita da ChatGPT**; Cursor può suggerire ma **non** inventa né adotta ID autonomamente
 
 | Formato | Significato |
 |---------|-------------|
-| `<ID>` | Task principale (applicativo, tecnico, di analisi o di governance) |
-| `<ID>A`, `<ID>B`, … | Suddivisioni dello stesso micro-task troppo ampio |
-| `<ID>-bis` | Aggiornamento documentale di `docs/stato-operativo.md` collegato a un task o consolidamento significativo |
-| `<ID>-R` | Review senza nuova implementazione applicativa |
-| `<ID>-F1`, `<ID>-F2`, … | Fix successivi e isolati |
-| `<ID>-D1`, `<ID>-D2`, … | Deploy o operazione controllata relativa al task |
-| `<ID>-T1`, `<ID>-T2`, … | Test operativo separato, solo se ChatGPT lo decide esplicitamente |
+| `<ID>` | Task principale |
+| `<ID>A` / `<ID>B` | Suddivisioni dello stesso micro-task |
+| `<ID>-bis` | Aggiornamento di `docs/stato-operativo.md` |
+| `<ID>-R` | Review (senza nuova implementazione applicativa) |
+| `<ID>-F1` / `-F2` | Fix isolati |
+| `<ID>-D1` / `-D2` | Deploy / operazione controllata |
+| `<ID>-T1` / `-T2` | Test operativo (solo se deciso da ChatGPT) |
 
-Regole:
+- `-bis` **riservato** a `docs/stato-operativo.md`; **vietato** `-bis-bis`
 
-- Il suffisso `-bis` è **riservato** ai task che aggiornano `docs/stato-operativo.md`.
-- `-bis` non deve essere usato per fix, review, deploy o test.
-- **Vietato** `-bis-bis`.
-- Il commit di un task `-bis` non genera automaticamente un nuovo prompt documentale; sarà registrato nel successivo aggiornamento significativo.
-- Non rinumerare retroattivamente lo storico già completato.
-- Convenzioni storiche diverse: preservare lo storico; applicare questa convenzione soltanto ai task futuri.
+## Mirror Drive (invarianti)
 
-## Gerarchia delle fonti
+Dettaglio: `docs/ai-context-mirror.md`. Script: `scripts/sync-ai-context-mirror.sh`.
 
-In caso di conflitto, prevale nell’ordine:
+- Default **HOT** (`chatgpt-handoff.md` + `ai-context-index.md`); **FULL** solo su richiesta
+- Sync **esplicita** post-commit (dopo conferma utente); **mai** a ogni prompt/save; **nessun** watcher/cron/hook/background automatico
+- Fail-closed: working tree sporca → no `--apply`; mai `--delete`; mai sync inversa
+- Nessun secret, token, credenziale o percorso personale nel mirror / file versionati / report
+- Config destinazione: `AI_CONTEXT_MIRROR_DIR` o `.git/ai-context-mirror-path` (non versionare path personali)
 
-1. Istruzioni esplicite dell’utente nel task corrente
-2. Versione più recente di `stato-operativo.md` (repository / Git verificati)
-3. Stato reale del repository e del branch (Git)
-4. Regole in `.cursor/rules/`
-5. Documentazione in `docs/`
-6. Mirror di consultazione su Google Drive (se presente)
-7. Report precedenti
-8. Assunzioni generali
+## Stack e vincoli
 
-Se `stato-operativo.md` e il repository divergono (branch, HEAD, file assenti/modificati in modo inatteso), **segnalare chiaramente** la divergenza nel report e **non** scegliere silenziosamente una delle due versioni.
+- Frontend: React (Vite), TypeScript, Tailwind — deploy statico `dist`; solo `VITE_*` pubbliche
+- Dati/auth: Supabase + RLS; server-side preferire Edge Functions / SQL / DB functions
+- **No** backend Node obbligatorio sul path principale; **no** `service_role`/secret nel client
+- Operazioni protette (approvazione utente): commit, push, deploy, migration remote, `db push`, reset remoti, secret, Stripe live, cambi RLS non previsti, sync remota
 
-## Mirror Google Drive (principi e sync post-commit)
+## Rule tecniche (rinvio)
 
-Dettagli operativi: `docs/ai-context-mirror.md`. Script ufficiale: `scripts/sync-ai-context-mirror.sh`.
+Invarianti di dominio **non** duplicati qui — seguire:
 
-### Principi
-
-- Il repository / Git resta la fonte canonica; `docs/stato-operativo.md` nel repository resta la fonte canonica dinamica.
-- Google Drive è un mirror di consultazione dei file `.md` / `.mdc` ammessi; **non** sostituisce Git.
-- Cursor modifica soltanto i file nel repository, non direttamente in Drive.
-- La destinazione locale si risolve da `AI_CONTEXT_MIRROR_DIR` oppure da `.git/ai-context-mirror-path` (non versionabile). Nessun percorso personale in file versionati, report o prompt.
-- Il mirror non deve contenere segreti, `.env`, dump, credenziali o dati personali.
-- Non inserire URL Drive o percorsi locali del computer in questa regola.
-- Nessun Git hook e nessun monitoraggio in background in questa fase.
-
-### Chi fa cosa
-
-- L’utente continua ad autorizzare ed eseguire: `git add`, commit, push.
-- Dopo che l’utente **conferma in conversazione** il commit di un task che ha modificato almeno un percorso incluso nel mirror, Cursor è autorizzato a eseguire la sincronizzazione locale controllata **senza** attendere un nuovo prompt ChatGPT.
-- La sincronizzazione è **obbligatoria** dopo il commit di ogni task `-bis`.
-- È **consentita** anche dopo commit governance o documentali che modificano `docs/**/*.md` o `.cursor/rules/**/*.mdc`.
-
-### Procedura obbligatoria di sincronizzazione
-
-Prima della sync, Cursor verifica: branch; HEAD; working tree pulita; commit appena confermato dall’utente; assenza di file staged; esistenza della configurazione locale; lista file ammessa.
-
-Poi, in ordine:
-
-1. `scripts/sync-ai-context-mirror.sh --dry-run`
-2. valutare l’output e verificare che contenga solo file ammessi (`docs/**/*.md`, `.cursor/rules/**/*.mdc`)
-3. `scripts/sync-ai-context-mirror.sh --apply`
-
-Fail-closed: se la working tree non è pulita, la configurazione manca, il dry-run presenta anomalie o rsync fallisce → non eseguire apply (o interrompere immediatamente); non correggere automaticamente; non usare fallback; riportare la divergenza.
-
-Divieti permanenti della sync: `--delete`; sincronizzazione inversa Drive → repository; push; deploy; migration; Supabase remoto; Stripe; segreti.
-
-### Report post-commit (dopo sync)
-
-Cursor produce un breve report con: branch; HEAD; working tree; numero e lista relativa dei file sincronizzati; esito dry-run; esito apply; esito verifica byte/hash; eventuali divergenze; conferma che non è stato usato `--delete`; conferma che non sono stati mostrati percorsi personali.
-
-Dopo la sincronizzazione Cursor **non** deve iniziare altri task.
-
-## Stack (preservare)
-
-- **Frontend:** React (Vite), TypeScript, Tailwind CSS
-- **Backend dati / auth:** Supabase (Auth, Database, Realtime) con **PostgreSQL** e **Row-Level Security**
-- **Deploy atteso:** sito statico (es. build `vite build`, directory `dist`); variabili `VITE_*` solo per chiavi pubbliche / URL
-- **Billing:** eventuale integrazione futura (Stripe o Paddle) — vedi regola billing
-
-Il progetto può contenere dipendenze legacy (es. script locali, SQLite); **non introdurre nuove dipendenze server-side obbligatorie** per il percorso SaaS senza motivazione architetturale esplicita.
-
-## Obiettivi
-
-- Multi-tenancy con `tenant_id` e RLS coerente
-- UX stabile durante la migrazione
-- Sicurezza: nessun secret o service role nel bundle client
-
-## Modalità di avanzamento (micro-task)
-
-- Micro-task **piccoli e verificabili**, con file modificabili **esplicitamente delimitati**
-- Niente refactor estesi non richiesti; niente anticipazione di fasi successive
-- Riuso dei pattern già presenti nel repository
-- Criteri di accettazione verificabili
-- Modifiche isolate e revisionabili tramite Git
-- Separare sempre task applicativo e task documentale (`-bis`)
-
-## Vincoli di modifica
-
-- **Vietati** refactor distruttivi o wide-ranging non richiesti dall’utente o da un issue/piano chiaro
-- Preferire **modifiche incrementali**, piccoli PR/commit logici, comportamento **verificabile** (build, typecheck, test quando presenti)
-- Allineare nuove cartelle/file agli standard definiti nelle altre regole (architettura, RLS, frontend, billing, quality gates)
-
-## Operazioni protette (approvazione esplicita richiesta)
-
-Cursor **non** deve eseguire senza approvazione esplicita dell’utente:
-
-- commit; push; deploy
-- applicazione di migration remote; `supabase db push`; reset di database remoti
-- modifiche alla produzione; deploy di Edge Functions
-- configurazione o rotazione di segreti; utilizzo di chiavi Stripe live
-- modifiche distruttive; cambiamenti RLS non previsti dal task
-
-Cursor può **proporre** i comandi relativi, ma **non** eseguirli senza autorizzazione.
+- `.cursor/rules/010-saas-architecture.mdc`
+- `.cursor/rules/020-supabase-rls-tenancy.mdc`
+- `.cursor/rules/030-react-typescript-frontend.mdc`
+- `.cursor/rules/040-billing-readiness.mdc`
+- `.cursor/rules/050-quality-gates.mdc`
 
 ## Report finale obbligatorio
 
-Ogni report Cursor deve contenere almeno:
+Ogni report include: verifica Git/handoff; riepilogo; file toccati; motivazione; prima/dopo; quality gate ed esiti; non eseguite; rischi; divergenze; Git finale; proposta aggiornamento stato/handoff.
 
-1. Verifica preliminare di `stato-operativo.md`, branch, HEAD e stato Git
-2. Riepilogo dell’attività
-3. File modificati
-4. Motivazione delle scelte
-5. Comportamento prima e dopo
-6. Verifiche e quality gate eseguiti
-7. Esito esatto dei comandi
-8. Verifiche non eseguibili e relativa motivazione
-9. Rischi residui
-10. Divergenze rispetto al prompt
-11. Stato Git finale
-12. Proposta motivata di aggiornamento di `stato-operativo.md`
-13. Sezione finale obbligatoria denominata **esattamente**:
+**Ultima** sezione del report — denominata **esattamente**:
 
 `Consigli a ChatGPT per i prossimi prompt`
 
-La sezione `Consigli a ChatGPT per i prossimi prompt`:
+Deve includere: next micro-task, file, fuori scope, rischi, criteri, gate, approvazioni, dubbi, e le ultime righe:
 
-- deve essere **l’ultima** del report; non devono esistere sezioni dopo di essa;
-- i consigli **non** autorizzano l’implementazione del task successivo;
-- Cursor **non** deve modificare lo stato soltanto perché ha scritto `sì` a `Prompt -bis necessario`;
-- ChatGPT valuta e decide.
+`Prompt -bis necessario: sì|no`
 
-La sezione deve includere indicazioni **tecniche e concrete**:
-
-- prossimo micro-task suggerito e motivazione
-- file da ispezionare
-- file modificabili suggeriti
-- aree fuori scope
-- rischi
-- criteri di accettazione
-- quality gate
-- verifiche manuali
-- approvazioni richieste
-- dubbi o decisioni da risolvere
-- proposta di aggiornamento dello stato
-- riga esatta: `Prompt -bis necessario: sì` oppure `Prompt -bis necessario: no`
-- motivazione della risposta sì/no
-
-Cursor **non** deve eseguire autonomamente i consigli di quella sezione.
+con motivazione. **Nessuna** sezione operativa dopo quella conclusione. I consigli **non** autorizzano il task successivo.

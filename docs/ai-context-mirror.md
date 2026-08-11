@@ -2,199 +2,179 @@
 
 ## A. Scopo
 
-Il mirror Google Drive consente a ChatGPT (e ad altri agenti di consultazione) di leggere versioni aggiornate dei file di contesto del progetto **senza upload manuale a ogni modifica**.
+Il mirror Google Drive consente a ChatGPT (e ad altri agenti di consultazione) di leggere versioni aggiornate dei file di contesto **senza upload manuale a ogni modifica**.
 
 Principi:
 
-- il **repository Git** resta la fonte canonica;
-- Drive è **solo un canale di consultazione**, non una seconda fonte di verità;
-- ChatGPT deve **rileggere** i file a ogni nuova ripresa;
-- il mirror **non** implica monitoraggio automatico, webhook, notifiche in background o Git hook;
-- Cursor modifica soltanto i file nel repository, non direttamente in Drive.
+- **Contesto locale = source of truth** (repository Git + `docs/` + `.cursor/rules/`)
+- **Google Drive = mirror derivato** one-way (**LOCALE → Drive**); **mai** Drive → repository automatico
+- Drive **non** è la fonte da interrogare a ogni prompt; la continuità ordinaria usa `docs/chatgpt-handoff.md`
+- Cursor modifica soltanto i file nel repository, non direttamente in Drive
+- Nessun monitoraggio automatico, webhook, cron, Git hook o sync in background
 
-Dettagli operativi di sincronizzazione vivono in questo documento. I principi stabili e il workflow post-commit sono in `.cursor/rules/000-project-context.mdc`. Lo stato dinamico del progetto resta in `docs/stato-operativo.md`.
-
----
-
-## B. File da sincronizzare
-
-Perimetro ufficiale (relativo alla root del repository), limitato ai **file tracciati da Git**:
-
-- `docs/**/*.md` (inclusi i `.md` direttamente sotto `docs/`)
-- `.cursor/rules/**/*.mdc` (inclusi i `.mdc` direttamente sotto `.cursor/rules/`)
-
-La lista canonica è costruita da `git ls-files` filtrata rigorosamente; file untracked non entrano nella sincronizzazione.
+Indice fonti: [`docs/ai-context-index.md`](ai-context-index.md). Handoff: [`docs/chatgpt-handoff.md`](chatgpt-handoff.md).
 
 ---
 
-## C. File da escludere
+## B. Due livelli di sync
+
+### HOT (default)
+
+Sincronizza solo:
+
+- `docs/chatgpt-handoff.md`
+- `docs/ai-context-index.md`
+
+Più un **manifest** scritto **solo nella destinazione mirror** (non versionato nel repository): timestamp UTC, branch, HEAD, mode, lista file.
+
+Uso: ripresa ordinaria ChatGPT dopo aggiornamento materiale dell’handoff/indice.
+
+### FULL
+
+Sincronizza l’insieme dei file **tracciati da Git** nel perimetro:
+
+- `docs/**/*.md`
+- `.cursor/rules/**/*.mdc`
+
+Uso: backup, ricostruzione contesto, drill-down offline da Drive. I documenti WARM/COLD restano disponibili nel FULL mirror **senza** doverli caricare a ogni prompt.
+
+**HOT/FULL** è una policy di **selezione del perimetro** di mirror. **Non** è un bypass della safety policy dello script (clean working tree, no `--delete`, one-way).
+
+---
+
+## C. File da escludere (sempre)
 
 Non sincronizzare mai verso il mirror:
 
-- `.env`
-- `.env.*`
-- segreti, credenziali, token
-- chiavi Stripe (live o test)
-- chiavi Supabase server-side (`service_role` e equivalenti)
-- dump database
-- backup
-- dati personali
-- `.git/`
-- `node_modules/`
-- `dist/`
-- sorgenti applicativi non necessari al contesto AI (`src/`, `supabase/functions/`, ecc.)
-- archivi ZIP completi del repository
-- il file locale `.git/ai-context-mirror-path` (non versionabile; non sincronizzare)
+- `.env`, `.env.*`, segreti, credenziali, token
+- chiavi Stripe / `service_role` Supabase
+- dump, backup, dati personali
+- `.git/`, `node_modules/`, `dist/`
+- sorgenti applicativi (`src/`, `supabase/functions/`, ecc.)
+- il file locale `.git/ai-context-mirror-path`
+- percorsi personali / URL Drive in log versionati
 
 ---
 
-## D. Struttura consigliata
+## D. Struttura destinazione
 
-Cartella Drive stabile (nome senza spazi problematici per shell):
+Basename obbligatorio della cartella mirror locale:
 
-`Gestore-Spese-SaaS-AI-Context/`
-
-Sottocartelle allineate al repository:
+`Gestore-Spese-SaaS-AI-Context`
 
 ```text
 Gestore-Spese-SaaS-AI-Context/
   docs/
   .cursor/
     rules/
+  .ai-context-mirror-manifest.txt   # solo destinazione; generato dallo script
 ```
 
-Mantenere nomi e percorsi relativi coerenti con il repository (es. `docs/stato-operativo.md`, `.cursor/rules/000-project-context.mdc`).
-
-Il **basename** della destinazione locale deve essere esattamente `Gestore-Spese-SaaS-AI-Context`.
+Mantenere percorsi relativi allineati al repository. Niente duplicati `(1)` / `copy` / versioni manuali.
 
 ---
 
-## E. Configurazione locale della destinazione
+## E. Configurazione locale
 
-Il percorso locale della cartella mirror **non** è versionato e **non** deve comparire in documentazione, log, report o prompt.
+Ordine di risoluzione:
 
-Risoluzione della destinazione (ordine):
+1. `AI_CONTEXT_MIRROR_DIR` (se valorizzata)
+2. prima riga di `.git/ai-context-mirror-path` (non versionabile)
 
-1. variabile d’ambiente `AI_CONTEXT_MIRROR_DIR`, se valorizzata;
-2. altrimenti prima riga del file locale non versionabile `.git/ai-context-mirror-path`.
-
-Il file `.git/ai-context-mirror-path` contiene un percorso personale: non committarlo, non copiarlo in file versionati, non sincronizzarlo verso Drive.
-
-Non documentare qui percorsi assoluti del computer né account Google.
+Nessun percorso personale in file versionati, report o prompt.
 
 ---
 
 ## F. Script ufficiale
 
-Lo script versionato ufficiale è:
-
 `scripts/sync-ai-context-mirror.sh`
 
-Accetta **esclusivamente**:
+| Flag | Effetto |
+|------|---------|
+| *(nessuno)* o comportamento default con `--apply` / `--dry-run` | **HOT** |
+| `--full` | modalità FULL |
+| `--dry-run` | prova senza scrivere: rsync in dry-run con **checksum** (skip file già identici per contenuto); nessun I/O destinazione di apply |
+| `--apply` | sync effettiva; richiede working tree **completamente pulita** |
+| `--status` | riepilogo mode/file count/config presente (senza path assoluti); read-only |
 
-- `--dry-run` — prova controllata senza scrivere (usa `rsync -avhn`)
-- `--apply` — sincronizzazione effettiva (usa `rsync -avh`)
+Vincoli permanenti:
 
-Nessuna modalità implicita. Nessuna sincronizzazione inversa (Drive → repository). **Mai** `--delete` né `--remove-source-files`.
+- solo **LOCALE → Drive**
+- **mai** `--delete` / `--remove-source-files`
+- nessuna modalità implicita di apply
+- lista da `git ls-files` (file untracked esclusi)
+- dopo `--apply`: verifica `cmp` byte-per-byte + scrittura manifest in destinazione
+- output senza percorsi assoluti / home / email
 
-Comportamento essenziale:
+### Safety vs HOT/FULL (stato corrente)
 
-- root repository determinata tramite Git;
-- destinazione da `AI_CONTEXT_MIRROR_DIR` o `.git/ai-context-mirror-path`;
-- validazione fail-closed (directory esistente, basename corretto, destinazione ≠ root repository);
-- lista da `git ls-files` con filtro su `docs/**/*.md` e `.cursor/rules/**/*.mdc`;
-- dopo `--apply`, verifica byte-per-byte (o hash locale equivalente) di ogni file sincronizzato; fallisce se manca o differisce;
-- output limitato a: modalità, numero file, percorsi relativi, basename destinazione, esito;
-- nessun percorso assoluto, email o home directory nei log dello script.
+- `--apply` richiede **oggi** working tree pulita (fail-closed).
+- HOT/FULL **non** risolve il problema GOVERNANCE-8A del solo `M docs/stato-operativo.md`: con working tree sporca `--apply` resta rifiutato anche in HOT.
+- L’eccezione controllata per `stato-operativo` (es. flag dirty-state / hash atteso) appartiene a **GOVERNANCE-8B** e **non è ancora implementata**.
+- Nessuna sync automatica; nessuna sync inversa.
 
----
+Esempi:
 
-## G. Workflow di sincronizzazione (Cursor post-commit)
-
-1. L’utente autorizza ed esegue `git add` / commit (e push, se necessario) — restano operazioni dell’utente.
-2. Dopo conferma esplicita del commit in conversazione, se il commit ha modificato almeno un file del perimetro mirror, Cursor esegue la sincronizzazione locale controllata **senza** attendere un nuovo prompt ChatGPT.
-3. La sincronizzazione è **obbligatoria** dopo il commit di ogni task `-bis`.
-4. È **consentita** anche dopo commit governance o documentali che modificano `docs/**/*.md` o `.cursor/rules/**/*.mdc`.
-5. Ordine obbligatorio:
-   1. verifiche pre-sync (branch, HEAD, working tree pulita, commit confermato, nessuno staged, config locale presente);
-   2. `scripts/sync-ai-context-mirror.sh --dry-run`;
-   3. valutazione dell’output (solo percorsi ammessi);
-   4. `scripts/sync-ai-context-mirror.sh --apply`;
-   5. verifica uguaglianza file (inclusa nello script);
-   6. report post-commit breve.
-6. In caso di anomalia (working tree sporca, config assente, dry-run anomalo, rsync fallito): **fail-closed** — non apply, non auto-fix, non fallback; riportare la divergenza.
-7. Questa delega **non** autorizza: push, deploy, migration, Supabase remoto, Stripe, segreti, sync inversa, `--delete`, Git hook.
-8. Cursor non avvia altri task dopo la sincronizzazione.
-
-Dettaglio normativo: `.cursor/rules/000-project-context.mdc`.
+```bash
+scripts/sync-ai-context-mirror.sh --status
+scripts/sync-ai-context-mirror.sh --dry-run
+scripts/sync-ai-context-mirror.sh --apply
+scripts/sync-ai-context-mirror.sh --full --dry-run
+scripts/sync-ai-context-mirror.sh --full --apply
+```
 
 ---
 
-## H. Principio di aggiornamento dei file
+## G. Quando sincronizzare (esplicito)
 
-Aggiornare i file mantenendo:
+La sync **non** deve essere eseguita: a ogni prompt, a ogni save, a ogni micro-task, da watcher, cron, hook Git o in background.
 
-- stesso nome;
-- stesso percorso relativo;
-- stesso file Drive, quando possibile;
-- **niente** copie con suffissi `(1)`, `copy`, `new`, date o versioni manuali.
+Aggiornare l’handoff (e poi eventualmente HOT sync) solo se cambia materialmente almeno uno tra: baseline, decisione, milestone, workstream, rischio/blocco, regola operativa, commit/release di riferimento.
 
-La sincronizzazione deve **sovrascrivere o aggiornare** il file corrispondente, non creare duplicati. Non elimina file dal mirror (`--delete` vietato).
+Micro-fix / copy minori **non** obbligano a rigenerare tutta la documentazione né a sync.
 
----
+Workflow post-commit (quando sbloccato):
 
-## I. Google Drive for Desktop
+1. Utente autorizza commit (e push se serve)
+2. Dopo conferma in conversazione, se il commit ha toccato perimetro mirror → Cursor può sync **senza** nuovo prompt ChatGPT
+3. Ordine: preflight → `--dry-run` (HOT o FULL come deciso) → validazione → `--apply` → report → stop
+4. Fail-closed su working tree sporca, config assente, dry-run anomalo, rsync fallito
+5. **FULL** solo se richiesto esplicitamente o per backup/ricostruzione; default **HOT**
 
-Flusso generale:
-
-1. Installare o usare Google Drive for Desktop.
-2. Creare la cartella mirror (struttura della sezione D).
-3. Configurare localmente la destinazione (`AI_CONTEXT_MIRROR_DIR` o `.git/ai-context-mirror-path`).
-4. Usare lo script ufficiale dopo i commit rilevanti (sezione G).
-5. Attendere il completamento della sincronizzazione Drive Desktop verso il cloud.
-6. Condividere con ChatGPT il **link stabile** della cartella, usando l’account Google collegato.
-
-Non documentare qui percorsi assoluti specifici del computer dell’utente né l’account Google.
+**Nota operativa corrente:** da I4.3BL-bis la sync può risultare **BLOCCATA** finché `docs/stato-operativo.md` resta tracked-modified e non esiste un workflow governance compatibile (GOVERNANCE-8B). Non usare workaround (`cp`/`rsync` manuali fuori script).
 
 ---
 
-## J. Accesso da ChatGPT
+## H. Accesso da ChatGPT
 
-1. Condividere **una volta** il link stabile della cartella Drive.
-2. Aggiungere il link alle istruzioni del progetto ChatGPT, quando possibile.
-3. All’inizio di ogni nuova ripresa chiedere a ChatGPT di leggere:
-   - la cartella mirror;
-   - `docs/stato-operativo.md`;
-   - le regole `.cursor/rules/*.mdc` pertinenti.
-4. Verificare che data e riferimenti Git del file letto siano quelli attesi (confronto con `git rev-parse HEAD` / stato reale).
-5. **Non** assumere che ChatGPT abbia ricevuto automaticamente gli aggiornamenti.
-
-ChatGPT **non** monitora Drive in automatico. Nessun monitoraggio in background lato Cursor o repository.
+1. Condividere **una volta** il link stabile della cartella Drive (account Google collegato)
+2. Continuità ordinaria: leggere **`docs/chatgpt-handoff.md`** (+ indice se serve)
+3. Drill-down: aprire **un solo** documento WARM/COLD pertinente
+4. Confrontare timestamp/HEAD dell’handoff con Git reale
+5. **Non** rileggere l’intero mirror a ogni ripresa
 
 ---
 
-## K. Risoluzione delle divergenze
+## I. Divergenze
 
-- Il repository / Git verificato **prevale** sul mirror.
-- Dopo un aggiornamento significativo nel repository, risincronizzare il mirror con lo script ufficiale.
-- Una copia Drive vecchia **non** deve sovrascrivere il repository.
-- Se Drive e repository divergono, l’agente deve **segnalarlo** nel report.
-- Nessuna riconciliazione silenziosa e nessuna sincronizzazione inversa.
+- Repository / Git verificato **prevale** sul mirror
+- Copia Drive vecchia **non** sovrascrive il repository
+- Segnalare divergenze; nessuna riconciliazione silenziosa
 
-Gerarchia sintetica in caso di conflitto (allineata alla regola `000`): istruzioni utente correnti → repository/Git → `docs/stato-operativo.md` canonico → mirror Drive.
+Gerarchia: istruzioni utente → Git/repo → handoff / stato-operativo locale → rules → docs → mirror Drive → report precedenti → assunzioni.
 
 ---
 
-## L. Checklist di verifica
+## J. Checklist
 
-- [ ] Cartella Drive stabile con basename `Gestore-Spese-SaaS-AI-Context`
-- [ ] Configurazione locale presente (env o `.git/ai-context-mirror-path`)
-- [ ] Stessi percorsi relativi del repository
-- [ ] Nessun duplicato (`(1)`, `copy`, versioni manuali)
-- [ ] Nessun segreto / `.env` / dump / credenziali
-- [ ] Dry-run eseguito prima di ogni apply
-- [ ] Nessun `--delete` usato
-- [ ] Verifica byte/hash post-apply superata
-- [ ] Sincronizzazione Drive Desktop completata verso il cloud
-- [ ] Link accessibile; prova di lettura da ChatGPT nella ripresa corrente
-- [ ] Nessun percorso personale nei report o nei file versionati
+- [ ] Basename destinazione `Gestore-Spese-SaaS-AI-Context`
+- [ ] Config locale presente (env o `.git/ai-context-mirror-path`)
+- [ ] HOT di default; FULL solo se intenzionale
+- [ ] Dry-run (con checksum) prima di apply
+- [ ] Nessun `--delete` / `--remove-source-files`
+- [ ] Verifica byte/hash OK
+- [ ] Manifest aggiornato in destinazione
+- [ ] Nessun percorso personale nei report
+- [ ] Nessuna sync inversa
+- [ ] Nessuna sync automatica
+- [ ] HOT/FULL non usato come bypass clean-tree / GOVERNANCE-8B

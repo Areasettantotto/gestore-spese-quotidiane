@@ -30,7 +30,10 @@
 
 ### Development / deploy documentation
 
-- **Stato operativo / ripresa sviluppo** (snapshot + prompt per ChatGPT/agenti): [`docs/stato-operativo.md`](docs/stato-operativo.md)
+- **Handoff ChatGPT (HOT, continuità ordinaria):** [`docs/chatgpt-handoff.md`](docs/chatgpt-handoff.md)
+- **Indice contesto AI (HOT/WARM/COLD):** [`docs/ai-context-index.md`](docs/ai-context-index.md)
+- **Stato operativo (WARM, dettaglio/storico):** [`docs/stato-operativo.md`](docs/stato-operativo.md)
+- **Mirror Drive / sync HOT·FULL:** [`docs/ai-context-mirror.md`](docs/ai-context-mirror.md)
 - **Production readiness** (pre/post deploy, rollback, smoke test, env vars): [`docs/production-readiness.md`](docs/production-readiness.md)
 - **Demo tenant** (operational runbook, no auto-reset): [`docs/demo-tenant.md`](docs/demo-tenant.md)
 - **SaaS refactor plan** (migrations, tenancy phases): [`docs/saas-refactor-plan.md`](docs/saas-refactor-plan.md)
