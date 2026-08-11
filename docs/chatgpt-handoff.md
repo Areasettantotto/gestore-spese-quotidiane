@@ -6,11 +6,12 @@
 |------|--------|
 | Branch di riferimento (snapshot) | `main` |
 | Commit applicativo di riferimento | `2d9a639` — *feat(billing): add Stripe subscription pre-admission context* (I4.3BL) |
-| Nota HEAD | `2d9a639` è il riferimento dello **snapshot**, non necessariamente l’HEAD futuro dopo consolidamenti governance |
-| `origin/main` (al momento dello snapshot) | `e673840` (locale era **ahead 1**; I4.3BL non pushato) |
-| Sync Drive | **BLOCCATA** finché restano working tree sporca intenzionale e/o gap GOVERNANCE-8B (clean-tree / dirty `stato-operativo`) |
+| Ultimo consolidamento governance | `a86e773` — *chore(governance): restructure AI context workflow* (GOVERNANCE-9, include F1) |
+| Nota HEAD | I valori sopra sono riferimenti dello **snapshot**; **Git reale prevale** a ogni ripresa (`git rev-parse HEAD`, `git status`) |
+| `origin/main` (al momento dello snapshot) | `e673840` (locale era ahead; verificare push con Git) |
+| Sync Drive | **BLOCCATA** finché la working tree non può tornare pulita dopo il normale lifecycle di `stato-operativo` (GOVERNANCE-9-bis + commit); GOVERNANCE-8B resta **non implementato** e va **rivalutato** dopo working tree pulita — **non** anticiparne necessità o chiusura |
 
-**Sempre verificare su Git reale:** `git branch --show-current`, `git rev-parse HEAD`, `git status`. Branch / HEAD / working tree reali prevalgono su questo snapshot. **Non** trattare alcun elenco di file dirty come invariante.
+**Sempre verificare su Git reale:** `git branch --show-current`, `git rev-parse HEAD`, `git status`. Branch / HEAD / working tree reali prevalgono su questo snapshot. **Non** trattare elenchi dirty transitori come invarianti.
 
 ---
 
@@ -34,7 +35,7 @@ SaaS **gestione spese** multi-tenant: React+Vite+TS (static) + Supabase (Auth, P
 - Strategy anti-stale **K2**; admission W_sub; design **R-A** (M2/R2)
 - Snapshot(S) **V3** set-based; H2 CAS **V2** + TenantGuard; D3/D4/D5/D7/unpaid **congelate** (I4.3BC)
 - Trust boundary: tenant solo da mapping server-side; provider state solo da fresh Stripe retrieve (no fallback webhook payload)
-- Da I4.3BL-bis: `docs/stato-operativo.md` aggiornabile in `-bis` **locale**, **non** commit `docs(context)`
+- `docs/stato-operativo.md`: fonte **WARM**; aggiornamento via task `-bis` separato; dopo review/autorizzazione utente segue lifecycle Git/commit normale; commit del `-bis` registrato nel successivo aggiornamento significativo (**vietato** `-bis-bis`); obiettivo ordinario = working tree pulita (non dirty permanente)
 - Contesto AI: **locale = SoT**; Drive = mirror one-way; continuità ordinaria via questo handoff + indice HOT/WARM/COLD (`docs/ai-context-index.md`)
 
 ---
@@ -60,9 +61,9 @@ SaaS **gestione spese** multi-tenant: React+Vite+TS (static) + Supabase (Auth, P
 
 | ID | Stato |
 |----|--------|
-| **GOVERNANCE-9** | Ristrutturazione HOT/WARM/COLD **in corso / non ancora consolidata** (handoff, index, rule 000, mirror HOT/FULL). **Non** inventare l’hash del commit futuro di consolidamento |
-| **GOVERNANCE-8B** | **Separato e APERTO** — eccezione controllata dirty `stato-operativo` / contratto GOVERNANCE-8A (**non** implementato in GOVERNANCE-9) |
-| GOVERNANCE-8B-R | Review ZERO-DIFF del working tree di ristrutturazione (gap → GOVERNANCE-9-F1) |
+| **GOVERNANCE-9** | **Consolidata** in `a86e773` (*chore(governance): restructure AI context workflow*; include GOVERNANCE-9-F1). Handoff, index, rule 000, mirror HOT/FULL |
+| **GOVERNANCE-9-bis** | **Pending** — prossimo aggiornamento documentale di `docs/stato-operativo.md` (non ancora eseguito) |
+| **GOVERNANCE-8B** | **NON implementato** — storico/aperto; **rivalutare** solo dopo ritorno a working tree pulita. **Non** dichiarare necessario né chiuso in anticipo |
 
 HOT/FULL = policy di **selezione perimetro** mirror, **non** bypass della safety policy clean-tree.
 
@@ -71,14 +72,14 @@ HOT/FULL = policy di **selezione perimetro** mirror, **non** bypass della safety
 ## Ultimo task significativo
 
 - **Applicativo:** I4.3BL — `resolveStripeSubscriptionPreAdmissionContext` (BJ→identity→BF→BI→ownership fail-closed)
-- **Documentale locale:** I4.3BL-bis / F1 su `stato-operativo.md` (non committed)
-- **Governance:** GOVERNANCE-9 (ristrutturazione contesto) + fix selettivi GOVERNANCE-9-F1 — **non consolidati** finché non review/commit/`-bis`
+- **Governance:** GOVERNANCE-9 consolidata in `a86e773` (include F1)
+- **Documentale stato:** `docs/stato-operativo.md` **pending** aggiornamento/consolidamento **GOVERNANCE-9-bis**
 
 ---
 
 ## Rischi / blocchi aperti
 
-1. Sync Drive **BLOCCATA** (stato operativo tracked-modified + `--apply` fail-closed; GOVERNANCE-8B ancora aperto)
+1. Sync Drive **BLOCCATA** fino a lifecycle normale di `stato-operativo` (GOVERNANCE-9-bis → review → commit utente → working tree pulita); GOVERNANCE-8B non implementato
 2. I4.3BL ahead rispetto a `origin/main` al momento dello snapshot; verificare push con Git
 3. Helpers I4.3B **non wired** in `stripe-webhook`
 4. Drift noto: `billing-data-model.md` / `production-readiness.md` vs implementazione reale
@@ -88,9 +89,9 @@ HOT/FULL = policy di **selezione perimetro** mirror, **non** bypass della safety
 
 ## Prossimi passi candidati (decide Supervisor)
 
-1. Review + commit selettivo GOVERNANCE-9 (senza includere `stato-operativo.md` se resta locale intenzionale)
-2. GOVERNANCE-9-bis (registrare modello HOT/WARM/COLD nello stato operativo)
-3. Solo dopo: GOVERNANCE-8B (dirty-state controllato) **oppure** ripresa I4.3B — **non** anticipare
+1. Review + commit selettivo di eventuali fix post-GOVERNANCE-9 (es. GOVERNANCE-9-F2 su handoff/index) **senza** includere `stato-operativo.md` in quel commit se ancora fuori scope
+2. **GOVERNANCE-9-bis** — consolidare in `stato-operativo.md` il commit GOVERNANCE-9, il lifecycle `-bis` e il modello HOT/WARM/COLD
+3. Solo dopo working tree pulita: **rivalutare** GOVERNANCE-8B **oppure** ripresa I4.3B — **non** anticipare
 
 Chiedere conferma prima di: deploy EF, apply migration remota, `db push`, Stripe live, cambi RLS expenses, test runtime Stripe, sync Drive `--apply`.
 

@@ -26,7 +26,7 @@
 
 | File | Responsabilità | Autorità | Quando aggiornarlo | Quando leggerlo |
 |------|----------------|----------|--------------------|-----------------|
-| `docs/stato-operativo.md` | Dettaglio/storico operativo, log task, decisioni estese | Autorevole per **profondità** operativa (non obbligatorio intero a ogni prompt) | Task `-bis` (da I4.3BL-bis: locale, non commit `docs(context)`) | Solo se serve cronologia, criteri chiusure, o dettaglio oltre handoff |
+| `docs/stato-operativo.md` | Dettaglio/storico operativo, log task, decisioni estese | Fonte **WARM** autorevole per **profondità**/cronologia (non HOT; **non** obbligatorio intero a ogni prompt). Repository/Git resta canonico; Drive = mirror derivato | Task `-bis` quando cambia materialmente lo stato (**separato** dal task principale). Dopo review e autorizzazione utente l’aggiornamento segue il lifecycle Git/commit normale; il commit del `-bis` si registra nel successivo aggiornamento significativo (**vietato** `-bis-bis`). Modello ordinario: evitare working tree permanentemente dirty | Solo se serve cronologia, criteri chiusure, o dettaglio oltre handoff |
 | `docs/ai-context-mirror.md` | Policy mirror Drive, HOT/FULL, workflow sync | Autorevole per sync/mirror | Cambio tooling o policy sync | Task sync/governance mirror |
 | `docs/billing-data-model.md` | Modello dati billing / snapshot tenant | Design billing (possibile drift vs codice) | Evoluzione schema/contratti billing | Task billing/schema/subscription |
 | `docs/supabase-cli-baseline.md` | Baseline CLI, replay migrations, guardrail `db push` | Workflow Supabase locale | Cambio baseline/migration policy | Task migration/CLI/reset locale |
