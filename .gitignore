@@ -16,3 +16,6 @@ supabase/functions/.env*.local
 # Do not broaden to *.md / *.mdc (README.md and other Markdown stay versioned).
 docs/**/*.md
 .cursor/rules/**/*.mdc
+
+# Local-only mirror tooling + config (path destinazione in mirror.env; non versionare).
+.ai-context/
