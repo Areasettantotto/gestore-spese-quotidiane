@@ -6,7 +6,8 @@ readonly MANIFEST_NAME=".ai-context-mirror-manifest.txt"
 
 usage() {
   echo "Usage: scripts/sync-ai-context-mirror.sh [--full] --dry-run | --apply | --status" >&2
-  echo "  Default sync scope: HOT (handoff + index). Use --full for all tracked docs/rules." >&2
+  echo "  Default sync scope: HOT (handoff + index). Use --full for local docs/**/*.md and .cursor/rules/**/*.mdc." >&2
+  echo "  File lists come from the local filesystem (not git ls-files). AI context may be gitignored." >&2
   exit 1
 }
 
@@ -24,6 +25,15 @@ safe_realpath_dir() {
     pwd -P 2>/dev/null || exit 1
   )" || return 1
   printf '%s\n' "$resolved"
+}
+
+# True only for a regular local file (not a symlink).
+is_regular_local_file() {
+  local abs="$1"
+  [[ -e "$abs" ]] || return 1
+  [[ ! -L "$abs" ]] || return 1
+  [[ -f "$abs" ]] || return 1
+  return 0
 }
 
 SCOPE="hot"
@@ -100,23 +110,55 @@ is_hot_path() {
   esac
 }
 
+# Enumerate authorized local regular files (deterministic). Does not use git ls-files.
+# find -P: never follow symlinks; -type f: regular files only (symlinks excluded).
+enumerate_local_ai_files() {
+  {
+    if [[ -d docs ]]; then
+      find -P docs -type f -name '*.md' -print 2>/dev/null || true
+    fi
+    if [[ -d .cursor/rules ]]; then
+      find -P .cursor/rules -type f -name '*.mdc' -print 2>/dev/null || true
+    fi
+  } | LC_ALL=C sort -u | while IFS= read -r path; do
+    [[ -n "$path" ]] || continue
+    is_allowed_path "$path" || continue
+    if ! is_regular_local_file "${REPO_ROOT}/${path}"; then
+      continue
+    fi
+    printf '%s\n' "$path"
+  done
+}
+
+append_list_path() {
+  local path="$1"
+  printf '%s\n' "$path" >>"$LIST_FILE"
+  FILE_COUNT=$((FILE_COUNT + 1))
+}
+
 build_file_list() {
   LIST_FILE="$(mktemp)"
   FILE_COUNT=0
-  while IFS= read -r path; do
-    [[ -n "$path" ]] || continue
-    if ! is_allowed_path "$path"; then
-      continue
-    fi
-    if [[ "$SCOPE" == "hot" ]] && ! is_hot_path "$path"; then
-      continue
-    fi
-    printf '%s\n' "$path" >>"$LIST_FILE"
-    FILE_COUNT=$((FILE_COUNT + 1))
-  done < <(git ls-files)
+
+  if [[ "$SCOPE" == "hot" ]]; then
+    local hot_path abs
+    for hot_path in docs/chatgpt-handoff.md docs/ai-context-index.md; do
+      abs="${REPO_ROOT}/${hot_path}"
+      is_allowed_path "$hot_path" || die "percorso HOT non ammesso: ${hot_path}"
+      is_regular_local_file "$abs" \
+        || die "file HOT assente o non e' un file regolare locale: ${hot_path}"
+      append_list_path "$hot_path"
+    done
+  else
+    local path
+    while IFS= read -r path; do
+      [[ -n "$path" ]] || continue
+      append_list_path "$path"
+    done < <(enumerate_local_ai_files)
+  fi
 
   if [[ "$SCOPE" == "hot" && "$FILE_COUNT" -eq 0 ]]; then
-    die "lista HOT vuota (servono docs/chatgpt-handoff.md e docs/ai-context-index.md tracciati da Git)"
+    die "lista HOT vuota (servono docs/chatgpt-handoff.md e docs/ai-context-index.md sul filesystem locale)"
   fi
   [[ "$FILE_COUNT" -gt 0 ]] || die "lista file mirror vuota"
 }
@@ -140,6 +182,8 @@ validate_list() {
         die "prefisso non ammesso: ${path}"
         ;;
     esac
+    is_regular_local_file "${REPO_ROOT}/${path}" \
+      || die "file assente o non regolare nella lista: ${path}"
   done <"$LIST_FILE"
 }
 
@@ -163,6 +207,7 @@ write_manifest() {
     done <"$LIST_FILE"
     echo "one_way: locale_to_drive"
     echo "delete: never"
+    echo "source: local_filesystem"
   } >"${dest_dir}/${MANIFEST_NAME}"
 }
 
@@ -178,12 +223,11 @@ if [[ "$MODE" == "status" ]]; then
   FULL_COUNT=0
   while IFS= read -r path; do
     [[ -n "$path" ]] || continue
-    is_allowed_path "$path" || continue
     FULL_COUNT=$((FULL_COUNT + 1))
     if is_hot_path "$path"; then
       HOT_COUNT=$((HOT_COUNT + 1))
     fi
-  done < <(git ls-files)
+  done < <(enumerate_local_ai_files)
 
   WT_STATE="clean"
   if [[ -n "$(git status --porcelain --untracked-files=all 2>/dev/null || true)" ]]; then
@@ -194,29 +238,32 @@ if [[ "$MODE" == "status" ]]; then
   echo "default_scope: hot"
   echo "config_present: ${config_present}"
   echo "working_tree: ${WT_STATE}"
-  echo "hot_tracked_count: ${HOT_COUNT}"
-  echo "full_tracked_count: ${FULL_COUNT}"
+  echo "note_working_tree: clean-tree guard applies to Git-tracked paths only; gitignored AI context edits do not dirty the tree"
+  echo "hot_local_count: ${HOT_COUNT}"
+  echo "full_local_count: ${FULL_COUNT}"
   echo "hot_files:"
   echo "  docs/chatgpt-handoff.md"
   echo "  docs/ai-context-index.md"
   for hot_path in docs/chatgpt-handoff.md docs/ai-context-index.md; do
-    if [[ -f "${REPO_ROOT}/${hot_path}" ]] && ! git ls-files --error-unmatch -- "$hot_path" >/dev/null 2>&1; then
-      echo "hot_untracked: ${hot_path}"
+    if ! is_regular_local_file "${REPO_ROOT}/${hot_path}"; then
+      echo "hot_missing_or_not_regular: ${hot_path}"
     fi
   done
   echo "manifest_destination_only: ${MANIFEST_NAME}"
   echo "one_way: locale_to_drive"
   echo "delete: never"
-  echo "note: HOT/FULL sync uses git ls-files only; commit new HOT files before --apply"
+  echo "note: HOT/FULL enumerate local regular files in docs/**/*.md and .cursor/rules/**/*.mdc; independent of Git tracking"
   echo "result: OK (status)"
   exit 0
 fi
 
-# Apply requires a fully clean working tree before any destination I/O or operational output.
+# Apply requires a fully clean working tree (Git-tracked paths) before any destination I/O.
+# After AI context is gitignored, edits under docs/**/*.md and .cursor/rules/**/*.mdc
+# are invisible to Git and do not satisfy or violate this guard by themselves.
 if [[ "$MODE" == "apply" ]]; then
   GIT_STATUS="$(git status --porcelain --untracked-files=all 2>/dev/null)" \
     || die "verifica stato Git fallita"
-  [[ -z "$GIT_STATUS" ]] || die "working tree non pulita; apply rifiutato"
+  [[ -z "$GIT_STATUS" ]] || die "working tree non pulita (path Git-tracked); apply rifiutato"
 fi
 
 resolve_dest

@@ -30,14 +30,7 @@
 
 ### Development / deploy documentation
 
-- **Handoff ChatGPT (HOT, continuità ordinaria):** [`docs/chatgpt-handoff.md`](docs/chatgpt-handoff.md)
-- **Indice contesto AI (HOT/WARM/COLD):** [`docs/ai-context-index.md`](docs/ai-context-index.md)
-- **Stato operativo (WARM, dettaglio/storico):** [`docs/stato-operativo.md`](docs/stato-operativo.md)
-- **Mirror Drive / sync HOT·FULL:** [`docs/ai-context-mirror.md`](docs/ai-context-mirror.md)
-- **Production readiness** (pre/post deploy, rollback, smoke test, env vars): [`docs/production-readiness.md`](docs/production-readiness.md)
-- **Demo tenant** (operational runbook, no auto-reset): [`docs/demo-tenant.md`](docs/demo-tenant.md)
-- **SaaS refactor plan** (migrations, tenancy phases): [`docs/saas-refactor-plan.md`](docs/saas-refactor-plan.md)
-- **Supabase CLI baseline + migration workflow** (come creare la prossima migration, reset locale, guardrail su baseline e `db push`): [`docs/supabase-cli-baseline.md`](docs/supabase-cli-baseline.md)
+AI context under `docs/**/*.md` and Cursor rules under `.cursor/rules/**/*.mdc` are **local-only** in this project (not published on GitHub). Use the copies on your machine; sync to Drive via `scripts/sync-ai-context-mirror.sh` when authorized. `README.md` and other Markdown outside `docs/` remain versioned.
 
 
 ## Deploy to Render (Static Site)

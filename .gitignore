@@ -11,3 +11,8 @@ coverage/
 .env.edge.production.local
 supabase/functions/.env.local
 supabase/functions/.env*.local
+
+# AI context — local-only (Gestore Spese SaaS). Not Git-tracked; keep on disk.
+# Do not broaden to *.md / *.mdc (README.md and other Markdown stay versioned).
+docs/**/*.md
+.cursor/rules/**/*.mdc
