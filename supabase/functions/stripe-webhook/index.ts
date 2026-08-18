@@ -1,7 +1,8 @@
 // @ts-expect-error Deno runtime import resolved at edge deploy/runtime.
 import Stripe from "https://esm.sh/stripe@14.25.0?target=denonext";
-// @ts-expect-error Deno runtime import resolved at edge deploy/runtime.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { extractStripeSubscriptionEventBootstrap } from "../_shared/extractStripeSubscriptionEventBootstrap.ts";
+import { fetchNormalizedStripeSubscriptionFromRuntimeConfig } from "../_shared/fetchNormalizedStripeSubscriptionFromRuntimeConfig.ts";
 import {
   badRequest,
   methodNotAllowed,
@@ -17,7 +18,14 @@ declare const Deno: {
   };
 };
 
-type SupabaseClient = ReturnType<typeof createClient>;
+function createWebhookSupabaseClient(
+  supabaseUrl: string,
+  supabaseServiceRoleKey: string,
+) {
+  return createClient(supabaseUrl, supabaseServiceRoleKey);
+}
+
+type SupabaseClient = ReturnType<typeof createWebhookSupabaseClient>;
 
 type BillingEventRow = {
   id: string;
@@ -33,6 +41,8 @@ type TenantBillingCustomerRow = {
 };
 
 const WEBHOOK_NOT_CONFIGURED_MESSAGE = "Stripe webhook is not configured.";
+const SUBSCRIPTION_PROCESSING_FAILURE_MESSAGE =
+  "Failed to process Stripe subscription event.";
 const PROVIDER = "stripe";
 const MAX_PROCESSING_ERROR_LENGTH = 500;
 const UUID_RE =
@@ -47,10 +57,13 @@ const ALLOWED_EVENT_TYPES = new Set<string>([
   "invoice.payment_failed",
 ]);
 
-const DEFERRED_EVENT_TYPES = new Set<string>([
+const SUBSCRIPTION_EVENT_TYPES = new Set<string>([
   "customer.subscription.created",
   "customer.subscription.updated",
   "customer.subscription.deleted",
+]);
+
+const DEFERRED_EVENT_TYPES = new Set<string>([
   "invoice.payment_succeeded",
   "invoice.payment_failed",
 ]);
@@ -810,6 +823,47 @@ async function processCheckoutSessionCompleted(
   return receivedOk(event);
 }
 
+async function processCustomerSubscriptionEvent(
+  supabase: SupabaseClient,
+  event: Stripe.Event,
+  billingEvent: BillingEventRow,
+): Promise<Response> {
+  const respondAfterError = async (reason: string): Promise<Response> => {
+    const recorded = await recordProcessingError(
+      supabase,
+      billingEvent.id,
+      reason,
+      null,
+    );
+    if (recorded.status === "already_completed") {
+      return receivedOk(event);
+    }
+    return upstreamError(SUBSCRIPTION_PROCESSING_FAILURE_MESSAGE);
+  };
+
+  const bootstrapResult = extractStripeSubscriptionEventBootstrap(event);
+  if (bootstrapResult.ok === false) {
+    return await respondAfterError(bootstrapResult.reason);
+  }
+
+  const stripeSecretKey = Deno.env.get("STRIPE_SECRET_KEY");
+  const supportedProMonthlyPriceId = Deno.env.get(
+    "STRIPE_PRICE_ID_PRO_MONTHLY",
+  );
+
+  const result = await fetchNormalizedStripeSubscriptionFromRuntimeConfig({
+    provider_subscription_id: bootstrapResult.provider_subscription_id,
+    stripeSecretKey,
+    supportedProMonthlyPriceId,
+  });
+
+  if (result.ok === false) {
+    return await respondAfterError(result.reason);
+  }
+
+  return receivedOk(event);
+}
+
 function getStripeWebhookSecret(): string | Response {
   const secret = Deno.env.get("STRIPE_WEBHOOK_SECRET");
   if (!secret) {
@@ -888,7 +942,10 @@ async function handler(req: Request): Promise<Response> {
     return serviceUnavailable("Billing event persistence is not configured.");
   }
 
-  const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
+  const supabase = createWebhookSupabaseClient(
+    supabaseUrl,
+    supabaseServiceRoleKey,
+  );
 
   const ensured = await ensureBillingEventRow(supabase, event);
   if (ensured.ok === false) {
@@ -906,6 +963,14 @@ async function handler(req: Request): Promise<Response> {
 
   if (billingEvent.processed_at !== null) {
     return receivedOk(event);
+  }
+
+  if (SUBSCRIPTION_EVENT_TYPES.has(event.type)) {
+    return await processCustomerSubscriptionEvent(
+      supabase,
+      event,
+      billingEvent,
+    );
   }
 
   if (DEFERRED_EVENT_TYPES.has(event.type)) {
