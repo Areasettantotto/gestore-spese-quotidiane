@@ -1,7 +1,10 @@
 // @ts-expect-error Deno runtime import resolved at edge deploy/runtime.
 import Stripe from "https://esm.sh/stripe@14.25.0?target=denonext";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { extractStripeSubscriptionEventBootstrap } from "../_shared/extractStripeSubscriptionEventBootstrap.ts";
+import {
+  extractStripeSubscriptionEventBootstrap,
+  type StripeSubscriptionEventLike,
+} from "../_shared/extractStripeSubscriptionEventBootstrap.ts";
 import { fetchNormalizedStripeSubscriptionFromRuntimeConfig } from "../_shared/fetchNormalizedStripeSubscriptionFromRuntimeConfig.ts";
 import {
   badRequest,
@@ -68,7 +71,7 @@ const DEFERRED_EVENT_TYPES = new Set<string>([
   "invoice.payment_failed",
 ]);
 
-function receivedOk(event: Stripe.Event): Response {
+function receivedOk(event: { id: string; type: string }): Response {
   return jsonResponse(
     {
       data: {
@@ -188,6 +191,12 @@ type RecordProcessingErrorResult =
   | { status: "recorded" }
   | { status: "already_completed" }
   | { status: "db_error" };
+
+type RecordProcessingErrorFn = (
+  billingEventId: string,
+  reason: string,
+  tenantId: string | null,
+) => Promise<RecordProcessingErrorResult>;
 
 async function fetchBillingEventById(
   supabase: SupabaseClient,
@@ -823,14 +832,28 @@ async function processCheckoutSessionCompleted(
   return receivedOk(event);
 }
 
-async function processCustomerSubscriptionEvent(
-  supabase: SupabaseClient,
-  event: Stripe.Event,
-  billingEvent: BillingEventRow,
+type CustomerSubscriptionProcessorEvent = StripeSubscriptionEventLike & {
+  id: string;
+  type: string;
+};
+
+type FetchNormalizedFromRuntimeConfigFn = (
+  params: Parameters<
+    typeof fetchNormalizedStripeSubscriptionFromRuntimeConfig
+  >[0],
+) => ReturnType<
+  typeof fetchNormalizedStripeSubscriptionFromRuntimeConfig
+>;
+
+export async function processCustomerSubscriptionEvent(
+  event: CustomerSubscriptionProcessorEvent,
+  billingEvent: Pick<BillingEventRow, "id">,
+  recordProcessingErrorFn: RecordProcessingErrorFn,
+  fetchNormalizedFromRuntimeConfig: FetchNormalizedFromRuntimeConfigFn =
+    fetchNormalizedStripeSubscriptionFromRuntimeConfig,
 ): Promise<Response> {
   const respondAfterError = async (reason: string): Promise<Response> => {
-    const recorded = await recordProcessingError(
-      supabase,
+    const recorded = await recordProcessingErrorFn(
       billingEvent.id,
       reason,
       null,
@@ -851,7 +874,7 @@ async function processCustomerSubscriptionEvent(
     "STRIPE_PRICE_ID_PRO_MONTHLY",
   );
 
-  const result = await fetchNormalizedStripeSubscriptionFromRuntimeConfig({
+  const result = await fetchNormalizedFromRuntimeConfig({
     provider_subscription_id: bootstrapResult.provider_subscription_id,
     stripeSecretKey,
     supportedProMonthlyPriceId,
@@ -967,9 +990,15 @@ async function handler(req: Request): Promise<Response> {
 
   if (SUBSCRIPTION_EVENT_TYPES.has(event.type)) {
     return await processCustomerSubscriptionEvent(
-      supabase,
       event,
       billingEvent,
+      (billingEventId, reason, tenantId) =>
+        recordProcessingError(
+          supabase,
+          billingEventId,
+          reason,
+          tenantId,
+        ),
     );
   }
 
