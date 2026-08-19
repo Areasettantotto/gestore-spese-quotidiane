@@ -4,6 +4,7 @@
  *
  * Composes existing fail-closed boundaries only:
  *   resolveStripeSubscriptionSyncRuntimeConfig
+ *   → resolveStripePriceCatalogFromConfig (caller-side catalog adapter)
  *   → createStripeSubscriptionRetrieveClient
  *   → fetchNormalizedStripeSubscription
  *
@@ -22,6 +23,7 @@ import {
   fetchNormalizedStripeSubscription,
   type FetchNormalizedStripeSubscriptionResult,
 } from "./fetchNormalizedStripeSubscription.ts";
+import { resolveStripePriceCatalogFromConfig } from "./resolveStripePriceCatalogFromConfig.ts";
 import {
   resolveStripeSubscriptionSyncRuntimeConfig,
   type ResolveStripeSubscriptionSyncRuntimeConfigResult,
@@ -56,6 +58,16 @@ export async function fetchNormalizedStripeSubscriptionFromRuntimeConfig(
     return configResult;
   }
 
+  const catalogResult = resolveStripePriceCatalogFromConfig({
+    proMonthlyPriceId: configResult.supportedProMonthlyPriceId,
+  });
+  if (catalogResult.ok === false) {
+    return {
+      ok: false,
+      reason: "invalid_supported_pro_monthly_price_id",
+    };
+  }
+
   const stripe = createRetrieveClient(
     configResult.stripeSecretKey,
   );
@@ -64,7 +76,7 @@ export async function fetchNormalizedStripeSubscriptionFromRuntimeConfig(
     provider_subscription_id: params.provider_subscription_id,
     stripe,
     config: {
-      supportedProMonthlyPriceId: configResult.supportedProMonthlyPriceId,
+      catalog: catalogResult.catalog,
     },
   });
 }

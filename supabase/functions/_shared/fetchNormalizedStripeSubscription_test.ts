@@ -14,7 +14,10 @@ import {
   type FetchNormalizedStripeSubscriptionResult,
 } from "./fetchNormalizedStripeSubscription.ts";
 import type { StripeSubscriptionRetrieveClient } from "./refetchStripeSubscription.ts";
-import type { StripeSubscriptionLike } from "./normalizeStripeSubscription.ts";
+import type {
+  NormalizeStripeSubscriptionConfig,
+  StripeSubscriptionLike,
+} from "./normalizeStripeSubscription.ts";
 
 declare const Deno: {
   test: (name: string, fn: () => void | Promise<void>) => void;
@@ -22,7 +25,15 @@ declare const Deno: {
 
 const SUB_ID = "sub_test_compose_synthetic_001";
 const SUPPORTED_PRICE = "price_test_pro_monthly_supported";
-const CONFIG = { supportedProMonthlyPriceId: SUPPORTED_PRICE };
+const CONFIG: NormalizeStripeSubscriptionConfig = {
+  catalog: [
+    {
+      priceId: SUPPORTED_PRICE,
+      tier: "pro",
+      interval: "monthly",
+    },
+  ],
+};
 
 function assert(condition: boolean, message: string): void {
   if (!condition) {
@@ -30,17 +41,26 @@ function assert(condition: boolean, message: string): void {
   }
 }
 
-function assertEquals(actual: unknown, expected: unknown, message: string): void {
+function assertEquals(
+  actual: unknown,
+  expected: unknown,
+  message: string,
+): void {
   const actualJson = JSON.stringify(actual);
   const expectedJson = JSON.stringify(expected);
   if (actualJson !== expectedJson) {
-    throw new Error(`${message}\n  actual:   ${actualJson}\n  expected: ${expectedJson}`);
+    throw new Error(
+      `${message}\n  actual:   ${actualJson}\n  expected: ${expectedJson}`,
+    );
   }
 }
 
 function expectSuccess(
   result: FetchNormalizedStripeSubscriptionResult,
-): asserts result is Extract<FetchNormalizedStripeSubscriptionResult, { ok: true }> {
+): asserts result is Extract<
+  FetchNormalizedStripeSubscriptionResult,
+  { ok: true }
+> {
   assert(result.ok === true, `expected success, got ${JSON.stringify(result)}`);
 }
 
@@ -122,11 +142,23 @@ Deno.test("1. success: refetch + normalize → Normalized Subscription", async (
 
   expectSuccess(result);
   assertEquals(calls.length, 1, "retrieve once");
-  assertEquals(result.value.provider_subscription_id, SUB_ID, "subscription id");
-  assertEquals(result.value.provider_customer_id, "cus_test_compose_1", "customer");
+  assertEquals(
+    result.value.provider_subscription_id,
+    SUB_ID,
+    "subscription id",
+  );
+  assertEquals(
+    result.value.provider_customer_id,
+    "cus_test_compose_1",
+    "customer",
+  );
   assertEquals(result.value.plan_code, "paid", "NP-A plan_code");
   assertEquals(result.value.status, "active", "status");
-  assertEquals(result.value.cancel_at_period_end, false, "cancel_at_period_end");
+  assertEquals(
+    result.value.cancel_at_period_end,
+    false,
+    "cancel_at_period_end",
+  );
 });
 
 Deno.test("2. invalid provider_subscription_id → refetch stage, retrieve not called", async () => {
@@ -167,7 +199,10 @@ Deno.test("3. provider retrieve reject → refetch stage, no normalize success",
 
   expectFailure(result, "refetch", "stripe_subscription_refetch_failed");
   assertEquals(calls.length, 1, "retrieve attempted");
-  assert(result.ok === false && !("value" in result), "no normalize success path");
+  assert(
+    result.ok === false && !("value" in result),
+    "no normalize success path",
+  );
 });
 
 Deno.test("4. provider response null/undefined → refetch stage", async () => {
@@ -286,8 +321,16 @@ Deno.test("9. two independent invocations → two retrieves, no memoization", as
   expectSuccess(result1);
   expectSuccess(result2);
   assertEquals(calls.length, 2, "two provider retrieves");
-  assertEquals(result1.value.provider_subscription_id, "sub_compose_a", "first id");
-  assertEquals(result2.value.provider_subscription_id, "sub_compose_b", "second id");
+  assertEquals(
+    result1.value.provider_subscription_id,
+    "sub_compose_a",
+    "first id",
+  );
+  assertEquals(
+    result2.value.provider_subscription_id,
+    "sub_compose_b",
+    "second id",
+  );
   assert(
     result1.value !== result2.value,
     "must not reuse/memoize normalized snapshot across invocations",
@@ -369,7 +412,15 @@ Deno.test("12. normalizer config forwarded (explicit config is authority)", asyn
   const result = await fetchNormalizedStripeSubscription({
     provider_subscription_id: SUB_ID,
     stripe,
-    config: { supportedProMonthlyPriceId: configuredPrice },
+    config: {
+      catalog: [
+        {
+          priceId: configuredPrice,
+          tier: "pro",
+          interval: "monthly",
+        },
+      ],
+    },
   });
 
   expectSuccess(result);
@@ -381,7 +432,15 @@ Deno.test("12. normalizer config forwarded (explicit config is authority)", asyn
   const failResult = await fetchNormalizedStripeSubscription({
     provider_subscription_id: SUB_ID,
     stripe: stripe2,
-    config: { supportedProMonthlyPriceId: "price_different_from_raw" },
+    config: {
+      catalog: [
+        {
+          priceId: "price_different_from_raw",
+          tier: "pro",
+          interval: "monthly",
+        },
+      ],
+    },
   });
   expectFailure(failResult, "normalize", "unsupported_price");
 });

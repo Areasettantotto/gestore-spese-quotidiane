@@ -14,7 +14,10 @@ import {
   type ResolveStripeSubscriptionPreAdmissionContextResult,
 } from "./resolveStripeSubscriptionPreAdmissionContext.ts";
 import type { StripeSubscriptionRetrieveClient } from "./refetchStripeSubscription.ts";
-import type { StripeSubscriptionLike } from "./normalizeStripeSubscription.ts";
+import type {
+  NormalizeStripeSubscriptionConfig,
+  StripeSubscriptionLike,
+} from "./normalizeStripeSubscription.ts";
 import type {
   BillingCustomerTenantLookupClient,
   TenantBillingCustomerLookupError,
@@ -37,8 +40,24 @@ const SUB_ID_A = "sub_test_preadmit_synthetic_a";
 const SUB_ID_B = "sub_test_preadmit_synthetic_b";
 const CUSTOMER_ID = "cus_test_preadmit_synthetic_001";
 const SUPPORTED_PRICE = "price_test_pro_monthly_supported";
-const CONFIG = { supportedProMonthlyPriceId: SUPPORTED_PRICE };
-const CONFIG_OTHER = { supportedProMonthlyPriceId: "price_test_other_unsupported" };
+const CONFIG: NormalizeStripeSubscriptionConfig = {
+  catalog: [
+    {
+      priceId: SUPPORTED_PRICE,
+      tier: "pro",
+      interval: "monthly",
+    },
+  ],
+};
+const CONFIG_OTHER: NormalizeStripeSubscriptionConfig = {
+  catalog: [
+    {
+      priceId: "price_test_other_unsupported",
+      tier: "pro",
+      interval: "monthly",
+    },
+  ],
+};
 
 function assert(condition: boolean, message: string): void {
   if (!condition) {
@@ -46,11 +65,17 @@ function assert(condition: boolean, message: string): void {
   }
 }
 
-function assertEquals(actual: unknown, expected: unknown, message: string): void {
+function assertEquals(
+  actual: unknown,
+  expected: unknown,
+  message: string,
+): void {
   const actualJson = JSON.stringify(actual);
   const expectedJson = JSON.stringify(expected);
   if (actualJson !== expectedJson) {
-    throw new Error(`${message}\n  actual:   ${actualJson}\n  expected: ${expectedJson}`);
+    throw new Error(
+      `${message}\n  actual:   ${actualJson}\n  expected: ${expectedJson}`,
+    );
   }
 }
 
@@ -254,7 +279,10 @@ Deno.test("1. success: BI ROW_ABSENT → tenant A + row_absent", async () => {
       stripeCalls,
     ),
     config: CONFIG,
-    billingCustomerTenantClient: createFakeBfClient(bfSuccessTenantA(), bfCalls),
+    billingCustomerTenantClient: createFakeBfClient(
+      bfSuccessTenantA(),
+      bfCalls,
+    ),
     tenantSubscriptionObservationClient: createFakeBiClient(
       { data: [], error: null },
       biCalls,
@@ -291,7 +319,10 @@ Deno.test("2. success: BI ROW_PRESENT same tenant", async () => {
       stripeCalls,
     ),
     config: CONFIG,
-    billingCustomerTenantClient: createFakeBfClient(bfSuccessTenantA(), bfCalls),
+    billingCustomerTenantClient: createFakeBfClient(
+      bfSuccessTenantA(),
+      bfCalls,
+    ),
     tenantSubscriptionObservationClient: createFakeBiClient(
       {
         data: [
@@ -384,7 +415,10 @@ Deno.test("5. identity mismatch → BF/BI not called", async () => {
       stripeCalls,
     ),
     config: CONFIG,
-    billingCustomerTenantClient: createFakeBfClient(bfSuccessTenantA(), bfCalls),
+    billingCustomerTenantClient: createFakeBfClient(
+      bfSuccessTenantA(),
+      bfCalls,
+    ),
     tenantSubscriptionObservationClient: createFakeBiClient(
       { data: [], error: null },
       biCalls,
@@ -408,7 +442,10 @@ Deno.test("6. BJ refetch failure preserved; BF/BI not called", async () => {
       [],
     ),
     config: CONFIG,
-    billingCustomerTenantClient: createFakeBfClient(bfSuccessTenantA(), bfCalls),
+    billingCustomerTenantClient: createFakeBfClient(
+      bfSuccessTenantA(),
+      bfCalls,
+    ),
     tenantSubscriptionObservationClient: createFakeBiClient(
       { data: [], error: null },
       biCalls,
@@ -434,7 +471,10 @@ Deno.test("7. BJ normalize failure preserved; BF/BI not called", async () => {
       [],
     ),
     config: CONFIG,
-    billingCustomerTenantClient: createFakeBfClient(bfSuccessTenantA(), bfCalls),
+    billingCustomerTenantClient: createFakeBfClient(
+      bfSuccessTenantA(),
+      bfCalls,
+    ),
     tenantSubscriptionObservationClient: createFakeBiClient(
       { data: [], error: null },
       biCalls,
@@ -518,7 +558,10 @@ Deno.test("10. provenance: BF customer id + BI subscription id from normalized",
       [],
     ),
     config: CONFIG,
-    billingCustomerTenantClient: createFakeBfClient(bfSuccessTenantA(), bfCalls),
+    billingCustomerTenantClient: createFakeBfClient(
+      bfSuccessTenantA(),
+      bfCalls,
+    ),
     tenantSubscriptionObservationClient: createFakeBiClient(
       { data: [], error: null },
       biCalls,
@@ -667,5 +710,4 @@ Deno.test("12. sequencing: no BF/BI before BJ success + identity", async () => {
 
   expectSuccess(result);
   assertEquals(order, ["stripe", "bf", "bi"], "BJ → BF → BI order");
-}
-);
+});

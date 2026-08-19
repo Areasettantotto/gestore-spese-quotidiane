@@ -5,6 +5,11 @@
  * Does not resolve tenants, touch W_sub, or derive Snapshot(S).
  */
 
+import {
+  type KnownStripePrice,
+  resolveKnownStripePrice,
+} from "./resolveKnownStripePrice.ts";
+
 export type SupportedStripeSubscriptionStatus =
   | "active"
   | "trialing"
@@ -64,10 +69,10 @@ export type StripeSubscriptionLike = {
 
 export type NormalizeStripeSubscriptionConfig = {
   /**
-   * Explicit Price ID for the supported commercial product (`pro_monthly`).
-   * Caller supplies the configured value; this module never reads env/secrets.
+   * Caller-supplied known Stripe Price catalog. This module never reads
+   * env/secrets and does not construct the catalog.
    */
-  supportedProMonthlyPriceId: string;
+  catalog: readonly KnownStripePrice[];
 };
 
 const SUPPORTED_STATUSES = new Set<SupportedStripeSubscriptionStatus>([
@@ -157,7 +162,10 @@ function collectSingleSubscriptionPriceId(items: unknown): string | null {
 export function unixSecondsToTimestamptz(
   value: unknown,
 ): { ok: true; value: string } | { ok: false } {
-  if (typeof value !== "number" || !Number.isFinite(value) || !Number.isInteger(value)) {
+  if (
+    typeof value !== "number" || !Number.isFinite(value) ||
+    !Number.isInteger(value)
+  ) {
     return { ok: false };
   }
   if (value < 0 || value > MAX_SAFE_UNIX_SECONDS) {
@@ -214,22 +222,16 @@ function readMetadataPlanCode(
 }
 
 function normalizePlanCodeFromSignals(
-  priceId: string,
-  supportedProMonthlyPriceId: string,
   metadata: unknown,
 ):
   | { ok: true; plan_code: NormalizedStripeSubscriptionPlanCode }
   | { ok: false; reason: NormalizeStripeSubscriptionFailureReason } {
-  if (priceId !== supportedProMonthlyPriceId) {
-    return { ok: false, reason: "unsupported_price" };
-  }
-
   const metaPlan = readMetadataPlanCode(metadata);
   if (metaPlan.kind === "invalid") {
     return { ok: false, reason: "incompatible_plan_metadata" };
   }
   if (metaPlan.kind === "absent") {
-    // Price match alone is sufficient when metadata plan_code is absent.
+    // Catalog Price match alone is sufficient when metadata plan_code is absent.
     return { ok: true, plan_code: "paid" };
   }
 
@@ -251,11 +253,6 @@ export function normalizeStripeSubscription(
   subscription: StripeSubscriptionLike,
   config: NormalizeStripeSubscriptionConfig,
 ): NormalizeStripeSubscriptionResult {
-  const supportedProMonthlyPriceId = nonEmptyTrimmedString(config.supportedProMonthlyPriceId);
-  if (supportedProMonthlyPriceId === null) {
-    return fail("invalid_config");
-  }
-
   const providerSubscriptionId = nonEmptyTrimmedString(subscription.id);
   if (providerSubscriptionId === null) {
     return fail("invalid_subscription_id");
@@ -266,9 +263,11 @@ export function normalizeStripeSubscription(
     return fail("invalid_customer");
   }
 
-  if (typeof subscription.status !== "string" || !SUPPORTED_STATUSES.has(
-    subscription.status as SupportedStripeSubscriptionStatus,
-  )) {
+  if (
+    typeof subscription.status !== "string" || !SUPPORTED_STATUSES.has(
+      subscription.status as SupportedStripeSubscriptionStatus,
+    )
+  ) {
     return fail("unsupported_status");
   }
   const status = subscription.status as SupportedStripeSubscriptionStatus;
@@ -278,21 +277,37 @@ export function normalizeStripeSubscription(
     return fail("invalid_items");
   }
 
-  const planResult = normalizePlanCodeFromSignals(
+  const knownPriceResult = resolveKnownStripePrice({
     priceId,
-    supportedProMonthlyPriceId,
-    subscription.metadata,
-  );
+    catalog: config.catalog,
+  });
+  if (knownPriceResult.ok === false) {
+    switch (knownPriceResult.reason) {
+      case "unknown_price":
+        return fail("unsupported_price");
+      case "invalid_catalog_entry":
+      case "duplicate_price_id":
+        return fail("invalid_config");
+      case "invalid_price_id":
+        return fail("invalid_items");
+    }
+  }
+
+  const planResult = normalizePlanCodeFromSignals(subscription.metadata);
   if (planResult.ok === false) {
     return planResult;
   }
 
-  const periodStart = optionalUnixSecondsToTimestamptz(subscription.current_period_start);
+  const periodStart = optionalUnixSecondsToTimestamptz(
+    subscription.current_period_start,
+  );
   if (!periodStart.ok) {
     return fail("invalid_timestamp");
   }
 
-  const periodEnd = optionalUnixSecondsToTimestamptz(subscription.current_period_end);
+  const periodEnd = optionalUnixSecondsToTimestamptz(
+    subscription.current_period_end,
+  );
   if (!periodEnd.ok) {
     return fail("invalid_timestamp");
   }
@@ -303,7 +318,9 @@ export function normalizeStripeSubscription(
 
   let trialEndsAt: string | null = null;
   if (status === "trialing") {
-    if (subscription.trial_end === null || subscription.trial_end === undefined) {
+    if (
+      subscription.trial_end === null || subscription.trial_end === undefined
+    ) {
       return fail("missing_trial_end");
     }
     const trialEnd = unixSecondsToTimestamptz(subscription.trial_end);
@@ -311,7 +328,9 @@ export function normalizeStripeSubscription(
       return fail("invalid_trial_end");
     }
     trialEndsAt = trialEnd.value;
-  } else if (subscription.trial_end !== null && subscription.trial_end !== undefined) {
+  } else if (
+    subscription.trial_end !== null && subscription.trial_end !== undefined
+  ) {
     const trialEnd = unixSecondsToTimestamptz(subscription.trial_end);
     if (!trialEnd.ok) {
       return fail("invalid_trial_end");
