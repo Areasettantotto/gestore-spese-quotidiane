@@ -884,6 +884,13 @@ export async function processCustomerSubscriptionEvent(
     return await respondAfterError(result.reason);
   }
 
+  if (
+    result.value.provider_subscription_id !==
+      bootstrapResult.provider_subscription_id
+  ) {
+    return await respondAfterError("subscription_identity_mismatch");
+  }
+
   return receivedOk(event);
 }
 

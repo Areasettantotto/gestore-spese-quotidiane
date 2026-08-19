@@ -479,7 +479,7 @@ Deno.test(
 );
 
 Deno.test(
-  "5. fresh-fetch success → HTTP 200 receivedOk, recorder not called",
+  "5. fresh-fetch success with identity match → HTTP 200 receivedOk, recorder not called",
   async () => {
     await withSyntheticStripeEnv(async () => {
       const subscriptionId = "sub_billing19_fresh";
@@ -541,5 +541,84 @@ Deno.test(
       tenantId: null,
     });
     await assertReceivedOk(response, eventId, eventType);
+  },
+);
+
+Deno.test(
+  "7. identity mismatch after fresh-fetch success → recorder once, HTTP 502 generic",
+  async () => {
+    await withSyntheticStripeEnv(async () => {
+      const bootstrapSubscriptionId = "sub_billing21_identity_a";
+      const normalizedSubscriptionId = "sub_billing21_identity_b";
+      const event = validSubscriptionEvent({
+        eventId: "evt_billing21_identity_mismatch",
+        subscriptionId: bootstrapSubscriptionId,
+      });
+      const billingEvent = createBillingEvent("be_billing21_identity_mismatch");
+      const recorder = createRecorder("recorded");
+      const orchestrator = createOrchestratorFake(
+        freshFetchSuccessResult(normalizedSubscriptionId),
+      );
+
+      const response = await processCustomerSubscriptionEvent(
+        event,
+        billingEvent,
+        recorder.fn,
+        orchestrator.fn,
+      );
+
+      assertOrchestratorForwardedSyntheticEnv(
+        orchestrator.calls,
+        bootstrapSubscriptionId,
+      );
+      assertRecorderCall(recorder.calls, {
+        billingEventId: billingEvent.id,
+        reason: "subscription_identity_mismatch",
+        tenantId: null,
+      });
+      await assertGenericUpstreamFailure(
+        response,
+        "subscription_identity_mismatch",
+      );
+    });
+  },
+);
+
+Deno.test(
+  "8. identity mismatch + recorder already_completed → HTTP 200 receivedOk",
+  async () => {
+    await withSyntheticStripeEnv(async () => {
+      const bootstrapSubscriptionId = "sub_billing21_identity_already_a";
+      const normalizedSubscriptionId = "sub_billing21_identity_already_b";
+      const eventId = "evt_billing21_identity_already_completed";
+      const eventType = "customer.subscription.updated";
+      const event = validSubscriptionEvent({
+        eventId,
+        eventType,
+        subscriptionId: bootstrapSubscriptionId,
+      });
+      const billingEvent = createBillingEvent(
+        "be_billing21_identity_already_completed",
+      );
+      const recorder = createRecorder("already_completed");
+      const orchestrator = createOrchestratorFake(
+        freshFetchSuccessResult(normalizedSubscriptionId),
+      );
+
+      const response = await processCustomerSubscriptionEvent(
+        event,
+        billingEvent,
+        recorder.fn,
+        orchestrator.fn,
+      );
+
+      assertEquals(orchestrator.calls.length, 1, "orchestrator called once");
+      assertRecorderCall(recorder.calls, {
+        billingEventId: billingEvent.id,
+        reason: "subscription_identity_mismatch",
+        tenantId: null,
+      });
+      await assertReceivedOk(response, eventId, eventType);
+    });
   },
 );
