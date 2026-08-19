@@ -7,6 +7,10 @@ import {
 } from "../_shared/extractStripeSubscriptionEventBootstrap.ts";
 import { fetchNormalizedStripeSubscriptionFromRuntimeConfig } from "../_shared/fetchNormalizedStripeSubscriptionFromRuntimeConfig.ts";
 import {
+  type BillingCustomerTenantLookupClient,
+  resolveBillingCustomerTenant,
+} from "../_shared/resolveBillingCustomerTenant.ts";
+import {
   badRequest,
   methodNotAllowed,
   jsonResponse,
@@ -845,10 +849,45 @@ type FetchNormalizedFromRuntimeConfigFn = (
   typeof fetchNormalizedStripeSubscriptionFromRuntimeConfig
 >;
 
+type ResolveBillingCustomerTenantFn = (
+  providerCustomerId: string,
+) => ReturnType<typeof resolveBillingCustomerTenant>;
+
+function createBillingCustomerTenantLookupClient(
+  supabase: SupabaseClient,
+): BillingCustomerTenantLookupClient {
+  return {
+    from(_table: string) {
+      return {
+        select(_columns: string) {
+          return {
+            eq(column1: string, value1: string) {
+              return {
+                async eq(column2: string, value2: string) {
+                  const { data, error } = await supabase
+                    .from("tenant_billing_customers")
+                    .select("tenant_id")
+                    .eq(column1, value1)
+                    .eq(column2, value2);
+                  return {
+                    data: Array.isArray(data) ? data : null,
+                    error: error ?? null,
+                  };
+                },
+              };
+            },
+          };
+        },
+      };
+    },
+  };
+}
+
 export async function processCustomerSubscriptionEvent(
   event: CustomerSubscriptionProcessorEvent,
   billingEvent: Pick<BillingEventRow, "id">,
   recordProcessingErrorFn: RecordProcessingErrorFn,
+  resolveBillingCustomerTenantFn: ResolveBillingCustomerTenantFn,
   fetchNormalizedFromRuntimeConfig: FetchNormalizedFromRuntimeConfigFn =
     fetchNormalizedStripeSubscriptionFromRuntimeConfig,
 ): Promise<Response> {
@@ -889,6 +928,14 @@ export async function processCustomerSubscriptionEvent(
       bootstrapResult.provider_subscription_id
   ) {
     return await respondAfterError("subscription_identity_mismatch");
+  }
+
+  const tenantResolutionResult = await resolveBillingCustomerTenantFn(
+    result.value.provider_customer_id,
+  );
+
+  if (tenantResolutionResult.ok === false) {
+    return await respondAfterError(tenantResolutionResult.reason);
   }
 
   return receivedOk(event);
@@ -1006,6 +1053,12 @@ async function handler(req: Request): Promise<Response> {
           reason,
           tenantId,
         ),
+      (providerCustomerId) =>
+        resolveBillingCustomerTenant({
+          provider: PROVIDER,
+          provider_customer_id: providerCustomerId,
+          client: createBillingCustomerTenantLookupClient(supabase),
+        }),
     );
   }
 

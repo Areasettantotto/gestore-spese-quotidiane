@@ -3,7 +3,8 @@
  *
  * Imports the real stripe-webhook module after a test-only Deno.serve
  * replace/restore. Exercises the exported processor with synthetic
- * events, an in-memory recorder, and a one-argument orchestrator fake.
+ * events, an in-memory recorder, a tenant-resolver fake, and a
+ * one-argument orchestrator fake.
  *
  * Run:
  *   deno test --no-lock --cached-only --no-prompt \
@@ -28,6 +29,7 @@ const ENV_STRIPE_SECRET_KEY = "STRIPE_SECRET_KEY";
 const ENV_SUPPORTED_PRICE = "STRIPE_PRICE_ID_PRO_MONTHLY";
 const SYNTHETIC_STRIPE_SECRET = "sk_test_billing19_synthetic_not_real";
 const SYNTHETIC_SUPPORTED_PRICE = "price_billing19_pro_monthly_synthetic";
+const SYNTHETIC_PROVIDER_CUSTOMER_ID = "cus_billing19_fresh";
 const PUBLIC_SUBSCRIPTION_FAILURE_MESSAGE =
   "Failed to process Stripe subscription event.";
 
@@ -85,7 +87,9 @@ type Processor = typeof processCustomerSubscriptionEvent;
 type ProcessorEvent = Parameters<Processor>[0];
 type ProcessorBillingEvent = Parameters<Processor>[1];
 type RecorderFn = Parameters<Processor>[2];
-type FetchFn = NonNullable<Parameters<Processor>[3]>;
+type TenantResolverFn = Parameters<Processor>[3];
+type TenantResolverResult = Awaited<ReturnType<TenantResolverFn>>;
+type FetchFn = NonNullable<Parameters<Processor>[4]>;
 type FetchParams = Parameters<FetchFn>[0];
 type FetchResult = Awaited<ReturnType<FetchFn>>;
 type RecorderResult = Awaited<ReturnType<RecorderFn>>;
@@ -204,6 +208,58 @@ function createOrchestratorFake(result: FetchResult): {
   return { fn, calls };
 }
 
+function createTenantResolverFake(result: TenantResolverResult): {
+  fn: TenantResolverFn;
+  calls: string[];
+} {
+  const calls: string[] = [];
+  const fn: TenantResolverFn = (providerCustomerId) => {
+    calls.push(providerCustomerId);
+    return Promise.resolve(result);
+  };
+  return { fn, calls };
+}
+
+function unusedTenantResolver(): {
+  fn: TenantResolverFn;
+  calls: string[];
+} {
+  const calls: string[] = [];
+  const fn: TenantResolverFn = (providerCustomerId) => {
+    calls.push(providerCustomerId);
+    throw new Error(
+      `tenant resolver must not be called, got ${
+        JSON.stringify(providerCustomerId)
+      }`,
+    );
+  };
+  return { fn, calls };
+}
+
+function tenantResolverSuccessResult(): TenantResolverResult {
+  const result: TenantResolverResult = {
+    ok: true,
+    tenant_id: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeee1",
+  };
+  return result;
+}
+
+function tenantMappingNotFoundResult(): TenantResolverResult {
+  const result: TenantResolverResult = {
+    ok: false,
+    reason: "tenant_mapping_not_found",
+  };
+  return result;
+}
+
+function tenantMappingAmbiguousResult(): TenantResolverResult {
+  const result: TenantResolverResult = {
+    ok: false,
+    reason: "tenant_mapping_ambiguous",
+  };
+  return result;
+}
+
 function unusedOrchestratorResult(): FetchResult {
   const result: FetchResult = {
     ok: false,
@@ -243,7 +299,7 @@ function freshFetchSuccessResult(subscriptionId: string): FetchResult {
     ok: true,
     value: {
       provider_subscription_id: subscriptionId,
-      provider_customer_id: "cus_billing19_fresh",
+      provider_customer_id: SYNTHETIC_PROVIDER_CUSTOMER_ID,
       plan_code: "paid",
       status: "active",
       current_period_start: "2023-11-14T22:13:20.000Z",
@@ -347,12 +403,14 @@ Deno.test(
     const event = invalidSubscriptionObjectEvent("evt_billing19_bootstrap");
     const billingEvent = createBillingEvent("be_billing19_bootstrap");
     const recorder = createRecorder("recorded");
+    const tenantResolver = unusedTenantResolver();
     const orchestrator = createOrchestratorFake(unusedOrchestratorResult());
 
     const response = await processCustomerSubscriptionEvent(
       event,
       billingEvent,
       recorder.fn,
+      tenantResolver.fn,
       orchestrator.fn,
     );
 
@@ -360,6 +418,11 @@ Deno.test(
       orchestrator.calls.length,
       0,
       "orchestrator must not be called",
+    );
+    assertEquals(
+      tenantResolver.calls.length,
+      0,
+      "tenant resolver must not be called",
     );
     assertRecorderCall(recorder.calls, {
       billingEventId: billingEvent.id,
@@ -384,18 +447,25 @@ Deno.test(
       });
       const billingEvent = createBillingEvent("be_billing19_config");
       const recorder = createRecorder("recorded");
+      const tenantResolver = unusedTenantResolver();
       const orchestrator = createOrchestratorFake(configFailureResult());
 
       const response = await processCustomerSubscriptionEvent(
         event,
         billingEvent,
         recorder.fn,
+        tenantResolver.fn,
         orchestrator.fn,
       );
 
       assertOrchestratorForwardedSyntheticEnv(
         orchestrator.calls,
         subscriptionId,
+      );
+      assertEquals(
+        tenantResolver.calls.length,
+        0,
+        "tenant resolver must not be called",
       );
       assertRecorderCall(recorder.calls, {
         billingEventId: billingEvent.id,
@@ -421,18 +491,25 @@ Deno.test(
       });
       const billingEvent = createBillingEvent("be_billing19_refetch");
       const recorder = createRecorder("db_error");
+      const tenantResolver = unusedTenantResolver();
       const orchestrator = createOrchestratorFake(refetchFailureResult());
 
       const response = await processCustomerSubscriptionEvent(
         event,
         billingEvent,
         recorder.fn,
+        tenantResolver.fn,
         orchestrator.fn,
       );
 
       assertOrchestratorForwardedSyntheticEnv(
         orchestrator.calls,
         subscriptionId,
+      );
+      assertEquals(
+        tenantResolver.calls.length,
+        0,
+        "tenant resolver must not be called",
       );
       assertRecorderCall(recorder.calls, {
         billingEventId: billingEvent.id,
@@ -458,16 +535,23 @@ Deno.test(
       });
       const billingEvent = createBillingEvent("be_billing19_normalize");
       const recorder = createRecorder("recorded");
+      const tenantResolver = unusedTenantResolver();
       const orchestrator = createOrchestratorFake(normalizeFailureResult());
 
       const response = await processCustomerSubscriptionEvent(
         event,
         billingEvent,
         recorder.fn,
+        tenantResolver.fn,
         orchestrator.fn,
       );
 
       assertEquals(orchestrator.calls.length, 1, "orchestrator called once");
+      assertEquals(
+        tenantResolver.calls.length,
+        0,
+        "tenant resolver must not be called",
+      );
       assertRecorderCall(recorder.calls, {
         billingEventId: billingEvent.id,
         reason: "unsupported_price",
@@ -479,7 +563,7 @@ Deno.test(
 );
 
 Deno.test(
-  "5. fresh-fetch success with identity match → HTTP 200 receivedOk, recorder not called",
+  "5. fresh-fetch success with identity match and BF success → HTTP 200 receivedOk, recorder not called",
   async () => {
     await withSyntheticStripeEnv(async () => {
       const subscriptionId = "sub_billing19_fresh";
@@ -492,6 +576,9 @@ Deno.test(
       });
       const billingEvent = createBillingEvent("be_billing19_fresh");
       const recorder = createRecorder("recorded");
+      const tenantResolver = createTenantResolverFake(
+        tenantResolverSuccessResult(),
+      );
       const orchestrator = createOrchestratorFake(
         freshFetchSuccessResult(subscriptionId),
       );
@@ -500,12 +587,23 @@ Deno.test(
         event,
         billingEvent,
         recorder.fn,
+        tenantResolver.fn,
         orchestrator.fn,
       );
 
       assertOrchestratorForwardedSyntheticEnv(
         orchestrator.calls,
         subscriptionId,
+      );
+      assertEquals(
+        tenantResolver.calls.length,
+        1,
+        "tenant resolver called once",
+      );
+      assertEquals(
+        tenantResolver.calls[0],
+        SYNTHETIC_PROVIDER_CUSTOMER_ID,
+        "tenant resolver receives exact fresh-normalized provider_customer_id",
       );
       assertEquals(recorder.calls.length, 0, "recorder must not be called");
       await assertReceivedOk(response, eventId, eventType);
@@ -521,12 +619,14 @@ Deno.test(
     const event = invalidSubscriptionObjectEvent(eventId);
     const billingEvent = createBillingEvent("be_billing19_already_completed");
     const recorder = createRecorder("already_completed");
+    const tenantResolver = unusedTenantResolver();
     const orchestrator = createOrchestratorFake(unusedOrchestratorResult());
 
     const response = await processCustomerSubscriptionEvent(
       event,
       billingEvent,
       recorder.fn,
+      tenantResolver.fn,
       orchestrator.fn,
     );
 
@@ -534,6 +634,11 @@ Deno.test(
       orchestrator.calls.length,
       0,
       "orchestrator must not be called",
+    );
+    assertEquals(
+      tenantResolver.calls.length,
+      0,
+      "tenant resolver must not be called",
     );
     assertRecorderCall(recorder.calls, {
       billingEventId: billingEvent.id,
@@ -556,6 +661,7 @@ Deno.test(
       });
       const billingEvent = createBillingEvent("be_billing21_identity_mismatch");
       const recorder = createRecorder("recorded");
+      const tenantResolver = unusedTenantResolver();
       const orchestrator = createOrchestratorFake(
         freshFetchSuccessResult(normalizedSubscriptionId),
       );
@@ -564,12 +670,18 @@ Deno.test(
         event,
         billingEvent,
         recorder.fn,
+        tenantResolver.fn,
         orchestrator.fn,
       );
 
       assertOrchestratorForwardedSyntheticEnv(
         orchestrator.calls,
         bootstrapSubscriptionId,
+      );
+      assertEquals(
+        tenantResolver.calls.length,
+        0,
+        "tenant resolver must not be called on identity mismatch",
       );
       assertRecorderCall(recorder.calls, {
         billingEventId: billingEvent.id,
@@ -601,6 +713,7 @@ Deno.test(
         "be_billing21_identity_already_completed",
       );
       const recorder = createRecorder("already_completed");
+      const tenantResolver = unusedTenantResolver();
       const orchestrator = createOrchestratorFake(
         freshFetchSuccessResult(normalizedSubscriptionId),
       );
@@ -609,13 +722,159 @@ Deno.test(
         event,
         billingEvent,
         recorder.fn,
+        tenantResolver.fn,
         orchestrator.fn,
       );
 
       assertEquals(orchestrator.calls.length, 1, "orchestrator called once");
+      assertEquals(
+        tenantResolver.calls.length,
+        0,
+        "tenant resolver must not be called on identity mismatch",
+      );
       assertRecorderCall(recorder.calls, {
         billingEventId: billingEvent.id,
         reason: "subscription_identity_mismatch",
+        tenantId: null,
+      });
+      await assertReceivedOk(response, eventId, eventType);
+    });
+  },
+);
+
+Deno.test(
+  "9. identity match + BF tenant_mapping_not_found → recorder once, HTTP 502 generic",
+  async () => {
+    await withSyntheticStripeEnv(async () => {
+      const subscriptionId = "sub_billing23_not_found";
+      const event = validSubscriptionEvent({
+        eventId: "evt_billing23_not_found",
+        subscriptionId,
+      });
+      const billingEvent = createBillingEvent("be_billing23_not_found");
+      const recorder = createRecorder("recorded");
+      const tenantResolver = createTenantResolverFake(
+        tenantMappingNotFoundResult(),
+      );
+      const orchestrator = createOrchestratorFake(
+        freshFetchSuccessResult(subscriptionId),
+      );
+
+      const response = await processCustomerSubscriptionEvent(
+        event,
+        billingEvent,
+        recorder.fn,
+        tenantResolver.fn,
+        orchestrator.fn,
+      );
+
+      assertEquals(orchestrator.calls.length, 1, "orchestrator called once");
+      assertEquals(
+        tenantResolver.calls.length,
+        1,
+        "tenant resolver called once",
+      );
+      assertEquals(
+        tenantResolver.calls[0],
+        SYNTHETIC_PROVIDER_CUSTOMER_ID,
+        "tenant resolver receives exact fresh-normalized provider_customer_id",
+      );
+      assertRecorderCall(recorder.calls, {
+        billingEventId: billingEvent.id,
+        reason: "tenant_mapping_not_found",
+        tenantId: null,
+      });
+      await assertGenericUpstreamFailure(
+        response,
+        "tenant_mapping_not_found",
+      );
+    });
+  },
+);
+
+Deno.test(
+  "10. identity match + BF tenant_mapping_ambiguous → recorder once, HTTP 502 generic",
+  async () => {
+    await withSyntheticStripeEnv(async () => {
+      const subscriptionId = "sub_billing23_ambiguous";
+      const event = validSubscriptionEvent({
+        eventId: "evt_billing23_ambiguous",
+        subscriptionId,
+      });
+      const billingEvent = createBillingEvent("be_billing23_ambiguous");
+      const recorder = createRecorder("recorded");
+      const tenantResolver = createTenantResolverFake(
+        tenantMappingAmbiguousResult(),
+      );
+      const orchestrator = createOrchestratorFake(
+        freshFetchSuccessResult(subscriptionId),
+      );
+
+      const response = await processCustomerSubscriptionEvent(
+        event,
+        billingEvent,
+        recorder.fn,
+        tenantResolver.fn,
+        orchestrator.fn,
+      );
+
+      assertEquals(
+        tenantResolver.calls.length,
+        1,
+        "tenant resolver called once",
+      );
+      assertRecorderCall(recorder.calls, {
+        billingEventId: billingEvent.id,
+        reason: "tenant_mapping_ambiguous",
+        tenantId: null,
+      });
+      await assertGenericUpstreamFailure(
+        response,
+        "tenant_mapping_ambiguous",
+      );
+    });
+  },
+);
+
+Deno.test(
+  "11. BF tenant_mapping_not_found + recorder already_completed → HTTP 200 receivedOk",
+  async () => {
+    await withSyntheticStripeEnv(async () => {
+      const subscriptionId = "sub_billing23_already_completed";
+      const eventId = "evt_billing23_already_completed";
+      const eventType = "customer.subscription.updated";
+      const event = validSubscriptionEvent({
+        eventId,
+        eventType,
+        subscriptionId,
+      });
+      const billingEvent = createBillingEvent(
+        "be_billing23_already_completed",
+      );
+      const recorder = createRecorder("already_completed");
+      const tenantResolver = createTenantResolverFake(
+        tenantMappingNotFoundResult(),
+      );
+      const orchestrator = createOrchestratorFake(
+        freshFetchSuccessResult(subscriptionId),
+      );
+
+      const response = await processCustomerSubscriptionEvent(
+        event,
+        billingEvent,
+        recorder.fn,
+        tenantResolver.fn,
+        orchestrator.fn,
+      );
+
+      assertEquals(
+        tenantResolver.calls.length,
+        1,
+        "tenant resolver called once",
+      );
+      assertRecorderCall(recorder.calls, {
+        billingEventId: billingEvent.id,
+        reason: "tenant_mapping_not_found",
         tenantId: null,
       });
       await assertReceivedOk(response, eventId, eventType);
