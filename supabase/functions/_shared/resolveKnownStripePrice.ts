@@ -1,8 +1,8 @@
 /**
- * Pure known Stripe price catalog resolver (BILLING-27).
+ * Pure known Stripe price catalog resolvers (BILLING-27 / BILLING-32).
  *
- * Resolves an exact Price ID against a caller-supplied catalog into a
- * commercial descriptor `{ priceId, tier, interval }`.
+ * - resolveKnownStripePrice: exact Price ID + catalog → descriptor
+ * - resolveKnownStripePriceForSelection: tier + interval + catalog → descriptor
  *
  * Does NOT read Deno.env, construct Stripe, call the network, import
  * checkout/webhook, normalize subscriptions, or produce entitlements.
@@ -34,9 +34,25 @@ export type ResolveKnownStripePriceResult =
   | { ok: true; value: KnownStripePrice }
   | { ok: false; reason: ResolveKnownStripePriceFailureReason };
 
-function fail(
-  reason: ResolveKnownStripePriceFailureReason,
-): ResolveKnownStripePriceResult {
+export type ResolveKnownStripePriceForSelectionParams = {
+  readonly tier: ProductTier;
+  readonly interval: BillingInterval;
+  readonly catalog: readonly KnownStripePrice[];
+};
+
+export type ResolveKnownStripePriceForSelectionFailureReason =
+  | "invalid_catalog_entry"
+  | "duplicate_price_id"
+  | "unsupported_selection"
+  | "duplicate_selection";
+
+export type ResolveKnownStripePriceForSelectionResult =
+  | { ok: true; value: KnownStripePrice }
+  | { ok: false; reason: ResolveKnownStripePriceForSelectionFailureReason };
+
+type CatalogValidationFailure = "invalid_catalog_entry" | "duplicate_price_id";
+
+function failWith<R extends string>(reason: R): { ok: false; reason: R } {
   return { ok: false, reason };
 }
 
@@ -49,6 +65,31 @@ function isExactNonEmptyPriceId(value: string): boolean {
 }
 
 /**
+ * Shared catalog policy for both resolvers.
+ * Invalid entries take precedence over duplicate exact Price IDs.
+ * An empty catalog is structurally valid at this boundary.
+ */
+function validateKnownStripePriceCatalog(
+  catalog: readonly KnownStripePrice[],
+): CatalogValidationFailure | null {
+  for (const entry of catalog) {
+    if (!isExactNonEmptyPriceId(entry.priceId)) {
+      return "invalid_catalog_entry";
+    }
+  }
+
+  const seenPriceIds = new Set<string>();
+  for (const entry of catalog) {
+    if (seenPriceIds.has(entry.priceId)) {
+      return "duplicate_price_id";
+    }
+    seenPriceIds.add(entry.priceId);
+  }
+
+  return null;
+}
+
+/**
  * Resolve a requested Stripe Price ID against a known catalog.
  * Fail-closed: an invalid catalog is never partially authoritative.
  */
@@ -56,21 +97,12 @@ export function resolveKnownStripePrice(
   params: ResolveKnownStripePriceParams,
 ): ResolveKnownStripePriceResult {
   if (!isExactNonEmptyPriceId(params.priceId)) {
-    return fail("invalid_price_id");
+    return failWith("invalid_price_id");
   }
 
-  for (const entry of params.catalog) {
-    if (!isExactNonEmptyPriceId(entry.priceId)) {
-      return fail("invalid_catalog_entry");
-    }
-  }
-
-  const seenPriceIds = new Set<string>();
-  for (const entry of params.catalog) {
-    if (seenPriceIds.has(entry.priceId)) {
-      return fail("duplicate_price_id");
-    }
-    seenPriceIds.add(entry.priceId);
+  const catalogFailure = validateKnownStripePriceCatalog(params.catalog);
+  if (catalogFailure !== null) {
+    return failWith(catalogFailure);
   }
 
   for (const entry of params.catalog) {
@@ -79,5 +111,36 @@ export function resolveKnownStripePrice(
     }
   }
 
-  return fail("unknown_price");
+  return failWith("unknown_price");
+}
+
+/**
+ * Resolve a commercially typed tier + interval against a known catalog.
+ * Fail-closed: an invalid catalog is never partially authoritative, and
+ * a unique matching descriptor is required. Does not pick by order.
+ */
+export function resolveKnownStripePriceForSelection(
+  params: ResolveKnownStripePriceForSelectionParams,
+): ResolveKnownStripePriceForSelectionResult {
+  const catalogFailure = validateKnownStripePriceCatalog(params.catalog);
+  if (catalogFailure !== null) {
+    return failWith(catalogFailure);
+  }
+
+  let match: KnownStripePrice | null = null;
+  for (const entry of params.catalog) {
+    if (entry.tier !== params.tier || entry.interval !== params.interval) {
+      continue;
+    }
+    if (match !== null) {
+      return failWith("duplicate_selection");
+    }
+    match = entry;
+  }
+
+  if (match === null) {
+    return failWith("unsupported_selection");
+  }
+
+  return { ok: true, value: match };
 }
