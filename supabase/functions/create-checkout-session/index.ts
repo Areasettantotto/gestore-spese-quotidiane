@@ -1,16 +1,17 @@
 import {
-  methodNotAllowed,
   jsonResponse,
+  methodNotAllowed,
   serviceUnavailable,
   unprocessableEntity,
   upstreamError,
 } from "../_shared/http.ts";
 import {
+  ensureTenantBillingAccess,
   parseAuthHeader,
   parseJsonBody,
   parseTenantBody,
-  ensureTenantBillingAccess,
 } from "../_shared/auth.ts";
+import { resolveCheckoutKnownStripePrice } from "./resolveCheckoutKnownStripePrice.ts";
 
 declare const Deno: {
   serve: (handler: (req: Request) => Response | Promise<Response>) => void;
@@ -27,19 +28,27 @@ type CheckoutRequestBody = {
 
 const BILLING_NOT_CONFIGURED_MESSAGE = "Billing checkout is not configured.";
 
-function normalizePlanCode(body: unknown): { planCode: "pro_monthly" } | Response {
+function normalizePlanCode(
+  body: unknown,
+): { planCode: "pro_monthly" } | Response {
   if (!body || typeof body !== "object") {
-    return unprocessableEntity("Field 'plan_code' is required and must be one of: pro_monthly, pro.");
+    return unprocessableEntity(
+      "Field 'plan_code' is required and must be one of: pro_monthly, pro.",
+    );
   }
 
   const planCode = (body as CheckoutRequestBody).plan_code;
   if (typeof planCode !== "string") {
-    return unprocessableEntity("Field 'plan_code' is required and must be one of: pro_monthly, pro.");
+    return unprocessableEntity(
+      "Field 'plan_code' is required and must be one of: pro_monthly, pro.",
+    );
   }
 
   const normalizedInput = planCode.trim().toLowerCase() as CheckoutPlanCode;
   if (normalizedInput !== "pro_monthly" && normalizedInput !== "pro") {
-    return unprocessableEntity("Field 'plan_code' is required and must be one of: pro_monthly, pro.");
+    return unprocessableEntity(
+      "Field 'plan_code' is required and must be one of: pro_monthly, pro.",
+    );
   }
 
   if (normalizedInput === "pro") {
@@ -60,12 +69,16 @@ function getAppBaseUrl(): string | Response {
   try {
     parsed = new URL(rawBaseUrl);
   } catch {
-    console.error("[create-checkout-session] Invalid APP_BASE_URL/SITE_URL format.");
+    console.error(
+      "[create-checkout-session] Invalid APP_BASE_URL/SITE_URL format.",
+    );
     return serviceUnavailable(BILLING_NOT_CONFIGURED_MESSAGE);
   }
 
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    console.error("[create-checkout-session] APP_BASE_URL/SITE_URL protocol is not allowed.");
+    console.error(
+      "[create-checkout-session] APP_BASE_URL/SITE_URL protocol is not allowed.",
+    );
     return serviceUnavailable(BILLING_NOT_CONFIGURED_MESSAGE);
   }
 
@@ -115,7 +128,9 @@ async function handler(req: Request): Promise<Response> {
   }
 
   if (!stripeSecretKey || !proMonthlyPriceId) {
-    console.error("[create-checkout-session] Missing Stripe billing env configuration.");
+    console.error(
+      "[create-checkout-session] Missing Stripe billing env configuration.",
+    );
     return serviceUnavailable(BILLING_NOT_CONFIGURED_MESSAGE);
   }
 
@@ -124,12 +139,31 @@ async function handler(req: Request): Promise<Response> {
     return serviceUnavailable(BILLING_NOT_CONFIGURED_MESSAGE);
   }
 
-  const successUrl = `${appBaseUrl}/?billing=checkout_success&session_id={CHECKOUT_SESSION_ID}`;
+  const resolvedPrice = resolveCheckoutKnownStripePrice({
+    proMonthlyPriceId,
+    tier: "pro",
+    interval: "monthly",
+  });
+  if (resolvedPrice.ok === false) {
+    console.error(
+      "[create-checkout-session] Stripe Price catalog or selection failed.",
+      {
+        plan_code: parsedPlan.planCode,
+        reason: resolvedPrice.reason,
+      },
+    );
+    return serviceUnavailable(BILLING_NOT_CONFIGURED_MESSAGE);
+  }
+
+  const descriptor = resolvedPrice.value;
+
+  const successUrl =
+    `${appBaseUrl}/?billing=checkout_success&session_id={CHECKOUT_SESSION_ID}`;
   const cancelUrl = `${appBaseUrl}/?billing=checkout_cancelled`;
 
   const form = new URLSearchParams({
     mode: "subscription",
-    "line_items[0][price]": proMonthlyPriceId,
+    "line_items[0][price]": descriptor.priceId,
     "line_items[0][quantity]": "1",
     success_url: successUrl,
     cancel_url: cancelUrl,
@@ -144,14 +178,17 @@ async function handler(req: Request): Promise<Response> {
 
   let stripeResponse: Response;
   try {
-    stripeResponse = await fetch("https://api.stripe.com/v1/checkout/sessions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${stripeSecretKey}`,
-        "Content-Type": "application/x-www-form-urlencoded",
+    stripeResponse = await fetch(
+      "https://api.stripe.com/v1/checkout/sessions",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${stripeSecretKey}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: form.toString(),
       },
-      body: form.toString(),
-    });
+    );
   } catch {
     console.error(
       "[create-checkout-session] Stripe request network error.",
@@ -196,13 +233,12 @@ async function handler(req: Request): Promise<Response> {
     return upstreamError("Unable to create checkout session.");
   }
 
-  const checkoutUrl =
-    typeof stripePayload === "object" &&
+  const checkoutUrl = typeof stripePayload === "object" &&
       stripePayload !== null &&
       "url" in stripePayload &&
       typeof stripePayload.url === "string"
-      ? stripePayload.url
-      : null;
+    ? stripePayload.url
+    : null;
 
   if (!checkoutUrl) {
     console.error(
