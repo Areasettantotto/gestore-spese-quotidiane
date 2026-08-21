@@ -123,16 +123,25 @@ export function extractStripeCustomerId(customer: unknown): string | null {
   return null;
 }
 
+/**
+ * Extract the item Price ID without trim-repair. Exact-ID validation belongs
+ * to resolveKnownStripePrice; padding/empty strings are passed through raw.
+ * Missing or non-string forms return null (invalid_items at extraction).
+ */
 function extractPriceIdFromItem(item: unknown): string | null {
   if (item === null || typeof item !== "object") {
     return null;
   }
   const price = (item as { price?: unknown }).price;
   if (typeof price === "string") {
-    return nonEmptyTrimmedString(price);
+    return price;
   }
   if (price !== null && typeof price === "object" && "id" in price) {
-    return nonEmptyTrimmedString((price as { id: unknown }).id);
+    const id = (price as { id: unknown }).id;
+    if (typeof id === "string") {
+      return id;
+    }
+    return null;
   }
   return null;
 }

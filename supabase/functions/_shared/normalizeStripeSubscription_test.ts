@@ -88,6 +88,27 @@ function expectFailure(
   assertEquals(result.reason, reason, "failure reason");
 }
 
+function expectInvalidItemsForBothPriceForms(priceId: string): void {
+  expectFailure(
+    normalizeStripeSubscription(
+      baseSubscription({
+        items: { data: [{ price: { id: priceId } }] },
+      }),
+      CONFIG,
+    ),
+    "invalid_items",
+  );
+  expectFailure(
+    normalizeStripeSubscription(
+      baseSubscription({
+        items: { data: [{ price: priceId }] },
+      }),
+      CONFIG,
+    ),
+    "invalid_items",
+  );
+}
+
 Deno.test("1. active + supported paid product → success", () => {
   const result = normalizeStripeSubscription(baseSubscription(), CONFIG);
   expectSuccess(result);
@@ -508,36 +529,83 @@ Deno.test("extra: duplicate exact catalog priceId → invalid_config", () => {
   );
 });
 
-Deno.test(
-  "extra: padded item Price is still trim-repaired before catalog lookup (legacy, not exact-ID)",
-  () => {
-    const paddedObject = normalizeStripeSubscription(
-      baseSubscription({
-        items: { data: [{ price: { id: ` ${SUPPORTED_PRICE} ` } }] },
-      }),
-      CONFIG,
-    );
-    expectSuccess(paddedObject);
-    assertEquals(
-      paddedObject.value.plan_code,
-      "paid",
-      "object id trim-repaired",
-    );
+Deno.test("extra: exact known item Price as string and object id → success", () => {
+  const asObject = normalizeStripeSubscription(baseSubscription(), CONFIG);
+  expectSuccess(asObject);
+  assertEquals(asObject.value.plan_code, "paid", "object id exact known");
 
-    const paddedString = normalizeStripeSubscription(
-      baseSubscription({
-        items: { data: [{ price: ` ${SUPPORTED_PRICE} ` }] },
-      }),
-      CONFIG,
-    );
-    expectSuccess(paddedString);
-    assertEquals(
-      paddedString.value.plan_code,
-      "paid",
-      "string id trim-repaired",
-    );
+  const asString = normalizeStripeSubscription(
+    baseSubscription({
+      items: { data: [{ price: SUPPORTED_PRICE }] },
+    }),
+    CONFIG,
+  );
+  expectSuccess(asString);
+  assertEquals(asString.value.plan_code, "paid", "string id exact known");
+});
+
+Deno.test(
+  "extra: padded item Price is not trim-repaired before catalog lookup (exact-ID fail-closed)",
+  () => {
+    expectInvalidItemsForBothPriceForms(` ${SUPPORTED_PRICE}`);
+    expectInvalidItemsForBothPriceForms(`${SUPPORTED_PRICE} `);
+    expectInvalidItemsForBothPriceForms(` ${SUPPORTED_PRICE} `);
   },
 );
+
+Deno.test("extra: whitespace-only item Price → invalid_items", () => {
+  expectInvalidItemsForBothPriceForms("   ");
+});
+
+Deno.test("extra: empty-string item Price → invalid_items", () => {
+  expectInvalidItemsForBothPriceForms("");
+});
+
+Deno.test("extra: padded unknown item Price → invalid_items (not unsupported_price)", () => {
+  expectInvalidItemsForBothPriceForms(" price_unknown ");
+});
+
+Deno.test("extra: exact unknown item Price as string and object id → unsupported_price", () => {
+  expectFailure(
+    normalizeStripeSubscription(
+      baseSubscription({
+        items: { data: [{ price: { id: "price_unknown_exact" } }] },
+      }),
+      CONFIG,
+    ),
+    "unsupported_price",
+  );
+  expectFailure(
+    normalizeStripeSubscription(
+      baseSubscription({
+        items: { data: [{ price: "price_unknown_exact" }] },
+      }),
+      CONFIG,
+    ),
+    "unsupported_price",
+  );
+});
+
+Deno.test("extra: missing or malformed item Price → invalid_items", () => {
+  expectFailure(
+    normalizeStripeSubscription(
+      baseSubscription({
+        items: { data: [{}] },
+      }),
+      CONFIG,
+    ),
+    "invalid_items",
+  );
+  expectFailure(
+    normalizeStripeSubscription(
+      baseSubscription({
+        items: { data: [{ price: { object: "price" } }] },
+      }),
+      CONFIG,
+    ),
+    "invalid_items",
+  );
+});
 
 Deno.test("extra: absent metadata + known catalog Price still paid", () => {
   const result = normalizeStripeSubscription(
