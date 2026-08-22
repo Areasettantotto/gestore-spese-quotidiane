@@ -11,6 +11,10 @@ import {
   resolveBillingCustomerTenant,
 } from "../_shared/resolveBillingCustomerTenant.ts";
 import {
+  readTenantSubscriptionObservation,
+  type TenantSubscriptionObservationLookupClient,
+} from "../_shared/readTenantSubscriptionObservation.ts";
+import {
   badRequest,
   methodNotAllowed,
   jsonResponse,
@@ -883,11 +887,49 @@ function createBillingCustomerTenantLookupClient(
   };
 }
 
+function createTenantSubscriptionObservationLookupClient(
+  supabase: SupabaseClient,
+): TenantSubscriptionObservationLookupClient {
+  return {
+    from(_table: string) {
+      return {
+        select(_columns: string) {
+          return {
+            eq(column1: string, value1: string) {
+              return {
+                async eq(column2: string, value2: string) {
+                  const { data, error } = await supabase
+                    .from("tenant_subscriptions")
+                    .select(
+                      "tenant_id,last_applied_provider_event_created_at,last_applied_provider_event_id",
+                    )
+                    .eq(column1, value1)
+                    .eq(column2, value2);
+                  return {
+                    data: Array.isArray(data) ? data : null,
+                    error: error ?? null,
+                  };
+                },
+              };
+            },
+          };
+        },
+      };
+    },
+  };
+}
+
+type ReadTenantSubscriptionObservationFn = (params: {
+  provider: string;
+  provider_subscription_id: string;
+}) => ReturnType<typeof readTenantSubscriptionObservation>;
+
 export async function processCustomerSubscriptionEvent(
   event: CustomerSubscriptionProcessorEvent,
   billingEvent: Pick<BillingEventRow, "id">,
   recordProcessingErrorFn: RecordProcessingErrorFn,
   resolveBillingCustomerTenantFn: ResolveBillingCustomerTenantFn,
+  readTenantSubscriptionObservationFn: ReadTenantSubscriptionObservationFn,
   fetchNormalizedFromRuntimeConfig: FetchNormalizedFromRuntimeConfigFn =
     fetchNormalizedStripeSubscriptionFromRuntimeConfig,
 ): Promise<Response> {
@@ -936,6 +978,15 @@ export async function processCustomerSubscriptionEvent(
 
   if (tenantResolutionResult.ok === false) {
     return await respondAfterError(tenantResolutionResult.reason);
+  }
+
+  const observationResult = await readTenantSubscriptionObservationFn({
+    provider: PROVIDER,
+    provider_subscription_id: result.value.provider_subscription_id,
+  });
+
+  if (observationResult.ok === false) {
+    return await respondAfterError(observationResult.reason);
   }
 
   return receivedOk(event);
@@ -1058,6 +1109,12 @@ async function handler(req: Request): Promise<Response> {
           provider: PROVIDER,
           provider_customer_id: providerCustomerId,
           client: createBillingCustomerTenantLookupClient(supabase),
+        }),
+      (params) =>
+        readTenantSubscriptionObservation({
+          provider: params.provider,
+          provider_subscription_id: params.provider_subscription_id,
+          client: createTenantSubscriptionObservationLookupClient(supabase),
         }),
     );
   }

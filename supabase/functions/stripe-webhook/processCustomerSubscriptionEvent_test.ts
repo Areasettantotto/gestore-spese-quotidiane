@@ -1,10 +1,10 @@
 /**
- * Component tests for processCustomerSubscriptionEvent (BILLING-19).
+ * Component tests for processCustomerSubscriptionEvent (BILLING-19 / BILLING-41).
  *
  * Imports the real stripe-webhook module after a test-only Deno.serve
  * replace/restore. Exercises the exported processor with synthetic
- * events, an in-memory recorder, a tenant-resolver fake, and a
- * one-argument orchestrator fake.
+ * events, an in-memory recorder, a tenant-resolver fake, a
+ * subscription-observation fake, and a one-argument orchestrator fake.
  *
  * Run:
  *   deno test --no-lock --cached-only --no-prompt \
@@ -89,10 +89,17 @@ type ProcessorBillingEvent = Parameters<Processor>[1];
 type RecorderFn = Parameters<Processor>[2];
 type TenantResolverFn = Parameters<Processor>[3];
 type TenantResolverResult = Awaited<ReturnType<TenantResolverFn>>;
-type FetchFn = NonNullable<Parameters<Processor>[4]>;
+type ObservationReaderFn = Parameters<Processor>[4];
+type ObservationReaderParams = Parameters<ObservationReaderFn>[0];
+type ObservationReaderResult = Awaited<ReturnType<ObservationReaderFn>>;
+type FetchFn = NonNullable<Parameters<Processor>[5]>;
 type FetchParams = Parameters<FetchFn>[0];
 type FetchResult = Awaited<ReturnType<FetchFn>>;
 type RecorderResult = Awaited<ReturnType<RecorderFn>>;
+
+const SYNTHETIC_BF_TENANT_ID = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeee1";
+const SYNTHETIC_OTHER_TENANT_ID = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeee2";
+const STRIPE_PROVIDER = "stripe";
 
 type RecorderCall = {
   billingEventId: string;
@@ -236,10 +243,83 @@ function unusedTenantResolver(): {
   return { fn, calls };
 }
 
+function createObservationReaderFake(result: ObservationReaderResult): {
+  fn: ObservationReaderFn;
+  calls: ObservationReaderParams[];
+} {
+  const calls: ObservationReaderParams[] = [];
+  const fn: ObservationReaderFn = (params) => {
+    calls.push(params);
+    return Promise.resolve(result);
+  };
+  return { fn, calls };
+}
+
+function unusedObservationReader(): {
+  fn: ObservationReaderFn;
+  calls: ObservationReaderParams[];
+} {
+  const calls: ObservationReaderParams[] = [];
+  const fn: ObservationReaderFn = (params) => {
+    calls.push(params);
+    throw new Error(
+      `observation reader must not be called, got ${JSON.stringify(params)}`,
+    );
+  };
+  return { fn, calls };
+}
+
+function observationRowAbsentResult(): ObservationReaderResult {
+  const result: ObservationReaderResult = {
+    ok: true,
+    observation: { kind: "row_absent" },
+  };
+  return result;
+}
+
+function observationRowPresentResult(
+  tenantId: string,
+): ObservationReaderResult {
+  const result: ObservationReaderResult = {
+    ok: true,
+    observation: {
+      kind: "row_present",
+      tenant_id: tenantId,
+      last_applied_provider_event_created_at: null,
+      last_applied_provider_event_id: null,
+    },
+  };
+  return result;
+}
+
+function observationLookupFailedResult(): ObservationReaderResult {
+  const result: ObservationReaderResult = {
+    ok: false,
+    reason: "subscription_observation_lookup_failed",
+  };
+  return result;
+}
+
+function observationAmbiguousResult(): ObservationReaderResult {
+  const result: ObservationReaderResult = {
+    ok: false,
+    reason: "subscription_observation_ambiguous",
+  };
+  return result;
+}
+
+function observationInvalidResult(): ObservationReaderResult {
+  const result: ObservationReaderResult = {
+    ok: false,
+    reason: "subscription_observation_invalid",
+  };
+  return result;
+}
+
 function tenantResolverSuccessResult(): TenantResolverResult {
   const result: TenantResolverResult = {
     ok: true,
-    tenant_id: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeee1",
+    tenant_id: SYNTHETIC_BF_TENANT_ID,
   };
   return result;
 }
@@ -333,6 +413,13 @@ async function assertGenericUpstreamFailure(
     !serialized.includes(internalReason),
     "internal reason must not leak in the HTTP body",
   );
+  assert(
+    !serialized.includes(SYNTHETIC_BF_TENANT_ID) &&
+      !serialized.includes(SYNTHETIC_OTHER_TENANT_ID) &&
+      !serialized.includes("row_present") &&
+      !serialized.includes("row_absent"),
+    "HTTP body must not include row observation or tenant_id",
+  );
 }
 
 async function assertReceivedOk(
@@ -397,6 +484,23 @@ function assertOrchestratorForwardedSyntheticEnv(
   );
 }
 
+function assertObservationForwardedExactly(
+  calls: ObservationReaderParams[],
+  providerSubscriptionId: string,
+): void {
+  assertEquals(calls.length, 1, "observation reader call count");
+  assertEquals(
+    calls[0]?.provider,
+    STRIPE_PROVIDER,
+    "provider forwarded exactly",
+  );
+  assertEquals(
+    calls[0]?.provider_subscription_id,
+    providerSubscriptionId,
+    "provider_subscription_id forwarded exactly from normalized snapshot",
+  );
+}
+
 Deno.test(
   "1. bootstrap failure → recorder once, orchestrator skipped, HTTP 502 generic",
   async () => {
@@ -404,6 +508,7 @@ Deno.test(
     const billingEvent = createBillingEvent("be_billing19_bootstrap");
     const recorder = createRecorder("recorded");
     const tenantResolver = unusedTenantResolver();
+    const observationReader = unusedObservationReader();
     const orchestrator = createOrchestratorFake(unusedOrchestratorResult());
 
     const response = await processCustomerSubscriptionEvent(
@@ -411,6 +516,7 @@ Deno.test(
       billingEvent,
       recorder.fn,
       tenantResolver.fn,
+      observationReader.fn,
       orchestrator.fn,
     );
 
@@ -423,6 +529,11 @@ Deno.test(
       tenantResolver.calls.length,
       0,
       "tenant resolver must not be called",
+    );
+    assertEquals(
+      observationReader.calls.length,
+      0,
+      "observation reader must not be called",
     );
     assertRecorderCall(recorder.calls, {
       billingEventId: billingEvent.id,
@@ -448,6 +559,7 @@ Deno.test(
       const billingEvent = createBillingEvent("be_billing19_config");
       const recorder = createRecorder("recorded");
       const tenantResolver = unusedTenantResolver();
+      const observationReader = unusedObservationReader();
       const orchestrator = createOrchestratorFake(configFailureResult());
 
       const response = await processCustomerSubscriptionEvent(
@@ -455,6 +567,7 @@ Deno.test(
         billingEvent,
         recorder.fn,
         tenantResolver.fn,
+        observationReader.fn,
         orchestrator.fn,
       );
 
@@ -466,6 +579,11 @@ Deno.test(
         tenantResolver.calls.length,
         0,
         "tenant resolver must not be called",
+      );
+      assertEquals(
+        observationReader.calls.length,
+        0,
+        "observation reader must not be called",
       );
       assertRecorderCall(recorder.calls, {
         billingEventId: billingEvent.id,
@@ -492,6 +610,7 @@ Deno.test(
       const billingEvent = createBillingEvent("be_billing19_refetch");
       const recorder = createRecorder("db_error");
       const tenantResolver = unusedTenantResolver();
+      const observationReader = unusedObservationReader();
       const orchestrator = createOrchestratorFake(refetchFailureResult());
 
       const response = await processCustomerSubscriptionEvent(
@@ -499,6 +618,7 @@ Deno.test(
         billingEvent,
         recorder.fn,
         tenantResolver.fn,
+        observationReader.fn,
         orchestrator.fn,
       );
 
@@ -510,6 +630,11 @@ Deno.test(
         tenantResolver.calls.length,
         0,
         "tenant resolver must not be called",
+      );
+      assertEquals(
+        observationReader.calls.length,
+        0,
+        "observation reader must not be called",
       );
       assertRecorderCall(recorder.calls, {
         billingEventId: billingEvent.id,
@@ -536,6 +661,7 @@ Deno.test(
       const billingEvent = createBillingEvent("be_billing19_normalize");
       const recorder = createRecorder("recorded");
       const tenantResolver = unusedTenantResolver();
+      const observationReader = unusedObservationReader();
       const orchestrator = createOrchestratorFake(normalizeFailureResult());
 
       const response = await processCustomerSubscriptionEvent(
@@ -543,6 +669,7 @@ Deno.test(
         billingEvent,
         recorder.fn,
         tenantResolver.fn,
+        observationReader.fn,
         orchestrator.fn,
       );
 
@@ -551,6 +678,11 @@ Deno.test(
         tenantResolver.calls.length,
         0,
         "tenant resolver must not be called",
+      );
+      assertEquals(
+        observationReader.calls.length,
+        0,
+        "observation reader must not be called",
       );
       assertRecorderCall(recorder.calls, {
         billingEventId: billingEvent.id,
@@ -563,7 +695,7 @@ Deno.test(
 );
 
 Deno.test(
-  "5. fresh-fetch success with identity match and BF success → HTTP 200 receivedOk, recorder not called",
+  "5. BF success + BI row_absent → HTTP 200 receivedOk, recorder not called, BI once",
   async () => {
     await withSyntheticStripeEnv(async () => {
       const subscriptionId = "sub_billing19_fresh";
@@ -579,6 +711,9 @@ Deno.test(
       const tenantResolver = createTenantResolverFake(
         tenantResolverSuccessResult(),
       );
+      const observationReader = createObservationReaderFake(
+        observationRowAbsentResult(),
+      );
       const orchestrator = createOrchestratorFake(
         freshFetchSuccessResult(subscriptionId),
       );
@@ -588,6 +723,7 @@ Deno.test(
         billingEvent,
         recorder.fn,
         tenantResolver.fn,
+        observationReader.fn,
         orchestrator.fn,
       );
 
@@ -605,6 +741,10 @@ Deno.test(
         SYNTHETIC_PROVIDER_CUSTOMER_ID,
         "tenant resolver receives exact fresh-normalized provider_customer_id",
       );
+      assertObservationForwardedExactly(
+        observationReader.calls,
+        subscriptionId,
+      );
       assertEquals(recorder.calls.length, 0, "recorder must not be called");
       await assertReceivedOk(response, eventId, eventType);
     });
@@ -620,6 +760,7 @@ Deno.test(
     const billingEvent = createBillingEvent("be_billing19_already_completed");
     const recorder = createRecorder("already_completed");
     const tenantResolver = unusedTenantResolver();
+    const observationReader = unusedObservationReader();
     const orchestrator = createOrchestratorFake(unusedOrchestratorResult());
 
     const response = await processCustomerSubscriptionEvent(
@@ -627,6 +768,7 @@ Deno.test(
       billingEvent,
       recorder.fn,
       tenantResolver.fn,
+      observationReader.fn,
       orchestrator.fn,
     );
 
@@ -639,6 +781,11 @@ Deno.test(
       tenantResolver.calls.length,
       0,
       "tenant resolver must not be called",
+    );
+    assertEquals(
+      observationReader.calls.length,
+      0,
+      "observation reader must not be called",
     );
     assertRecorderCall(recorder.calls, {
       billingEventId: billingEvent.id,
@@ -662,6 +809,7 @@ Deno.test(
       const billingEvent = createBillingEvent("be_billing21_identity_mismatch");
       const recorder = createRecorder("recorded");
       const tenantResolver = unusedTenantResolver();
+      const observationReader = unusedObservationReader();
       const orchestrator = createOrchestratorFake(
         freshFetchSuccessResult(normalizedSubscriptionId),
       );
@@ -671,6 +819,7 @@ Deno.test(
         billingEvent,
         recorder.fn,
         tenantResolver.fn,
+        observationReader.fn,
         orchestrator.fn,
       );
 
@@ -682,6 +831,11 @@ Deno.test(
         tenantResolver.calls.length,
         0,
         "tenant resolver must not be called on identity mismatch",
+      );
+      assertEquals(
+        observationReader.calls.length,
+        0,
+        "observation reader must not be called on identity mismatch",
       );
       assertRecorderCall(recorder.calls, {
         billingEventId: billingEvent.id,
@@ -714,6 +868,7 @@ Deno.test(
       );
       const recorder = createRecorder("already_completed");
       const tenantResolver = unusedTenantResolver();
+      const observationReader = unusedObservationReader();
       const orchestrator = createOrchestratorFake(
         freshFetchSuccessResult(normalizedSubscriptionId),
       );
@@ -723,6 +878,7 @@ Deno.test(
         billingEvent,
         recorder.fn,
         tenantResolver.fn,
+        observationReader.fn,
         orchestrator.fn,
       );
 
@@ -731,6 +887,11 @@ Deno.test(
         tenantResolver.calls.length,
         0,
         "tenant resolver must not be called on identity mismatch",
+      );
+      assertEquals(
+        observationReader.calls.length,
+        0,
+        "observation reader must not be called on identity mismatch",
       );
       assertRecorderCall(recorder.calls, {
         billingEventId: billingEvent.id,
@@ -756,6 +917,7 @@ Deno.test(
       const tenantResolver = createTenantResolverFake(
         tenantMappingNotFoundResult(),
       );
+      const observationReader = unusedObservationReader();
       const orchestrator = createOrchestratorFake(
         freshFetchSuccessResult(subscriptionId),
       );
@@ -765,6 +927,7 @@ Deno.test(
         billingEvent,
         recorder.fn,
         tenantResolver.fn,
+        observationReader.fn,
         orchestrator.fn,
       );
 
@@ -778,6 +941,11 @@ Deno.test(
         tenantResolver.calls[0],
         SYNTHETIC_PROVIDER_CUSTOMER_ID,
         "tenant resolver receives exact fresh-normalized provider_customer_id",
+      );
+      assertEquals(
+        observationReader.calls.length,
+        0,
+        "observation reader must not be called when BF fails",
       );
       assertRecorderCall(recorder.calls, {
         billingEventId: billingEvent.id,
@@ -806,6 +974,7 @@ Deno.test(
       const tenantResolver = createTenantResolverFake(
         tenantMappingAmbiguousResult(),
       );
+      const observationReader = unusedObservationReader();
       const orchestrator = createOrchestratorFake(
         freshFetchSuccessResult(subscriptionId),
       );
@@ -815,6 +984,7 @@ Deno.test(
         billingEvent,
         recorder.fn,
         tenantResolver.fn,
+        observationReader.fn,
         orchestrator.fn,
       );
 
@@ -822,6 +992,11 @@ Deno.test(
         tenantResolver.calls.length,
         1,
         "tenant resolver called once",
+      );
+      assertEquals(
+        observationReader.calls.length,
+        0,
+        "observation reader must not be called when BF fails",
       );
       assertRecorderCall(recorder.calls, {
         billingEventId: billingEvent.id,
@@ -855,6 +1030,7 @@ Deno.test(
       const tenantResolver = createTenantResolverFake(
         tenantMappingNotFoundResult(),
       );
+      const observationReader = unusedObservationReader();
       const orchestrator = createOrchestratorFake(
         freshFetchSuccessResult(subscriptionId),
       );
@@ -864,6 +1040,7 @@ Deno.test(
         billingEvent,
         recorder.fn,
         tenantResolver.fn,
+        observationReader.fn,
         orchestrator.fn,
       );
 
@@ -872,12 +1049,273 @@ Deno.test(
         1,
         "tenant resolver called once",
       );
+      assertEquals(
+        observationReader.calls.length,
+        0,
+        "observation reader must not be called when BF fails",
+      );
       assertRecorderCall(recorder.calls, {
         billingEventId: billingEvent.id,
         reason: "tenant_mapping_not_found",
         tenantId: null,
       });
       await assertReceivedOk(response, eventId, eventType);
+    });
+  },
+);
+
+Deno.test(
+  "12. BF success + BI row_present same tenant → HTTP 200 receivedOk, no ownership",
+  async () => {
+    await withSyntheticStripeEnv(async () => {
+      const subscriptionId = "sub_billing41_same_tenant";
+      const eventId = "evt_billing41_same_tenant";
+      const eventType = "customer.subscription.updated";
+      const event = validSubscriptionEvent({
+        eventId,
+        eventType,
+        subscriptionId,
+      });
+      const billingEvent = createBillingEvent("be_billing41_same_tenant");
+      const recorder = createRecorder("recorded");
+      const tenantResolver = createTenantResolverFake(
+        tenantResolverSuccessResult(),
+      );
+      const observationReader = createObservationReaderFake(
+        observationRowPresentResult(SYNTHETIC_BF_TENANT_ID),
+      );
+      const orchestrator = createOrchestratorFake(
+        freshFetchSuccessResult(subscriptionId),
+      );
+
+      const response = await processCustomerSubscriptionEvent(
+        event,
+        billingEvent,
+        recorder.fn,
+        tenantResolver.fn,
+        observationReader.fn,
+        orchestrator.fn,
+      );
+
+      assertEquals(
+        tenantResolver.calls.length,
+        1,
+        "tenant resolver called once",
+      );
+      assertObservationForwardedExactly(
+        observationReader.calls,
+        subscriptionId,
+      );
+      assertEquals(recorder.calls.length, 0, "recorder must not be called");
+      await assertReceivedOk(response, eventId, eventType);
+    });
+  },
+);
+
+Deno.test(
+  "13. BF success + BI row_present different tenant → HTTP 200 receivedOk because ownership is not wired",
+  async () => {
+    await withSyntheticStripeEnv(async () => {
+      const subscriptionId = "sub_billing41_different_tenant";
+      const eventId = "evt_billing41_different_tenant";
+      const eventType = "customer.subscription.updated";
+      const event = validSubscriptionEvent({
+        eventId,
+        eventType,
+        subscriptionId,
+      });
+      const billingEvent = createBillingEvent("be_billing41_different_tenant");
+      const recorder = createRecorder("recorded");
+      const tenantResolver = createTenantResolverFake(
+        tenantResolverSuccessResult(),
+      );
+      const observationReader = createObservationReaderFake(
+        observationRowPresentResult(SYNTHETIC_OTHER_TENANT_ID),
+      );
+      const orchestrator = createOrchestratorFake(
+        freshFetchSuccessResult(subscriptionId),
+      );
+
+      const response = await processCustomerSubscriptionEvent(
+        event,
+        billingEvent,
+        recorder.fn,
+        tenantResolver.fn,
+        observationReader.fn,
+        orchestrator.fn,
+      );
+
+      assertEquals(
+        tenantResolver.calls.length,
+        1,
+        "tenant resolver called once",
+      );
+      assertObservationForwardedExactly(
+        observationReader.calls,
+        subscriptionId,
+      );
+      assertEquals(
+        recorder.calls.length,
+        0,
+        "recorder must not be called; ownership mismatch is not a BILLING-41 failure",
+      );
+      const bodyForLeakCheck = response.clone();
+      await assertReceivedOk(response, eventId, eventType);
+      const serialized = JSON.stringify(await bodyForLeakCheck.json());
+      assert(
+        !serialized.includes("subscription_ownership_mismatch"),
+        "must not introduce subscription_ownership_mismatch",
+      );
+      assert(
+        !serialized.includes(SYNTHETIC_OTHER_TENANT_ID),
+        "observation tenant_id must not leak in the HTTP body",
+      );
+    });
+  },
+);
+
+Deno.test(
+  "14. BI subscription_observation_lookup_failed → recorder once, HTTP 502 generic",
+  async () => {
+    await withSyntheticStripeEnv(async () => {
+      const subscriptionId = "sub_billing41_lookup_failed";
+      const event = validSubscriptionEvent({
+        eventId: "evt_billing41_lookup_failed",
+        subscriptionId,
+      });
+      const billingEvent = createBillingEvent("be_billing41_lookup_failed");
+      const recorder = createRecorder("recorded");
+      const tenantResolver = createTenantResolverFake(
+        tenantResolverSuccessResult(),
+      );
+      const observationReader = createObservationReaderFake(
+        observationLookupFailedResult(),
+      );
+      const orchestrator = createOrchestratorFake(
+        freshFetchSuccessResult(subscriptionId),
+      );
+
+      const response = await processCustomerSubscriptionEvent(
+        event,
+        billingEvent,
+        recorder.fn,
+        tenantResolver.fn,
+        observationReader.fn,
+        orchestrator.fn,
+      );
+
+      assertEquals(
+        tenantResolver.calls.length,
+        1,
+        "tenant resolver called once",
+      );
+      assertObservationForwardedExactly(
+        observationReader.calls,
+        subscriptionId,
+      );
+      assertRecorderCall(recorder.calls, {
+        billingEventId: billingEvent.id,
+        reason: "subscription_observation_lookup_failed",
+        tenantId: null,
+      });
+      await assertGenericUpstreamFailure(
+        response,
+        "subscription_observation_lookup_failed",
+      );
+    });
+  },
+);
+
+Deno.test(
+  "15. BI subscription_observation_ambiguous → recorder once, HTTP 502 generic",
+  async () => {
+    await withSyntheticStripeEnv(async () => {
+      const subscriptionId = "sub_billing41_ambiguous";
+      const event = validSubscriptionEvent({
+        eventId: "evt_billing41_ambiguous",
+        subscriptionId,
+      });
+      const billingEvent = createBillingEvent("be_billing41_ambiguous");
+      const recorder = createRecorder("recorded");
+      const tenantResolver = createTenantResolverFake(
+        tenantResolverSuccessResult(),
+      );
+      const observationReader = createObservationReaderFake(
+        observationAmbiguousResult(),
+      );
+      const orchestrator = createOrchestratorFake(
+        freshFetchSuccessResult(subscriptionId),
+      );
+
+      const response = await processCustomerSubscriptionEvent(
+        event,
+        billingEvent,
+        recorder.fn,
+        tenantResolver.fn,
+        observationReader.fn,
+        orchestrator.fn,
+      );
+
+      assertObservationForwardedExactly(
+        observationReader.calls,
+        subscriptionId,
+      );
+      assertRecorderCall(recorder.calls, {
+        billingEventId: billingEvent.id,
+        reason: "subscription_observation_ambiguous",
+        tenantId: null,
+      });
+      await assertGenericUpstreamFailure(
+        response,
+        "subscription_observation_ambiguous",
+      );
+    });
+  },
+);
+
+Deno.test(
+  "16. BI subscription_observation_invalid → recorder once, HTTP 502 generic",
+  async () => {
+    await withSyntheticStripeEnv(async () => {
+      const subscriptionId = "sub_billing41_invalid";
+      const event = validSubscriptionEvent({
+        eventId: "evt_billing41_invalid",
+        subscriptionId,
+      });
+      const billingEvent = createBillingEvent("be_billing41_invalid");
+      const recorder = createRecorder("recorded");
+      const tenantResolver = createTenantResolverFake(
+        tenantResolverSuccessResult(),
+      );
+      const observationReader = createObservationReaderFake(
+        observationInvalidResult(),
+      );
+      const orchestrator = createOrchestratorFake(
+        freshFetchSuccessResult(subscriptionId),
+      );
+
+      const response = await processCustomerSubscriptionEvent(
+        event,
+        billingEvent,
+        recorder.fn,
+        tenantResolver.fn,
+        observationReader.fn,
+        orchestrator.fn,
+      );
+
+      assertObservationForwardedExactly(
+        observationReader.calls,
+        subscriptionId,
+      );
+      assertRecorderCall(recorder.calls, {
+        billingEventId: billingEvent.id,
+        reason: "subscription_observation_invalid",
+        tenantId: null,
+      });
+      await assertGenericUpstreamFailure(
+        response,
+        "subscription_observation_invalid",
+      );
     });
   },
 );
