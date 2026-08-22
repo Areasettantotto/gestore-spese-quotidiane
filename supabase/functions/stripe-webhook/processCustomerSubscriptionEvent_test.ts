@@ -1,5 +1,6 @@
 /**
- * Component tests for processCustomerSubscriptionEvent (BILLING-19 / BILLING-41).
+ * Component tests for processCustomerSubscriptionEvent
+ * (BILLING-19 / BILLING-41 / BILLING-43).
  *
  * Imports the real stripe-webhook module after a test-only Deno.serve
  * replace/restore. Exercises the exported processor with synthetic
@@ -1065,7 +1066,7 @@ Deno.test(
 );
 
 Deno.test(
-  "12. BF success + BI row_present same tenant → HTTP 200 receivedOk, no ownership",
+  "12. BF success + BI row_present same tenant → HTTP 200 receivedOk, recorder not called",
   async () => {
     await withSyntheticStripeEnv(async () => {
       const subscriptionId = "sub_billing41_same_tenant";
@@ -1113,18 +1114,15 @@ Deno.test(
 );
 
 Deno.test(
-  "13. BF success + BI row_present different tenant → HTTP 200 receivedOk because ownership is not wired",
+  "13. BF success + BI row_present different tenant → ownership mismatch, HTTP 502 generic",
   async () => {
     await withSyntheticStripeEnv(async () => {
-      const subscriptionId = "sub_billing41_different_tenant";
-      const eventId = "evt_billing41_different_tenant";
-      const eventType = "customer.subscription.updated";
+      const subscriptionId = "sub_billing43_different_tenant";
       const event = validSubscriptionEvent({
-        eventId,
-        eventType,
+        eventId: "evt_billing43_different_tenant",
         subscriptionId,
       });
-      const billingEvent = createBillingEvent("be_billing41_different_tenant");
+      const billingEvent = createBillingEvent("be_billing43_different_tenant");
       const recorder = createRecorder("recorded");
       const tenantResolver = createTenantResolverFake(
         tenantResolverSuccessResult(),
@@ -1154,21 +1152,28 @@ Deno.test(
         observationReader.calls,
         subscriptionId,
       );
-      assertEquals(
-        recorder.calls.length,
-        0,
-        "recorder must not be called; ownership mismatch is not a BILLING-41 failure",
-      );
+      assertRecorderCall(recorder.calls, {
+        billingEventId: billingEvent.id,
+        reason: "subscription_ownership_mismatch",
+        tenantId: null,
+      });
       const bodyForLeakCheck = response.clone();
-      await assertReceivedOk(response, eventId, eventType);
+      await assertGenericUpstreamFailure(
+        response,
+        "subscription_ownership_mismatch",
+      );
       const serialized = JSON.stringify(await bodyForLeakCheck.json());
       assert(
-        !serialized.includes("subscription_ownership_mismatch"),
-        "must not introduce subscription_ownership_mismatch",
+        !serialized.includes(SYNTHETIC_BF_TENANT_ID),
+        "BF tenant_id must not leak in the HTTP body",
       );
       assert(
         !serialized.includes(SYNTHETIC_OTHER_TENANT_ID),
         "observation tenant_id must not leak in the HTTP body",
+      );
+      assert(
+        !serialized.includes("row_present"),
+        "observation row kind must not leak in the HTTP body",
       );
     });
   },

@@ -989,6 +989,14 @@ export async function processCustomerSubscriptionEvent(
     return await respondAfterError(observationResult.reason);
   }
 
+  if (
+    observationResult.observation.kind === "row_present" &&
+    observationResult.observation.tenant_id !==
+      tenantResolutionResult.tenant_id
+  ) {
+    return await respondAfterError("subscription_ownership_mismatch");
+  }
+
   return receivedOk(event);
 }
 
