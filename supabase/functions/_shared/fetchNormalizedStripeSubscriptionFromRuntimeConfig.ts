@@ -1,12 +1,15 @@
 /**
  * Orchestrator: raw runtime config → Stripe retrieve client → fresh
- * normalized subscription (BILLING-10).
+ * normalized subscription (BILLING-10 / BILLING-38).
  *
  * Composes existing fail-closed boundaries only:
  *   resolveStripeSubscriptionSyncRuntimeConfig
- *   → resolveStripePriceCatalogFromConfig (caller-side catalog adapter)
  *   → createStripeSubscriptionRetrieveClient
  *   → fetchNormalizedStripeSubscription
+ *
+ * The catalog is built inside the runtime-config boundary and consumed
+ * here as `runtimeConfig.catalog`. This module does not reconstruct the
+ * catalog.
  *
  * Does not read Deno.env / process.env / import.meta.env, import
  * stripe-webhook, bootstrap events, pre-admission, tenant mapping,
@@ -23,7 +26,6 @@ import {
   fetchNormalizedStripeSubscription,
   type FetchNormalizedStripeSubscriptionResult,
 } from "./fetchNormalizedStripeSubscription.ts";
-import { resolveStripePriceCatalogFromConfig } from "./resolveStripePriceCatalogFromConfig.ts";
 import {
   resolveStripeSubscriptionSyncRuntimeConfig,
   type ResolveStripeSubscriptionSyncRuntimeConfigResult,
@@ -49,34 +51,24 @@ export async function fetchNormalizedStripeSubscriptionFromRuntimeConfig(
   createRetrieveClient: typeof createStripeSubscriptionRetrieveClient =
     createStripeSubscriptionRetrieveClient,
 ): Promise<FetchNormalizedStripeSubscriptionFromRuntimeConfigResult> {
-  const configResult = resolveStripeSubscriptionSyncRuntimeConfig({
+  const runtimeConfig = resolveStripeSubscriptionSyncRuntimeConfig({
     stripeSecretKey: params.stripeSecretKey,
     supportedProMonthlyPriceId: params.supportedProMonthlyPriceId,
   });
 
-  if (configResult.ok === false) {
-    return configResult;
-  }
-
-  const catalogResult = resolveStripePriceCatalogFromConfig({
-    proMonthlyPriceId: configResult.supportedProMonthlyPriceId,
-  });
-  if (catalogResult.ok === false) {
-    return {
-      ok: false,
-      reason: "invalid_supported_pro_monthly_price_id",
-    };
+  if (runtimeConfig.ok === false) {
+    return runtimeConfig;
   }
 
   const stripe = createRetrieveClient(
-    configResult.stripeSecretKey,
+    runtimeConfig.stripeSecretKey,
   );
 
   return await fetchNormalizedStripeSubscription({
     provider_subscription_id: params.provider_subscription_id,
     stripe,
     config: {
-      catalog: catalogResult.catalog,
+      catalog: runtimeConfig.catalog,
     },
   });
 }

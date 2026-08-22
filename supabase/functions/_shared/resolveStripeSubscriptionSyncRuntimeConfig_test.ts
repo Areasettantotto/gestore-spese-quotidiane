@@ -1,5 +1,6 @@
 /**
- * Deno tests for resolveStripeSubscriptionSyncRuntimeConfig (BILLING-06).
+ * Deno tests for resolveStripeSubscriptionSyncRuntimeConfig (BILLING-06 /
+ * BILLING-38).
  *
  * Run:
  *   deno test supabase/functions/_shared/resolveStripeSubscriptionSyncRuntimeConfig_test.ts
@@ -8,6 +9,7 @@
  * Fixtures are synthetic and clearly fake — not real secrets or env values.
  */
 
+import type { KnownStripePrice } from "./resolveKnownStripePrice.ts";
 import {
   resolveStripeSubscriptionSyncRuntimeConfig,
   type ResolveStripeSubscriptionSyncRuntimeConfigFailureReason,
@@ -77,10 +79,23 @@ function expectFailure(
     !("supportedProMonthlyPriceId" in result),
     "failure must not return a partial supportedProMonthlyPriceId",
   );
+  assert(
+    !("catalog" in result),
+    "failure must not return a partial catalog",
+  );
   assertEquals(
     Object.keys(result).sort(),
     ["ok", "reason"].sort(),
     "public failure contract exposes only ok+reason",
+  );
+  const serialized = JSON.stringify(result);
+  assert(
+    !serialized.includes(VALID_SECRET),
+    "failure must not contain the secret",
+  );
+  assert(
+    !serialized.includes(VALID_PRICE),
+    "failure must not contain the Price ID",
   );
 }
 
@@ -94,6 +109,25 @@ function resolveWith(
   });
 }
 
+function assertOneEntryProMonthlyCatalog(
+  catalog: readonly KnownStripePrice[],
+  priceId: string,
+): void {
+  assert(Array.isArray(catalog), "catalog must be an array");
+  assertEquals(catalog.length, 1, "catalog has exactly one entry");
+  assertEquals(catalog[0]?.priceId, priceId, "catalog priceId");
+  assertEquals(catalog[0]?.tier, "pro", "catalog tier");
+  assertEquals(catalog[0]?.interval, "monthly", "catalog interval");
+  const entry: KnownStripePrice | undefined = catalog[0];
+  assert(entry !== undefined, "catalog must contain the Pro monthly entry");
+  const known: KnownStripePrice = entry;
+  assertEquals(
+    Object.keys(known).sort(),
+    ["interval", "priceId", "tier"].sort(),
+    "KnownStripePrice public keys",
+  );
+}
+
 Deno.test("A. success base returns exact fake values and public keys only", () => {
   const result = resolveWith(VALID_SECRET, VALID_PRICE);
 
@@ -103,14 +137,29 @@ Deno.test("A. success base returns exact fake values and public keys only", () =
     {
       ok: true,
       stripeSecretKey: VALID_SECRET,
-      supportedProMonthlyPriceId: VALID_PRICE,
+      catalog: [
+        {
+          priceId: VALID_PRICE,
+          tier: "pro",
+          interval: "monthly",
+        },
+      ],
     },
     "success payload",
   );
   assertEquals(
     Object.keys(result).sort(),
-    ["ok", "stripeSecretKey", "supportedProMonthlyPriceId"].sort(),
-    "public success contract exposes only ok+stripeSecretKey+supportedProMonthlyPriceId",
+    ["catalog", "ok", "stripeSecretKey"].sort(),
+    "public success contract exposes only ok+stripeSecretKey+catalog",
+  );
+  assert(
+    !("supportedProMonthlyPriceId" in result),
+    "success must not expose supportedProMonthlyPriceId",
+  );
+  assertOneEntryProMonthlyCatalog(result.catalog, VALID_PRICE);
+  assert(
+    result.catalog[0]?.priceId === VALID_PRICE,
+    "catalog priceId identity must match input (no canonicalization)",
   );
 });
 
@@ -202,18 +251,18 @@ Deno.test("J. exact success values — no trim/lowercase/prefix/canonicalization
 
   expectSuccess(result);
   assertEquals(result.stripeSecretKey, secret, "secret returned exactly");
-  assertEquals(
-    result.supportedProMonthlyPriceId,
-    price,
-    "price returned exactly",
+  assert(
+    !("supportedProMonthlyPriceId" in result),
+    "success must not expose supportedProMonthlyPriceId",
   );
+  assertOneEntryProMonthlyCatalog(result.catalog, price);
   assert(
     result.stripeSecretKey === secret,
     "secret identity must match input (no canonicalization)",
   );
   assert(
-    result.supportedProMonthlyPriceId === price,
-    "price identity must match input (no canonicalization)",
+    result.catalog[0]?.priceId === price,
+    "catalog priceId identity must match input (no canonicalization)",
   );
 });
 
@@ -224,11 +273,7 @@ Deno.test("K. clean values without sk_test_ / price_ prefixes succeed", () => {
 
   expectSuccess(result);
   assertEquals(result.stripeSecretKey, secret, "no sk_test_ prefix required");
-  assertEquals(
-    result.supportedProMonthlyPriceId,
-    price,
-    "no price_ prefix required",
-  );
+  assertOneEntryProMonthlyCatalog(result.catalog, price);
 });
 
 Deno.test("L. internal whitespace remains accepted (current contract, not a new policy)", () => {
@@ -242,8 +287,9 @@ Deno.test("L. internal whitespace remains accepted (current contract, not a new 
     secret,
     "internal whitespace in secret is currently accepted as-is",
   );
+  assertOneEntryProMonthlyCatalog(result.catalog, price);
   assertEquals(
-    result.supportedProMonthlyPriceId,
+    result.catalog[0]?.priceId,
     price,
     "internal whitespace in price is currently accepted as-is",
   );

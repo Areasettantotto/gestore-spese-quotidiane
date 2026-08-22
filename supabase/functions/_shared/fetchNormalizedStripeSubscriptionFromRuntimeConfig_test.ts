@@ -1,6 +1,6 @@
 /**
  * Deno tests for fetchNormalizedStripeSubscriptionFromRuntimeConfig
- * (BILLING-11).
+ * (BILLING-11 / BILLING-38).
  *
  * Exercises the BILLING-10 orchestrator through the optional
  * createRetrieveClient factory seam. Config validation, BG refetch,
@@ -21,6 +21,7 @@ import {
 } from "./fetchNormalizedStripeSubscriptionFromRuntimeConfig.ts";
 import type { StripeSubscriptionLike } from "./normalizeStripeSubscription.ts";
 import type { StripeSubscriptionRetrieveClient } from "./refetchStripeSubscription.ts";
+import { resolveStripeSubscriptionSyncRuntimeConfig } from "./resolveStripeSubscriptionSyncRuntimeConfig.ts";
 
 declare const Deno: {
   test: (name: string, fn: () => void | Promise<void>) => void;
@@ -77,6 +78,14 @@ function expectConfigFailure(
   assert(
     !("stripeSecretKey" in result),
     "failure must not return a secret",
+  );
+  assert(
+    !("catalog" in result),
+    "failure must not return a partial catalog",
+  );
+  assert(
+    !("supportedProMonthlyPriceId" in result),
+    "failure must not return a Price ID",
   );
   assertEquals(
     Object.keys(result).sort(),
@@ -316,6 +325,35 @@ Deno.test("D. valid config + fresh retrieve success (BG/BE/BJ passthrough)", asy
     "normalized cancel_at_period_end",
   );
   assertResultDoesNotContainSecret(result);
+
+  const runtimeConfig = resolveStripeSubscriptionSyncRuntimeConfig({
+    stripeSecretKey: VALID_SECRET,
+    supportedProMonthlyPriceId: SUPPORTED_PRICE,
+  });
+  if (runtimeConfig.ok !== true) {
+    throw new Error("runtime config must succeed");
+  }
+  assert(
+    !("supportedProMonthlyPriceId" in runtimeConfig),
+    "runtime success must not expose supportedProMonthlyPriceId",
+  );
+  assert(Array.isArray(runtimeConfig.catalog), "catalog must be an array");
+  assertEquals(
+    runtimeConfig.catalog.length,
+    1,
+    "catalog passed to fetch normalized has exactly one entry",
+  );
+  assertEquals(
+    runtimeConfig.catalog[0]?.priceId,
+    SUPPORTED_PRICE,
+    "catalog priceId",
+  );
+  assertEquals(runtimeConfig.catalog[0]?.tier, "pro", "catalog tier");
+  assertEquals(
+    runtimeConfig.catalog[0]?.interval,
+    "monthly",
+    "catalog interval",
+  );
 });
 
 Deno.test("E. retrieve reject → existing BG refetch failure, no error leak", async () => {
