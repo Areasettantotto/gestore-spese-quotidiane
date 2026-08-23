@@ -1,11 +1,12 @@
 /**
  * Component tests for processCustomerSubscriptionEvent
- * (BILLING-19 / BILLING-41 / BILLING-43 / BILLING-45).
+ * (BILLING-19 / BILLING-41 / BILLING-43 / BILLING-45 / BILLING-48).
  *
  * Imports the real stripe-webhook module after a test-only Deno.serve
  * replace/restore. Exercises the exported processor with synthetic
  * events, an in-memory recorder, a tenant-resolver fake, a
- * subscription-observation fake, and a one-argument orchestrator fake.
+ * subscription-observation fake, a persistence fake, and a
+ * one-argument orchestrator fake.
  *
  * Run:
  *   deno test --no-lock --cached-only --no-prompt \
@@ -100,6 +101,10 @@ type RecorderResult = Awaited<ReturnType<RecorderFn>>;
 type AdmissionClassifierFn = NonNullable<Parameters<Processor>[6]>;
 type AdmissionClassifierParams = Parameters<AdmissionClassifierFn>[0];
 type AdmissionClassifierResult = ReturnType<AdmissionClassifierFn>;
+type PersistFn = NonNullable<Parameters<Processor>[7]>;
+type PersistParams = Parameters<PersistFn>[0];
+type PersistResult = Awaited<ReturnType<PersistFn>>;
+type PersistOperation = PersistParams["operation"];
 
 const SYNTHETIC_BF_TENANT_ID = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeee1";
 const SYNTHETIC_OTHER_TENANT_ID = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeee2";
@@ -303,6 +308,66 @@ function unusedAdmissionClassifier(): {
     );
   };
   return { fn, calls };
+}
+
+function createPersistFake(result: PersistResult): {
+  fn: PersistFn;
+  calls: PersistParams[];
+} {
+  const calls: PersistParams[] = [];
+  const fn: PersistFn = (params) => {
+    calls.push(params);
+    return Promise.resolve(result);
+  };
+  return { fn, calls };
+}
+
+function unusedPersist(): {
+  fn: PersistFn;
+  calls: PersistParams[];
+} {
+  const calls: PersistParams[] = [];
+  const fn: PersistFn = (params) => {
+    calls.push(params);
+    throw new Error(
+      `persistence helper must not be called, got ${JSON.stringify(params)}`,
+    );
+  };
+  return { fn, calls };
+}
+
+function persistInsertedResult(): PersistResult {
+  const result: PersistResult = { ok: true, kind: "inserted" };
+  return result;
+}
+
+function persistUpdatedResult(): PersistResult {
+  const result: PersistResult = { ok: true, kind: "updated" };
+  return result;
+}
+
+function persistInsertConflictResult(): PersistResult {
+  const result: PersistResult = {
+    ok: false,
+    reason: "subscription_insert_conflict",
+  };
+  return result;
+}
+
+function persistCasMissResult(): PersistResult {
+  const result: PersistResult = {
+    ok: false,
+    reason: "subscription_cas_miss",
+  };
+  return result;
+}
+
+function persistFailedResult(): PersistResult {
+  const result: PersistResult = {
+    ok: false,
+    reason: "subscription_persistence_failed",
+  };
+  return result;
 }
 
 function observationRowAbsentResult(): ObservationReaderResult {
@@ -592,6 +657,85 @@ function assertAdmissionClassifierInputs(
   );
 }
 
+function assertPersistCalledOnce(
+  calls: PersistParams[],
+  expected: {
+    tenant_id: string;
+    snapshot: PersistParams["snapshot"];
+    provider_event_created_at: number;
+    provider_event_id: string;
+    operation: PersistOperation;
+  },
+): void {
+  assertEquals(calls.length, 1, "persistence helper call count");
+  const params = calls[0];
+  assert(params !== undefined, "persistence helper params");
+  assertEquals(
+    Object.keys(params).sort(),
+    [
+      "operation",
+      "provider_event_created_at",
+      "provider_event_id",
+      "snapshot",
+      "tenant_id",
+    ],
+    "persistence helper param keys",
+  );
+  assertEquals(
+    params.tenant_id,
+    expected.tenant_id,
+    "tenant_id must be BF authority",
+  );
+  assertEquals(
+    params.snapshot,
+    expected.snapshot,
+    "snapshot must be the normalized subscription",
+  );
+  assertEquals(
+    params.provider_event_created_at,
+    expected.provider_event_created_at,
+    "provider_event_created_at must be the current event.created",
+  );
+  assertEquals(
+    params.provider_event_id,
+    expected.provider_event_id,
+    "provider_event_id must be the current event.id",
+  );
+  assertEquals(
+    params.operation,
+    expected.operation,
+    "persistence operation mapping",
+  );
+  assert(
+    !("client" in params),
+    "processor-facing persist params must not include client",
+  );
+  assert(
+    !("billing_state_revision" in params),
+    "billing_state_revision must not be passed to persistence",
+  );
+  assert(
+    !("processed_at" in params),
+    "processed_at must not be passed to persistence",
+  );
+  assert(
+    !("updated_at" in params),
+    "updated_at must not be passed to persistence",
+  );
+  assert(
+    !("tenant_id" in params.snapshot),
+    "normalized snapshot must not carry tenant_id authority",
+  );
+}
+
+function assertProcessorDoesNotWriteProcessedAt(): void {
+  const source = processCustomerSubscriptionEvent.toString();
+  assert(
+    !source.includes("markBillingEventProcessed"),
+    "nodo 9 processed_at writer must remain unwired in the subscription processor",
+  );
+}
+
 Deno.test(
   "1. bootstrap failure → recorder once, orchestrator skipped, HTTP 502 generic",
   async () => {
@@ -610,6 +754,7 @@ Deno.test(
       observationReader.fn,
       orchestrator.fn,
       unusedAdmissionClassifier().fn,
+      unusedPersist().fn,
     );
 
     assertEquals(
@@ -662,6 +807,7 @@ Deno.test(
         observationReader.fn,
         orchestrator.fn,
         unusedAdmissionClassifier().fn,
+        unusedPersist().fn,
       );
 
       assertOrchestratorForwardedSyntheticEnv(
@@ -714,6 +860,7 @@ Deno.test(
         observationReader.fn,
         orchestrator.fn,
         unusedAdmissionClassifier().fn,
+        unusedPersist().fn,
       );
 
       assertOrchestratorForwardedSyntheticEnv(
@@ -766,6 +913,7 @@ Deno.test(
         observationReader.fn,
         orchestrator.fn,
         unusedAdmissionClassifier().fn,
+        unusedPersist().fn,
       );
 
       assertEquals(orchestrator.calls.length, 1, "orchestrator called once");
@@ -790,7 +938,7 @@ Deno.test(
 );
 
 Deno.test(
-  "5. BF success + BI row_absent → HTTP 200 receivedOk, recorder not called, BI once",
+  "5. candidate_row_absent → persist INSERT once with BF tenant + normalized snapshot + event watermark, HTTP 200",
   async () => {
     await withSyntheticStripeEnv(async () => {
       const subscriptionId = "sub_billing19_fresh";
@@ -809,13 +957,13 @@ Deno.test(
       const observationReader = createObservationReaderFake(
         observationRowAbsentResult(),
       );
-      const orchestrator = createOrchestratorFake(
-        freshFetchSuccessResult(subscriptionId),
-      );
+      const fetchResult = freshFetchSuccessResult(subscriptionId);
+      const orchestrator = createOrchestratorFake(fetchResult);
       const admissionClassifier = createAdmissionClassifierFake({
         ok: true,
         kind: "candidate_row_absent",
       });
+      const persist = createPersistFake(persistInsertedResult());
 
       const response = await processCustomerSubscriptionEvent(
         event,
@@ -825,8 +973,12 @@ Deno.test(
         observationReader.fn,
         orchestrator.fn,
         admissionClassifier.fn,
+        persist.fn,
       );
 
+      if (fetchResult.ok !== true) {
+        throw new Error("fresh fetch fixture must succeed");
+      }
       assertOrchestratorForwardedSyntheticEnv(
         orchestrator.calls,
         subscriptionId,
@@ -845,11 +997,36 @@ Deno.test(
         observationReader.calls,
         subscriptionId,
       );
+      assertEquals(
+        observationReader.calls.length,
+        1,
+        "BI observation must be queried exactly once",
+      );
       assertAdmissionClassifierInputs(admissionClassifier.calls, {
         provider_event_id: eventId,
         provider_event_created_at: event.created,
         tenant_subscription_row: { presence: "absent" },
       });
+      assertPersistCalledOnce(persist.calls, {
+        tenant_id: SYNTHETIC_BF_TENANT_ID,
+        snapshot: fetchResult.value,
+        provider_event_created_at: SYNTHETIC_EVENT_CREATED,
+        provider_event_id: eventId,
+        operation: { kind: "insert" },
+      });
+      assertEquals(
+        persist.calls[0]?.tenant_id,
+        tenantResolver.calls[0] === SYNTHETIC_PROVIDER_CUSTOMER_ID
+          ? SYNTHETIC_BF_TENANT_ID
+          : "mismatch",
+        "persist tenant_id must come from BF, not Stripe metadata",
+      );
+      assertEquals(
+        persist.calls[0]?.tenant_id === SYNTHETIC_OTHER_TENANT_ID,
+        false,
+        "persist tenant_id must not use Stripe metadata tenant_id",
+      );
+      assertProcessorDoesNotWriteProcessedAt();
       assertEquals(recorder.calls.length, 0, "recorder must not be called");
       await assertReceivedOk(response, eventId, eventType);
     });
@@ -876,6 +1053,7 @@ Deno.test(
       observationReader.fn,
       orchestrator.fn,
       unusedAdmissionClassifier().fn,
+      unusedPersist().fn,
     );
 
     assertEquals(
@@ -928,6 +1106,7 @@ Deno.test(
         observationReader.fn,
         orchestrator.fn,
         unusedAdmissionClassifier().fn,
+        unusedPersist().fn,
       );
 
       assertOrchestratorForwardedSyntheticEnv(
@@ -988,6 +1167,7 @@ Deno.test(
         observationReader.fn,
         orchestrator.fn,
         unusedAdmissionClassifier().fn,
+        unusedPersist().fn,
       );
 
       assertEquals(orchestrator.calls.length, 1, "orchestrator called once");
@@ -1038,6 +1218,7 @@ Deno.test(
         observationReader.fn,
         orchestrator.fn,
         unusedAdmissionClassifier().fn,
+        unusedPersist().fn,
       );
 
       assertEquals(orchestrator.calls.length, 1, "orchestrator called once");
@@ -1096,6 +1277,7 @@ Deno.test(
         observationReader.fn,
         orchestrator.fn,
         unusedAdmissionClassifier().fn,
+        unusedPersist().fn,
       );
 
       assertEquals(
@@ -1153,6 +1335,7 @@ Deno.test(
         observationReader.fn,
         orchestrator.fn,
         unusedAdmissionClassifier().fn,
+        unusedPersist().fn,
       );
 
       assertEquals(
@@ -1176,7 +1359,7 @@ Deno.test(
 );
 
 Deno.test(
-  "12. BF success + BI row_present same tenant → HTTP 200 receivedOk, recorder not called",
+  "12. candidate_row_present_uninitialized → persist UPDATE uninitialized once, HTTP 200",
   async () => {
     await withSyntheticStripeEnv(async () => {
       const subscriptionId = "sub_billing41_same_tenant";
@@ -1193,19 +1376,15 @@ Deno.test(
         tenantResolverSuccessResult(),
       );
       const observationReader = createObservationReaderFake(
-        observationRowPresentResult(
-          SYNTHETIC_BF_TENANT_ID,
-          SYNTHETIC_WATERMARK_CREATED_AT,
-          SYNTHETIC_WATERMARK_EVENT_ID,
-        ),
+        observationRowPresentResult(SYNTHETIC_BF_TENANT_ID, null, null),
       );
-      const orchestrator = createOrchestratorFake(
-        freshFetchSuccessResult(subscriptionId),
-      );
+      const fetchResult = freshFetchSuccessResult(subscriptionId);
+      const orchestrator = createOrchestratorFake(fetchResult);
       const admissionClassifier = createAdmissionClassifierFake({
         ok: true,
         kind: "candidate_row_present_uninitialized",
       });
+      const persist = createPersistFake(persistUpdatedResult());
 
       const response = await processCustomerSubscriptionEvent(
         event,
@@ -1215,8 +1394,12 @@ Deno.test(
         observationReader.fn,
         orchestrator.fn,
         admissionClassifier.fn,
+        persist.fn,
       );
 
+      if (fetchResult.ok !== true) {
+        throw new Error("fresh fetch fixture must succeed");
+      }
       assertEquals(
         tenantResolver.calls.length,
         1,
@@ -1226,16 +1409,31 @@ Deno.test(
         observationReader.calls,
         subscriptionId,
       );
+      assertEquals(
+        observationReader.calls.length,
+        1,
+        "BI observation must be queried exactly once",
+      );
       assertAdmissionClassifierInputs(admissionClassifier.calls, {
         provider_event_id: eventId,
         provider_event_created_at: event.created,
         tenant_subscription_row: {
           presence: "present",
-          last_applied_provider_event_created_at:
-            SYNTHETIC_WATERMARK_CREATED_AT,
-          last_applied_provider_event_id: SYNTHETIC_WATERMARK_EVENT_ID,
+          last_applied_provider_event_created_at: null,
+          last_applied_provider_event_id: null,
         },
       });
+      assertPersistCalledOnce(persist.calls, {
+        tenant_id: SYNTHETIC_BF_TENANT_ID,
+        snapshot: fetchResult.value,
+        provider_event_created_at: SYNTHETIC_EVENT_CREATED,
+        provider_event_id: eventId,
+        operation: {
+          kind: "update",
+          expected_watermark: { kind: "uninitialized" },
+        },
+      });
+      assertProcessorDoesNotWriteProcessedAt();
       assertEquals(recorder.calls.length, 0, "recorder must not be called");
       await assertReceivedOk(response, eventId, eventType);
     });
@@ -1271,6 +1469,7 @@ Deno.test(
         observationReader.fn,
         orchestrator.fn,
         unusedAdmissionClassifier().fn,
+        unusedPersist().fn,
       );
 
       assertEquals(
@@ -1338,6 +1537,7 @@ Deno.test(
         observationReader.fn,
         orchestrator.fn,
         unusedAdmissionClassifier().fn,
+        unusedPersist().fn,
       );
 
       assertEquals(
@@ -1391,6 +1591,7 @@ Deno.test(
         observationReader.fn,
         orchestrator.fn,
         unusedAdmissionClassifier().fn,
+        unusedPersist().fn,
       );
 
       assertObservationForwardedExactly(
@@ -1439,6 +1640,7 @@ Deno.test(
         observationReader.fn,
         orchestrator.fn,
         unusedAdmissionClassifier().fn,
+        unusedPersist().fn,
       );
 
       assertObservationForwardedExactly(
@@ -1459,7 +1661,7 @@ Deno.test(
 );
 
 Deno.test(
-  "17. BH ok:true candidate_newer_event → HTTP 200 receivedOk, recorder not called",
+  "17. candidate_newer_event → persist UPDATE initialized with BI W_sub expected, current event watermark, HTTP 200",
   async () => {
     await withSyntheticStripeEnv(async () => {
       const subscriptionId = "sub_billing45_newer";
@@ -1476,15 +1678,19 @@ Deno.test(
         tenantResolverSuccessResult(),
       );
       const observationReader = createObservationReaderFake(
-        observationRowAbsentResult(),
+        observationRowPresentResult(
+          SYNTHETIC_BF_TENANT_ID,
+          SYNTHETIC_WATERMARK_CREATED_AT,
+          SYNTHETIC_WATERMARK_EVENT_ID,
+        ),
       );
-      const orchestrator = createOrchestratorFake(
-        freshFetchSuccessResult(subscriptionId),
-      );
+      const fetchResult = freshFetchSuccessResult(subscriptionId);
+      const orchestrator = createOrchestratorFake(fetchResult);
       const admissionClassifier = createAdmissionClassifierFake({
         ok: true,
         kind: "candidate_newer_event",
       });
+      const persist = createPersistFake(persistUpdatedResult());
 
       const response = await processCustomerSubscriptionEvent(
         event,
@@ -1494,8 +1700,12 @@ Deno.test(
         observationReader.fn,
         orchestrator.fn,
         admissionClassifier.fn,
+        persist.fn,
       );
 
+      if (fetchResult.ok !== true) {
+        throw new Error("fresh fetch fixture must succeed");
+      }
       assertEquals(
         observationReader.calls.length,
         1,
@@ -1506,6 +1716,33 @@ Deno.test(
         1,
         "admission classifier called once",
       );
+      assertPersistCalledOnce(persist.calls, {
+        tenant_id: SYNTHETIC_BF_TENANT_ID,
+        snapshot: fetchResult.value,
+        provider_event_created_at: SYNTHETIC_EVENT_CREATED,
+        provider_event_id: eventId,
+        operation: {
+          kind: "update",
+          expected_watermark: {
+            kind: "initialized",
+            last_applied_provider_event_created_at:
+              SYNTHETIC_WATERMARK_CREATED_AT,
+            last_applied_provider_event_id: SYNTHETIC_WATERMARK_EVENT_ID,
+          },
+        },
+      });
+      assertEquals(
+        persist.calls[0]?.provider_event_created_at ===
+          SYNTHETIC_WATERMARK_CREATED_AT,
+        false,
+        "current watermark must remain the new event, not BI W_sub",
+      );
+      assertEquals(
+        persist.calls[0]?.provider_event_id === SYNTHETIC_WATERMARK_EVENT_ID,
+        false,
+        "current event id must remain the new event, not BI W_sub",
+      );
+      assertProcessorDoesNotWriteProcessedAt();
       assertEquals(recorder.calls.length, 0, "recorder must not be called");
       await assertReceivedOk(response, eventId, eventType);
     });
@@ -1544,6 +1781,8 @@ Deno.test(
         kind: "stale_event",
       });
 
+      const persist = unusedPersist();
+
       const response = await processCustomerSubscriptionEvent(
         event,
         billingEvent,
@@ -1552,8 +1791,10 @@ Deno.test(
         observationReader.fn,
         orchestrator.fn,
         admissionClassifier.fn,
+        persist.fn,
       );
 
+      assertEquals(persist.calls.length, 0, "persistence must not be called");
       assertEquals(recorder.calls.length, 0, "recorder must not be called");
       await assertReceivedOk(response, eventId, eventType);
     });
@@ -1561,7 +1802,7 @@ Deno.test(
 );
 
 Deno.test(
-  "19. BH ok:true partial_retry → HTTP 200 receivedOk, recorder not called",
+  "19. partial_retry → persistence NOT called, tenant_subscriptions not rewritten, HTTP 200",
   async () => {
     await withSyntheticStripeEnv(async () => {
       const subscriptionId = "sub_billing45_partial_retry";
@@ -1592,6 +1833,8 @@ Deno.test(
         kind: "partial_retry",
       });
 
+      const persist = unusedPersist();
+
       const response = await processCustomerSubscriptionEvent(
         event,
         billingEvent,
@@ -1600,8 +1843,14 @@ Deno.test(
         observationReader.fn,
         orchestrator.fn,
         admissionClassifier.fn,
+        persist.fn,
       );
 
+      assertEquals(
+        persist.calls.length,
+        0,
+        "partial_retry must not rewrite tenant_subscriptions",
+      );
       assertEquals(recorder.calls.length, 0, "recorder must not be called");
       await assertReceivedOk(response, eventId, eventType);
     });
@@ -1640,6 +1889,8 @@ Deno.test(
         kind: "already_applied",
       });
 
+      const persist = unusedPersist();
+
       const response = await processCustomerSubscriptionEvent(
         event,
         billingEvent,
@@ -1648,8 +1899,10 @@ Deno.test(
         observationReader.fn,
         orchestrator.fn,
         admissionClassifier.fn,
+        persist.fn,
       );
 
+      assertEquals(persist.calls.length, 0, "persistence must not be called");
       assertEquals(recorder.calls.length, 0, "recorder must not be called");
       await assertReceivedOk(response, eventId, eventType);
     });
@@ -1686,6 +1939,7 @@ Deno.test(
         ok: false,
         reason: "invalid_watermark",
       });
+      const persist = unusedPersist();
 
       const response = await processCustomerSubscriptionEvent(
         event,
@@ -1695,12 +1949,13 @@ Deno.test(
         observationReader.fn,
         orchestrator.fn,
         admissionClassifier.fn,
+        persist.fn,
       );
 
       assertEquals(
-        admissionClassifier.calls.length,
-        1,
-        "admission classifier called once",
+        persist.calls.length,
+        0,
+        "persistence must not be called on BH failure",
       );
       assertRecorderCall(recorder.calls, {
         billingEventId: billingEvent.id,
@@ -1740,6 +1995,7 @@ Deno.test(
         ok: false,
         reason: "inconsistent_same_event",
       });
+      const persist = unusedPersist();
 
       const response = await processCustomerSubscriptionEvent(
         event,
@@ -1749,8 +2005,14 @@ Deno.test(
         observationReader.fn,
         orchestrator.fn,
         admissionClassifier.fn,
+        persist.fn,
       );
 
+      assertEquals(
+        persist.calls.length,
+        0,
+        "persistence must not be called on BH failure",
+      );
       assertRecorderCall(recorder.calls, {
         billingEventId: billingEvent.id,
         reason: "inconsistent_same_event",
@@ -1759,6 +2021,273 @@ Deno.test(
       await assertGenericUpstreamFailure(
         response,
         "inconsistent_same_event",
+      );
+    });
+  },
+);
+
+Deno.test(
+  "23. candidate_equal_timestamp_distinct_event → persist UPDATE initialized with exact BI W_sub, HTTP 200",
+  async () => {
+    await withSyntheticStripeEnv(async () => {
+      const subscriptionId = "sub_billing48_equal_ts";
+      const eventId = "evt_billing48_equal_ts";
+      const eventType = "customer.subscription.updated";
+      const event = validSubscriptionEvent({
+        eventId,
+        eventType,
+        subscriptionId,
+        created: SYNTHETIC_WATERMARK_CREATED_AT,
+      });
+      const billingEvent = createBillingEvent("be_billing48_equal_ts");
+      const recorder = createRecorder("recorded");
+      const tenantResolver = createTenantResolverFake(
+        tenantResolverSuccessResult(),
+      );
+      const observationReader = createObservationReaderFake(
+        observationRowPresentResult(
+          SYNTHETIC_BF_TENANT_ID,
+          SYNTHETIC_WATERMARK_CREATED_AT,
+          SYNTHETIC_WATERMARK_EVENT_ID,
+        ),
+      );
+      const fetchResult = freshFetchSuccessResult(subscriptionId);
+      const orchestrator = createOrchestratorFake(fetchResult);
+      const admissionClassifier = createAdmissionClassifierFake({
+        ok: true,
+        kind: "candidate_equal_timestamp_distinct_event",
+      });
+      const persist = createPersistFake(persistUpdatedResult());
+
+      const response = await processCustomerSubscriptionEvent(
+        event,
+        billingEvent,
+        recorder.fn,
+        tenantResolver.fn,
+        observationReader.fn,
+        orchestrator.fn,
+        admissionClassifier.fn,
+        persist.fn,
+      );
+
+      if (fetchResult.ok !== true) {
+        throw new Error("fresh fetch fixture must succeed");
+      }
+      assertEquals(
+        observationReader.calls.length,
+        1,
+        "BI observation must be queried exactly once",
+      );
+      assertPersistCalledOnce(persist.calls, {
+        tenant_id: SYNTHETIC_BF_TENANT_ID,
+        snapshot: fetchResult.value,
+        provider_event_created_at: SYNTHETIC_WATERMARK_CREATED_AT,
+        provider_event_id: eventId,
+        operation: {
+          kind: "update",
+          expected_watermark: {
+            kind: "initialized",
+            last_applied_provider_event_created_at:
+              SYNTHETIC_WATERMARK_CREATED_AT,
+            last_applied_provider_event_id: SYNTHETIC_WATERMARK_EVENT_ID,
+          },
+        },
+      });
+      assertEquals(
+        persist.calls[0]?.provider_event_id,
+        eventId,
+        "current event id must be the new event, not BI W_sub",
+      );
+      assertProcessorDoesNotWriteProcessedAt();
+      assertEquals(recorder.calls.length, 0, "recorder must not be called");
+      await assertReceivedOk(response, eventId, eventType);
+    });
+  },
+);
+
+Deno.test(
+  "24. subscription_insert_conflict → generic HTTP 502, reason not leaked",
+  async () => {
+    await withSyntheticStripeEnv(async () => {
+      const subscriptionId = "sub_billing48_insert_conflict";
+      const event = validSubscriptionEvent({
+        eventId: "evt_billing48_insert_conflict",
+        subscriptionId,
+      });
+      const billingEvent = createBillingEvent("be_billing48_insert_conflict");
+      const recorder = createRecorder("recorded");
+      const tenantResolver = createTenantResolverFake(
+        tenantResolverSuccessResult(),
+      );
+      const observationReader = createObservationReaderFake(
+        observationRowAbsentResult(),
+      );
+      const orchestrator = createOrchestratorFake(
+        freshFetchSuccessResult(subscriptionId),
+      );
+      const admissionClassifier = createAdmissionClassifierFake({
+        ok: true,
+        kind: "candidate_row_absent",
+      });
+      const persist = createPersistFake(persistInsertConflictResult());
+
+      const response = await processCustomerSubscriptionEvent(
+        event,
+        billingEvent,
+        recorder.fn,
+        tenantResolver.fn,
+        observationReader.fn,
+        orchestrator.fn,
+        admissionClassifier.fn,
+        persist.fn,
+      );
+
+      assertEquals(persist.calls.length, 1, "persistence called once");
+      assertEquals(
+        observationReader.calls.length,
+        1,
+        "BI must not be queried again after persistence conflict",
+      );
+      assertEquals(
+        persist.calls[0]?.operation,
+        { kind: "insert" },
+        "insert conflict path must not fall back to update",
+      );
+      assertRecorderCall(recorder.calls, {
+        billingEventId: billingEvent.id,
+        reason: "subscription_insert_conflict",
+        tenantId: null,
+      });
+      const bodyForLeakCheck = response.clone();
+      await assertGenericUpstreamFailure(
+        response,
+        "subscription_insert_conflict",
+      );
+      const serialized = JSON.stringify(await bodyForLeakCheck.json());
+      assert(
+        !serialized.includes("23505"),
+        "unique violation code must not leak",
+      );
+      assertEquals(response.status === 409, false, "must not return HTTP 409");
+    });
+  },
+);
+
+Deno.test(
+  "25. subscription_cas_miss → generic HTTP 502, reason not leaked",
+  async () => {
+    await withSyntheticStripeEnv(async () => {
+      const subscriptionId = "sub_billing48_cas_miss";
+      const event = validSubscriptionEvent({
+        eventId: "evt_billing48_cas_miss",
+        subscriptionId,
+      });
+      const billingEvent = createBillingEvent("be_billing48_cas_miss");
+      const recorder = createRecorder("recorded");
+      const tenantResolver = createTenantResolverFake(
+        tenantResolverSuccessResult(),
+      );
+      const observationReader = createObservationReaderFake(
+        observationRowPresentResult(
+          SYNTHETIC_BF_TENANT_ID,
+          SYNTHETIC_WATERMARK_CREATED_AT,
+          SYNTHETIC_WATERMARK_EVENT_ID,
+        ),
+      );
+      const orchestrator = createOrchestratorFake(
+        freshFetchSuccessResult(subscriptionId),
+      );
+      const admissionClassifier = createAdmissionClassifierFake({
+        ok: true,
+        kind: "candidate_newer_event",
+      });
+      const persist = createPersistFake(persistCasMissResult());
+
+      const response = await processCustomerSubscriptionEvent(
+        event,
+        billingEvent,
+        recorder.fn,
+        tenantResolver.fn,
+        observationReader.fn,
+        orchestrator.fn,
+        admissionClassifier.fn,
+        persist.fn,
+      );
+
+      assertEquals(persist.calls.length, 1, "persistence called once");
+      assertEquals(
+        observationReader.calls.length,
+        1,
+        "BI must not be queried again after CAS miss",
+      );
+      assertRecorderCall(recorder.calls, {
+        billingEventId: billingEvent.id,
+        reason: "subscription_cas_miss",
+        tenantId: null,
+      });
+      await assertGenericUpstreamFailure(response, "subscription_cas_miss");
+    });
+  },
+);
+
+Deno.test(
+  "26. subscription_persistence_failed → generic HTTP 502, reason not leaked",
+  async () => {
+    await withSyntheticStripeEnv(async () => {
+      const subscriptionId = "sub_billing48_persist_failed";
+      const event = validSubscriptionEvent({
+        eventId: "evt_billing48_persist_failed",
+        subscriptionId,
+      });
+      const billingEvent = createBillingEvent("be_billing48_persist_failed");
+      const recorder = createRecorder("recorded");
+      const tenantResolver = createTenantResolverFake(
+        tenantResolverSuccessResult(),
+      );
+      const observationReader = createObservationReaderFake(
+        observationRowAbsentResult(),
+      );
+      const orchestrator = createOrchestratorFake(
+        freshFetchSuccessResult(subscriptionId),
+      );
+      const admissionClassifier = createAdmissionClassifierFake({
+        ok: true,
+        kind: "candidate_row_absent",
+      });
+      const persist = createPersistFake(persistFailedResult());
+
+      const response = await processCustomerSubscriptionEvent(
+        event,
+        billingEvent,
+        recorder.fn,
+        tenantResolver.fn,
+        observationReader.fn,
+        orchestrator.fn,
+        admissionClassifier.fn,
+        persist.fn,
+      );
+
+      assertEquals(persist.calls.length, 1, "persistence called once");
+      assertEquals(
+        observationReader.calls.length,
+        1,
+        "BI must not be queried again after persistence failure",
+      );
+      assertRecorderCall(recorder.calls, {
+        billingEventId: billingEvent.id,
+        reason: "subscription_persistence_failed",
+        tenantId: null,
+      });
+      const bodyForLeakCheck = response.clone();
+      await assertGenericUpstreamFailure(
+        response,
+        "subscription_persistence_failed",
+      );
+      const serialized = JSON.stringify(await bodyForLeakCheck.json());
+      assert(
+        !serialized.includes("fully_applied") &&
+          !serialized.includes("processed_at"),
+        "HTTP body must not suggest nodo 9 completion",
       );
     });
   },

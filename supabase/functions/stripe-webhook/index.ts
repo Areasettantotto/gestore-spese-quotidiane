@@ -16,6 +16,15 @@ import {
 } from "../_shared/readTenantSubscriptionObservation.ts";
 import { classifySubscriptionEventAdmission } from "../_shared/classifySubscriptionEventAdmission.ts";
 import {
+  persistTenantSubscriptionCandidate,
+  type PersistTenantSubscriptionCandidateOperation,
+  type PersistTenantSubscriptionCandidateParams,
+  type TenantSubscriptionInsertWriteValues,
+  type TenantSubscriptionPersistenceClient,
+  type TenantSubscriptionPersistenceFilterBuilder,
+  type TenantSubscriptionUpdateWriteValues,
+} from "../_shared/persistTenantSubscriptionCandidate.ts";
+import {
   badRequest,
   methodNotAllowed,
   jsonResponse,
@@ -921,6 +930,74 @@ function createTenantSubscriptionObservationLookupClient(
   };
 }
 
+function createTenantSubscriptionPersistenceClient(
+  supabase: SupabaseClient,
+): TenantSubscriptionPersistenceClient {
+  return {
+    from(_table: string) {
+      return {
+        insert(values: TenantSubscriptionInsertWriteValues) {
+          return {
+            select(columns: string) {
+              return {
+                async maybeSingle() {
+                  const { data, error } = await supabase
+                    .from("tenant_subscriptions")
+                    .insert(values)
+                    .select(columns)
+                    .maybeSingle();
+                  return {
+                    data: (data as { id?: unknown } | null) ?? null,
+                    error: error ?? null,
+                  };
+                },
+              };
+            },
+          };
+        },
+        update(values: TenantSubscriptionUpdateWriteValues) {
+          const filters: Array<
+            | { op: "eq"; column: string; value: string | number }
+            | { op: "is"; column: string; value: null }
+          > = [];
+          const builder: TenantSubscriptionPersistenceFilterBuilder = {
+            eq(column: string, value: string | number) {
+              filters.push({ op: "eq", column, value });
+              return builder;
+            },
+            is(column: string, value: null) {
+              filters.push({ op: "is", column, value });
+              return builder;
+            },
+            select(columns: string) {
+              return {
+                async maybeSingle() {
+                  let query = supabase
+                    .from("tenant_subscriptions")
+                    .update(values);
+                  for (const filter of filters) {
+                    query = filter.op === "eq"
+                      ? query.eq(filter.column, filter.value)
+                      : query.is(filter.column, filter.value);
+                  }
+                  const { data, error } = await query
+                    .select(columns)
+                    .maybeSingle();
+                  return {
+                    data: (data as { id?: unknown } | null) ?? null,
+                    error: error ?? null,
+                  };
+                },
+              };
+            },
+          };
+          return builder;
+        },
+      };
+    },
+  };
+}
+
 type ReadTenantSubscriptionObservationFn = (params: {
   provider: string;
   provider_subscription_id: string;
@@ -928,6 +1005,10 @@ type ReadTenantSubscriptionObservationFn = (params: {
 
 type ClassifySubscriptionEventAdmissionFn =
   typeof classifySubscriptionEventAdmission;
+
+type PersistTenantSubscriptionCandidateFn = (
+  params: Omit<PersistTenantSubscriptionCandidateParams, "client">,
+) => ReturnType<typeof persistTenantSubscriptionCandidate>;
 
 export async function processCustomerSubscriptionEvent(
   event: CustomerSubscriptionProcessorEvent,
@@ -939,6 +1020,7 @@ export async function processCustomerSubscriptionEvent(
     fetchNormalizedStripeSubscriptionFromRuntimeConfig,
   classifySubscriptionEventAdmissionFn: ClassifySubscriptionEventAdmissionFn =
     classifySubscriptionEventAdmission,
+  persistTenantSubscriptionCandidateFn: PersistTenantSubscriptionCandidateFn,
 ): Promise<Response> {
   const respondAfterError = async (reason: string): Promise<Response> => {
     const recorded = await recordProcessingErrorFn(
@@ -1025,6 +1107,69 @@ export async function processCustomerSubscriptionEvent(
 
   if (admissionResult.ok === false) {
     return await respondAfterError(admissionResult.reason);
+  }
+
+  switch (admissionResult.kind) {
+    case "stale_event":
+    case "partial_retry":
+    case "already_applied":
+      return receivedOk(event);
+    case "candidate_row_absent":
+    case "candidate_row_present_uninitialized":
+    case "candidate_newer_event":
+    case "candidate_equal_timestamp_distinct_event":
+      break;
+    default: {
+      const _exhaustive: never = admissionResult.kind;
+      return _exhaustive;
+    }
+  }
+
+  const providerEventCreatedAt = event.created;
+  if (typeof providerEventCreatedAt !== "number") {
+    return await respondAfterError("invalid_provider_event_created_at");
+  }
+
+  let operation: PersistTenantSubscriptionCandidateOperation;
+  if (admissionResult.kind === "candidate_row_absent") {
+    operation = { kind: "insert" };
+  } else if (admissionResult.kind === "candidate_row_present_uninitialized") {
+    if (observation.kind !== "row_present") {
+      return await respondAfterError("invalid_watermark");
+    }
+    operation = {
+      kind: "update",
+      expected_watermark: { kind: "uninitialized" },
+    };
+  } else if (
+    observation.kind !== "row_present" ||
+    observation.last_applied_provider_event_created_at === null ||
+    observation.last_applied_provider_event_id === null
+  ) {
+    return await respondAfterError("invalid_watermark");
+  } else {
+    operation = {
+      kind: "update",
+      expected_watermark: {
+        kind: "initialized",
+        last_applied_provider_event_created_at:
+          observation.last_applied_provider_event_created_at,
+        last_applied_provider_event_id:
+          observation.last_applied_provider_event_id,
+      },
+    };
+  }
+
+  const persistResult = await persistTenantSubscriptionCandidateFn({
+    tenant_id: tenantResolutionResult.tenant_id,
+    snapshot: result.value,
+    provider_event_created_at: providerEventCreatedAt,
+    provider_event_id: event.id,
+    operation,
+  });
+
+  if (persistResult.ok === false) {
+    return await respondAfterError(persistResult.reason);
   }
 
   return receivedOk(event);
@@ -1153,6 +1298,13 @@ async function handler(req: Request): Promise<Response> {
           provider: params.provider,
           provider_subscription_id: params.provider_subscription_id,
           client: createTenantSubscriptionObservationLookupClient(supabase),
+        }),
+      fetchNormalizedStripeSubscriptionFromRuntimeConfig,
+      classifySubscriptionEventAdmission,
+      (params) =>
+        persistTenantSubscriptionCandidate({
+          ...params,
+          client: createTenantSubscriptionPersistenceClient(supabase),
         }),
     );
   }
