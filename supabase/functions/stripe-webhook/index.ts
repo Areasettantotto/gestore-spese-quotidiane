@@ -14,6 +14,7 @@ import {
   readTenantSubscriptionObservation,
   type TenantSubscriptionObservationLookupClient,
 } from "../_shared/readTenantSubscriptionObservation.ts";
+import { classifySubscriptionEventAdmission } from "../_shared/classifySubscriptionEventAdmission.ts";
 import {
   badRequest,
   methodNotAllowed,
@@ -843,6 +844,7 @@ async function processCheckoutSessionCompleted(
 type CustomerSubscriptionProcessorEvent = StripeSubscriptionEventLike & {
   id: string;
   type: string;
+  created: unknown;
 };
 
 type FetchNormalizedFromRuntimeConfigFn = (
@@ -924,6 +926,9 @@ type ReadTenantSubscriptionObservationFn = (params: {
   provider_subscription_id: string;
 }) => ReturnType<typeof readTenantSubscriptionObservation>;
 
+type ClassifySubscriptionEventAdmissionFn =
+  typeof classifySubscriptionEventAdmission;
+
 export async function processCustomerSubscriptionEvent(
   event: CustomerSubscriptionProcessorEvent,
   billingEvent: Pick<BillingEventRow, "id">,
@@ -932,6 +937,8 @@ export async function processCustomerSubscriptionEvent(
   readTenantSubscriptionObservationFn: ReadTenantSubscriptionObservationFn,
   fetchNormalizedFromRuntimeConfig: FetchNormalizedFromRuntimeConfigFn =
     fetchNormalizedStripeSubscriptionFromRuntimeConfig,
+  classifySubscriptionEventAdmissionFn: ClassifySubscriptionEventAdmissionFn =
+    classifySubscriptionEventAdmission,
 ): Promise<Response> {
   const respondAfterError = async (reason: string): Promise<Response> => {
     const recorded = await recordProcessingErrorFn(
@@ -995,6 +1002,29 @@ export async function processCustomerSubscriptionEvent(
       tenantResolutionResult.tenant_id
   ) {
     return await respondAfterError("subscription_ownership_mismatch");
+  }
+
+  const observation = observationResult.observation;
+  const tenantSubscriptionRow = observation.kind === "row_absent"
+    ? { presence: "absent" as const }
+    : {
+      presence: "present" as const,
+      last_applied_provider_event_created_at:
+        observation.last_applied_provider_event_created_at,
+      last_applied_provider_event_id:
+        observation.last_applied_provider_event_id,
+    };
+
+  // Handler already ACKs processed_at !== null before this processor.
+  const admissionResult = classifySubscriptionEventAdmissionFn({
+    provider_event_created_at: event.created,
+    provider_event_id: event.id,
+    billing_event_processed: false,
+    tenant_subscription_row: tenantSubscriptionRow,
+  });
+
+  if (admissionResult.ok === false) {
+    return await respondAfterError(admissionResult.reason);
   }
 
   return receivedOk(event);

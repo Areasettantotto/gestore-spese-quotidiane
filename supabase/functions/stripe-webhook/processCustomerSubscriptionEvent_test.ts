@@ -1,6 +1,6 @@
 /**
  * Component tests for processCustomerSubscriptionEvent
- * (BILLING-19 / BILLING-41 / BILLING-43).
+ * (BILLING-19 / BILLING-41 / BILLING-43 / BILLING-45).
  *
  * Imports the real stripe-webhook module after a test-only Deno.serve
  * replace/restore. Exercises the exported processor with synthetic
@@ -97,10 +97,16 @@ type FetchFn = NonNullable<Parameters<Processor>[5]>;
 type FetchParams = Parameters<FetchFn>[0];
 type FetchResult = Awaited<ReturnType<FetchFn>>;
 type RecorderResult = Awaited<ReturnType<RecorderFn>>;
+type AdmissionClassifierFn = NonNullable<Parameters<Processor>[6]>;
+type AdmissionClassifierParams = Parameters<AdmissionClassifierFn>[0];
+type AdmissionClassifierResult = ReturnType<AdmissionClassifierFn>;
 
 const SYNTHETIC_BF_TENANT_ID = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeee1";
 const SYNTHETIC_OTHER_TENANT_ID = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeee2";
 const STRIPE_PROVIDER = "stripe";
+const SYNTHETIC_EVENT_CREATED = 1700000000;
+const SYNTHETIC_WATERMARK_CREATED_AT = 1699000000;
+const SYNTHETIC_WATERMARK_EVENT_ID = "evt_billing45_watermark";
 
 type RecorderCall = {
   billingEventId: string;
@@ -171,10 +177,12 @@ function validSubscriptionEvent(params: {
   eventId: string;
   eventType?: string;
   subscriptionId: string;
+  created?: number;
 }): ProcessorEvent {
   return {
     id: params.eventId,
     type: params.eventType ?? "customer.subscription.updated",
+    created: params.created ?? SYNTHETIC_EVENT_CREATED,
     data: {
       object: {
         id: params.subscriptionId,
@@ -187,6 +195,7 @@ function invalidSubscriptionObjectEvent(eventId: string): ProcessorEvent {
   return {
     id: eventId,
     type: "customer.subscription.created",
+    created: SYNTHETIC_EVENT_CREATED,
     data: {},
   };
 }
@@ -270,6 +279,32 @@ function unusedObservationReader(): {
   return { fn, calls };
 }
 
+function createAdmissionClassifierFake(result: AdmissionClassifierResult): {
+  fn: AdmissionClassifierFn;
+  calls: AdmissionClassifierParams[];
+} {
+  const calls: AdmissionClassifierParams[] = [];
+  const fn: AdmissionClassifierFn = (params) => {
+    calls.push(params);
+    return result;
+  };
+  return { fn, calls };
+}
+
+function unusedAdmissionClassifier(): {
+  fn: AdmissionClassifierFn;
+  calls: AdmissionClassifierParams[];
+} {
+  const calls: AdmissionClassifierParams[] = [];
+  const fn: AdmissionClassifierFn = (params) => {
+    calls.push(params);
+    throw new Error(
+      `admission classifier must not be called, got ${JSON.stringify(params)}`,
+    );
+  };
+  return { fn, calls };
+}
+
 function observationRowAbsentResult(): ObservationReaderResult {
   const result: ObservationReaderResult = {
     ok: true,
@@ -280,14 +315,16 @@ function observationRowAbsentResult(): ObservationReaderResult {
 
 function observationRowPresentResult(
   tenantId: string,
+  lastAppliedProviderEventCreatedAt: number | null = null,
+  lastAppliedProviderEventId: string | null = null,
 ): ObservationReaderResult {
   const result: ObservationReaderResult = {
     ok: true,
     observation: {
       kind: "row_present",
       tenant_id: tenantId,
-      last_applied_provider_event_created_at: null,
-      last_applied_provider_event_id: null,
+      last_applied_provider_event_created_at: lastAppliedProviderEventCreatedAt,
+      last_applied_provider_event_id: lastAppliedProviderEventId,
     },
   };
   return result;
@@ -502,6 +539,59 @@ function assertObservationForwardedExactly(
   );
 }
 
+function assertAdmissionClassifierInputs(
+  calls: AdmissionClassifierParams[],
+  expected: {
+    provider_event_id: string;
+    provider_event_created_at: unknown;
+    tenant_subscription_row: AdmissionClassifierParams[
+      "tenant_subscription_row"
+    ];
+  },
+): void {
+  assertEquals(calls.length, 1, "admission classifier call count");
+  const params = calls[0];
+  assert(params !== undefined, "admission classifier params");
+  assertEquals(
+    Object.keys(params).sort(),
+    [
+      "billing_event_processed",
+      "provider_event_created_at",
+      "provider_event_id",
+      "tenant_subscription_row",
+    ],
+    "admission classifier param keys",
+  );
+  assertEquals(
+    params.provider_event_id,
+    expected.provider_event_id,
+    "provider_event_id forwarded exactly",
+  );
+  assertEquals(
+    params.provider_event_created_at,
+    expected.provider_event_created_at,
+    "provider_event_created_at forwarded exactly",
+  );
+  assertEquals(
+    params.billing_event_processed,
+    false,
+    "billing_event_processed must be false",
+  );
+  assertEquals(
+    params.tenant_subscription_row,
+    expected.tenant_subscription_row,
+    "tenant_subscription_row mapping",
+  );
+  assert(
+    !("tenant_id" in params),
+    "tenant_id must not be passed as a classifier param",
+  );
+  assert(
+    !("tenant_id" in params.tenant_subscription_row),
+    "tenant_id must not be passed in tenant_subscription_row",
+  );
+}
+
 Deno.test(
   "1. bootstrap failure → recorder once, orchestrator skipped, HTTP 502 generic",
   async () => {
@@ -519,6 +609,7 @@ Deno.test(
       tenantResolver.fn,
       observationReader.fn,
       orchestrator.fn,
+      unusedAdmissionClassifier().fn,
     );
 
     assertEquals(
@@ -570,6 +661,7 @@ Deno.test(
         tenantResolver.fn,
         observationReader.fn,
         orchestrator.fn,
+        unusedAdmissionClassifier().fn,
       );
 
       assertOrchestratorForwardedSyntheticEnv(
@@ -621,6 +713,7 @@ Deno.test(
         tenantResolver.fn,
         observationReader.fn,
         orchestrator.fn,
+        unusedAdmissionClassifier().fn,
       );
 
       assertOrchestratorForwardedSyntheticEnv(
@@ -672,6 +765,7 @@ Deno.test(
         tenantResolver.fn,
         observationReader.fn,
         orchestrator.fn,
+        unusedAdmissionClassifier().fn,
       );
 
       assertEquals(orchestrator.calls.length, 1, "orchestrator called once");
@@ -718,6 +812,10 @@ Deno.test(
       const orchestrator = createOrchestratorFake(
         freshFetchSuccessResult(subscriptionId),
       );
+      const admissionClassifier = createAdmissionClassifierFake({
+        ok: true,
+        kind: "candidate_row_absent",
+      });
 
       const response = await processCustomerSubscriptionEvent(
         event,
@@ -726,6 +824,7 @@ Deno.test(
         tenantResolver.fn,
         observationReader.fn,
         orchestrator.fn,
+        admissionClassifier.fn,
       );
 
       assertOrchestratorForwardedSyntheticEnv(
@@ -746,6 +845,11 @@ Deno.test(
         observationReader.calls,
         subscriptionId,
       );
+      assertAdmissionClassifierInputs(admissionClassifier.calls, {
+        provider_event_id: eventId,
+        provider_event_created_at: event.created,
+        tenant_subscription_row: { presence: "absent" },
+      });
       assertEquals(recorder.calls.length, 0, "recorder must not be called");
       await assertReceivedOk(response, eventId, eventType);
     });
@@ -771,6 +875,7 @@ Deno.test(
       tenantResolver.fn,
       observationReader.fn,
       orchestrator.fn,
+      unusedAdmissionClassifier().fn,
     );
 
     assertEquals(
@@ -822,6 +927,7 @@ Deno.test(
         tenantResolver.fn,
         observationReader.fn,
         orchestrator.fn,
+        unusedAdmissionClassifier().fn,
       );
 
       assertOrchestratorForwardedSyntheticEnv(
@@ -881,6 +987,7 @@ Deno.test(
         tenantResolver.fn,
         observationReader.fn,
         orchestrator.fn,
+        unusedAdmissionClassifier().fn,
       );
 
       assertEquals(orchestrator.calls.length, 1, "orchestrator called once");
@@ -930,6 +1037,7 @@ Deno.test(
         tenantResolver.fn,
         observationReader.fn,
         orchestrator.fn,
+        unusedAdmissionClassifier().fn,
       );
 
       assertEquals(orchestrator.calls.length, 1, "orchestrator called once");
@@ -987,6 +1095,7 @@ Deno.test(
         tenantResolver.fn,
         observationReader.fn,
         orchestrator.fn,
+        unusedAdmissionClassifier().fn,
       );
 
       assertEquals(
@@ -1043,6 +1152,7 @@ Deno.test(
         tenantResolver.fn,
         observationReader.fn,
         orchestrator.fn,
+        unusedAdmissionClassifier().fn,
       );
 
       assertEquals(
@@ -1083,11 +1193,19 @@ Deno.test(
         tenantResolverSuccessResult(),
       );
       const observationReader = createObservationReaderFake(
-        observationRowPresentResult(SYNTHETIC_BF_TENANT_ID),
+        observationRowPresentResult(
+          SYNTHETIC_BF_TENANT_ID,
+          SYNTHETIC_WATERMARK_CREATED_AT,
+          SYNTHETIC_WATERMARK_EVENT_ID,
+        ),
       );
       const orchestrator = createOrchestratorFake(
         freshFetchSuccessResult(subscriptionId),
       );
+      const admissionClassifier = createAdmissionClassifierFake({
+        ok: true,
+        kind: "candidate_row_present_uninitialized",
+      });
 
       const response = await processCustomerSubscriptionEvent(
         event,
@@ -1096,6 +1214,7 @@ Deno.test(
         tenantResolver.fn,
         observationReader.fn,
         orchestrator.fn,
+        admissionClassifier.fn,
       );
 
       assertEquals(
@@ -1107,6 +1226,16 @@ Deno.test(
         observationReader.calls,
         subscriptionId,
       );
+      assertAdmissionClassifierInputs(admissionClassifier.calls, {
+        provider_event_id: eventId,
+        provider_event_created_at: event.created,
+        tenant_subscription_row: {
+          presence: "present",
+          last_applied_provider_event_created_at:
+            SYNTHETIC_WATERMARK_CREATED_AT,
+          last_applied_provider_event_id: SYNTHETIC_WATERMARK_EVENT_ID,
+        },
+      });
       assertEquals(recorder.calls.length, 0, "recorder must not be called");
       await assertReceivedOk(response, eventId, eventType);
     });
@@ -1141,6 +1270,7 @@ Deno.test(
         tenantResolver.fn,
         observationReader.fn,
         orchestrator.fn,
+        unusedAdmissionClassifier().fn,
       );
 
       assertEquals(
@@ -1207,6 +1337,7 @@ Deno.test(
         tenantResolver.fn,
         observationReader.fn,
         orchestrator.fn,
+        unusedAdmissionClassifier().fn,
       );
 
       assertEquals(
@@ -1259,6 +1390,7 @@ Deno.test(
         tenantResolver.fn,
         observationReader.fn,
         orchestrator.fn,
+        unusedAdmissionClassifier().fn,
       );
 
       assertObservationForwardedExactly(
@@ -1306,6 +1438,7 @@ Deno.test(
         tenantResolver.fn,
         observationReader.fn,
         orchestrator.fn,
+        unusedAdmissionClassifier().fn,
       );
 
       assertObservationForwardedExactly(
@@ -1320,6 +1453,312 @@ Deno.test(
       await assertGenericUpstreamFailure(
         response,
         "subscription_observation_invalid",
+      );
+    });
+  },
+);
+
+Deno.test(
+  "17. BH ok:true candidate_newer_event → HTTP 200 receivedOk, recorder not called",
+  async () => {
+    await withSyntheticStripeEnv(async () => {
+      const subscriptionId = "sub_billing45_newer";
+      const eventId = "evt_billing45_newer";
+      const eventType = "customer.subscription.updated";
+      const event = validSubscriptionEvent({
+        eventId,
+        eventType,
+        subscriptionId,
+      });
+      const billingEvent = createBillingEvent("be_billing45_newer");
+      const recorder = createRecorder("recorded");
+      const tenantResolver = createTenantResolverFake(
+        tenantResolverSuccessResult(),
+      );
+      const observationReader = createObservationReaderFake(
+        observationRowAbsentResult(),
+      );
+      const orchestrator = createOrchestratorFake(
+        freshFetchSuccessResult(subscriptionId),
+      );
+      const admissionClassifier = createAdmissionClassifierFake({
+        ok: true,
+        kind: "candidate_newer_event",
+      });
+
+      const response = await processCustomerSubscriptionEvent(
+        event,
+        billingEvent,
+        recorder.fn,
+        tenantResolver.fn,
+        observationReader.fn,
+        orchestrator.fn,
+        admissionClassifier.fn,
+      );
+
+      assertEquals(
+        observationReader.calls.length,
+        1,
+        "observation reader called once",
+      );
+      assertEquals(
+        admissionClassifier.calls.length,
+        1,
+        "admission classifier called once",
+      );
+      assertEquals(recorder.calls.length, 0, "recorder must not be called");
+      await assertReceivedOk(response, eventId, eventType);
+    });
+  },
+);
+
+Deno.test(
+  "18. BH ok:true stale_event → HTTP 200 receivedOk, recorder not called",
+  async () => {
+    await withSyntheticStripeEnv(async () => {
+      const subscriptionId = "sub_billing45_stale";
+      const eventId = "evt_billing45_stale";
+      const eventType = "customer.subscription.updated";
+      const event = validSubscriptionEvent({
+        eventId,
+        eventType,
+        subscriptionId,
+      });
+      const billingEvent = createBillingEvent("be_billing45_stale");
+      const recorder = createRecorder("recorded");
+      const tenantResolver = createTenantResolverFake(
+        tenantResolverSuccessResult(),
+      );
+      const observationReader = createObservationReaderFake(
+        observationRowPresentResult(
+          SYNTHETIC_BF_TENANT_ID,
+          SYNTHETIC_WATERMARK_CREATED_AT,
+          SYNTHETIC_WATERMARK_EVENT_ID,
+        ),
+      );
+      const orchestrator = createOrchestratorFake(
+        freshFetchSuccessResult(subscriptionId),
+      );
+      const admissionClassifier = createAdmissionClassifierFake({
+        ok: true,
+        kind: "stale_event",
+      });
+
+      const response = await processCustomerSubscriptionEvent(
+        event,
+        billingEvent,
+        recorder.fn,
+        tenantResolver.fn,
+        observationReader.fn,
+        orchestrator.fn,
+        admissionClassifier.fn,
+      );
+
+      assertEquals(recorder.calls.length, 0, "recorder must not be called");
+      await assertReceivedOk(response, eventId, eventType);
+    });
+  },
+);
+
+Deno.test(
+  "19. BH ok:true partial_retry → HTTP 200 receivedOk, recorder not called",
+  async () => {
+    await withSyntheticStripeEnv(async () => {
+      const subscriptionId = "sub_billing45_partial_retry";
+      const eventId = "evt_billing45_partial_retry";
+      const eventType = "customer.subscription.updated";
+      const event = validSubscriptionEvent({
+        eventId,
+        eventType,
+        subscriptionId,
+      });
+      const billingEvent = createBillingEvent("be_billing45_partial_retry");
+      const recorder = createRecorder("recorded");
+      const tenantResolver = createTenantResolverFake(
+        tenantResolverSuccessResult(),
+      );
+      const observationReader = createObservationReaderFake(
+        observationRowPresentResult(
+          SYNTHETIC_BF_TENANT_ID,
+          SYNTHETIC_WATERMARK_CREATED_AT,
+          SYNTHETIC_WATERMARK_EVENT_ID,
+        ),
+      );
+      const orchestrator = createOrchestratorFake(
+        freshFetchSuccessResult(subscriptionId),
+      );
+      const admissionClassifier = createAdmissionClassifierFake({
+        ok: true,
+        kind: "partial_retry",
+      });
+
+      const response = await processCustomerSubscriptionEvent(
+        event,
+        billingEvent,
+        recorder.fn,
+        tenantResolver.fn,
+        observationReader.fn,
+        orchestrator.fn,
+        admissionClassifier.fn,
+      );
+
+      assertEquals(recorder.calls.length, 0, "recorder must not be called");
+      await assertReceivedOk(response, eventId, eventType);
+    });
+  },
+);
+
+Deno.test(
+  "20. BH ok:true already_applied → HTTP 200 receivedOk, recorder not called",
+  async () => {
+    await withSyntheticStripeEnv(async () => {
+      const subscriptionId = "sub_billing45_already_applied";
+      const eventId = "evt_billing45_already_applied";
+      const eventType = "customer.subscription.updated";
+      const event = validSubscriptionEvent({
+        eventId,
+        eventType,
+        subscriptionId,
+      });
+      const billingEvent = createBillingEvent("be_billing45_already_applied");
+      const recorder = createRecorder("recorded");
+      const tenantResolver = createTenantResolverFake(
+        tenantResolverSuccessResult(),
+      );
+      const observationReader = createObservationReaderFake(
+        observationRowPresentResult(
+          SYNTHETIC_BF_TENANT_ID,
+          SYNTHETIC_WATERMARK_CREATED_AT,
+          SYNTHETIC_WATERMARK_EVENT_ID,
+        ),
+      );
+      const orchestrator = createOrchestratorFake(
+        freshFetchSuccessResult(subscriptionId),
+      );
+      const admissionClassifier = createAdmissionClassifierFake({
+        ok: true,
+        kind: "already_applied",
+      });
+
+      const response = await processCustomerSubscriptionEvent(
+        event,
+        billingEvent,
+        recorder.fn,
+        tenantResolver.fn,
+        observationReader.fn,
+        orchestrator.fn,
+        admissionClassifier.fn,
+      );
+
+      assertEquals(recorder.calls.length, 0, "recorder must not be called");
+      await assertReceivedOk(response, eventId, eventType);
+    });
+  },
+);
+
+Deno.test(
+  "21. BH ok:false invalid_watermark → recorder once, HTTP 502 generic",
+  async () => {
+    await withSyntheticStripeEnv(async () => {
+      const subscriptionId = "sub_billing45_invalid_watermark";
+      const event = validSubscriptionEvent({
+        eventId: "evt_billing45_invalid_watermark",
+        subscriptionId,
+      });
+      const billingEvent = createBillingEvent(
+        "be_billing45_invalid_watermark",
+      );
+      const recorder = createRecorder("recorded");
+      const tenantResolver = createTenantResolverFake(
+        tenantResolverSuccessResult(),
+      );
+      const observationReader = createObservationReaderFake(
+        observationRowPresentResult(
+          SYNTHETIC_BF_TENANT_ID,
+          SYNTHETIC_WATERMARK_CREATED_AT,
+          SYNTHETIC_WATERMARK_EVENT_ID,
+        ),
+      );
+      const orchestrator = createOrchestratorFake(
+        freshFetchSuccessResult(subscriptionId),
+      );
+      const admissionClassifier = createAdmissionClassifierFake({
+        ok: false,
+        reason: "invalid_watermark",
+      });
+
+      const response = await processCustomerSubscriptionEvent(
+        event,
+        billingEvent,
+        recorder.fn,
+        tenantResolver.fn,
+        observationReader.fn,
+        orchestrator.fn,
+        admissionClassifier.fn,
+      );
+
+      assertEquals(
+        admissionClassifier.calls.length,
+        1,
+        "admission classifier called once",
+      );
+      assertRecorderCall(recorder.calls, {
+        billingEventId: billingEvent.id,
+        reason: "invalid_watermark",
+        tenantId: null,
+      });
+      await assertGenericUpstreamFailure(response, "invalid_watermark");
+    });
+  },
+);
+
+Deno.test(
+  "22. BH ok:false inconsistent_same_event → HTTP 502 generic, reason not leaked",
+  async () => {
+    await withSyntheticStripeEnv(async () => {
+      const subscriptionId = "sub_billing45_inconsistent";
+      const event = validSubscriptionEvent({
+        eventId: "evt_billing45_inconsistent",
+        subscriptionId,
+      });
+      const billingEvent = createBillingEvent("be_billing45_inconsistent");
+      const recorder = createRecorder("recorded");
+      const tenantResolver = createTenantResolverFake(
+        tenantResolverSuccessResult(),
+      );
+      const observationReader = createObservationReaderFake(
+        observationRowPresentResult(
+          SYNTHETIC_BF_TENANT_ID,
+          SYNTHETIC_WATERMARK_CREATED_AT,
+          SYNTHETIC_WATERMARK_EVENT_ID,
+        ),
+      );
+      const orchestrator = createOrchestratorFake(
+        freshFetchSuccessResult(subscriptionId),
+      );
+      const admissionClassifier = createAdmissionClassifierFake({
+        ok: false,
+        reason: "inconsistent_same_event",
+      });
+
+      const response = await processCustomerSubscriptionEvent(
+        event,
+        billingEvent,
+        recorder.fn,
+        tenantResolver.fn,
+        observationReader.fn,
+        orchestrator.fn,
+        admissionClassifier.fn,
+      );
+
+      assertRecorderCall(recorder.calls, {
+        billingEventId: billingEvent.id,
+        reason: "inconsistent_same_event",
+        tenantId: null,
+      });
+      await assertGenericUpstreamFailure(
+        response,
+        "inconsistent_same_event",
       );
     });
   },
