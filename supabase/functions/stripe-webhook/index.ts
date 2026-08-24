@@ -1023,6 +1023,19 @@ type EnsureBillingEventTenantFn = (
   params: EnsureBillingEventTenantParams,
 ) => Promise<EnsureBillingEventTenantResult>;
 
+type MarkBillingEventProcessedParams = {
+  billingEventId: string;
+  tenantId: string;
+};
+
+type MarkBillingEventProcessedResult =
+  | { ok: true }
+  | { ok: false };
+
+type MarkBillingEventProcessedFn = (
+  params: MarkBillingEventProcessedParams,
+) => Promise<MarkBillingEventProcessedResult>;
+
 async function ensureBillingEventTenant(
   supabase: SupabaseClient,
   params: EnsureBillingEventTenantParams,
@@ -1055,6 +1068,7 @@ export async function processCustomerSubscriptionEvent(
     classifySubscriptionEventAdmission,
   persistTenantSubscriptionCandidateFn: PersistTenantSubscriptionCandidateFn,
   ensureBillingEventTenantFn: EnsureBillingEventTenantFn,
+  markBillingEventProcessedFn: MarkBillingEventProcessedFn,
 ): Promise<Response> {
   const respondAfterError = async (reason: string): Promise<Response> => {
     const recorded = await recordProcessingErrorFn(
@@ -1143,6 +1157,19 @@ export async function processCustomerSubscriptionEvent(
     return await respondAfterError(admissionResult.reason);
   }
 
+  const markProcessedThenAck = async (): Promise<Response> => {
+    const marked = await markBillingEventProcessedFn({
+      billingEventId: billingEvent.id,
+      tenantId: tenantResolutionResult.tenant_id,
+    });
+    if (marked.ok === false) {
+      return await respondAfterError(
+        "Failed to mark billing event as processed.",
+      );
+    }
+    return receivedOk(event);
+  };
+
   switch (admissionResult.kind) {
     case "already_applied":
       return receivedOk(event);
@@ -1155,7 +1182,7 @@ export async function processCustomerSubscriptionEvent(
       if (tenantStampResult.ok === false) {
         return await respondAfterError(tenantStampResult.reason);
       }
-      return receivedOk(event);
+      return await markProcessedThenAck();
     }
     case "candidate_row_absent":
     case "candidate_row_present_uninitialized":
@@ -1223,7 +1250,7 @@ export async function processCustomerSubscriptionEvent(
     return await respondAfterError(tenantStampResult.reason);
   }
 
-  return receivedOk(event);
+  return await markProcessedThenAck();
 }
 
 function getStripeWebhookSecret(): string | Response {
@@ -1358,6 +1385,12 @@ async function handler(req: Request): Promise<Response> {
           client: createTenantSubscriptionPersistenceClient(supabase),
         }),
       (params) => ensureBillingEventTenant(supabase, params),
+      (params) =>
+        markBillingEventProcessed(
+          supabase,
+          params.billingEventId,
+          params.tenantId,
+        ),
     );
   }
 

@@ -1,13 +1,14 @@
 /**
  * Component tests for processCustomerSubscriptionEvent
  * (BILLING-19 / BILLING-41 / BILLING-43 / BILLING-45 / BILLING-48 /
- * BILLING-50 / BILLING-51).
+ * BILLING-50 / BILLING-51 / BILLING-52).
  *
  * Imports the real stripe-webhook module after a test-only Deno.serve
  * replace/restore. Exercises the exported processor with synthetic
  * events, an in-memory recorder, a tenant-resolver fake, a
  * subscription-observation fake, a persistence fake, a billing-event
- * tenant-stamp fake, and a one-argument orchestrator fake.
+ * tenant-stamp fake, a mark-processed fake, and a one-argument
+ * orchestrator fake.
  *
  * Run:
  *   deno test --no-lock --cached-only --no-prompt \
@@ -112,6 +113,13 @@ type EnsureBillingEventTenantParams = Parameters<
 >[0];
 type EnsureBillingEventTenantResult = Awaited<
   ReturnType<EnsureBillingEventTenantFn>
+>;
+type MarkBillingEventProcessedFn = NonNullable<Parameters<Processor>[9]>;
+type MarkBillingEventProcessedParams = Parameters<
+  MarkBillingEventProcessedFn
+>[0];
+type MarkBillingEventProcessedResult = Awaited<
+  ReturnType<MarkBillingEventProcessedFn>
 >;
 
 const SYNTHETIC_BF_TENANT_ID = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeee1";
@@ -318,12 +326,16 @@ function unusedAdmissionClassifier(): {
   return { fn, calls };
 }
 
-function createPersistFake(result: PersistResult): {
+function createPersistFake(
+  result: PersistResult,
+  callOrder?: string[],
+): {
   fn: PersistFn;
   calls: PersistParams[];
 } {
   const calls: PersistParams[] = [];
   const fn: PersistFn = (params) => {
+    callOrder?.push("persist");
     calls.push(params);
     return Promise.resolve(result);
   };
@@ -346,12 +358,14 @@ function unusedPersist(): {
 
 function createEnsureBillingEventTenantFake(
   result: EnsureBillingEventTenantResult,
+  callOrder?: string[],
 ): {
   fn: EnsureBillingEventTenantFn;
   calls: EnsureBillingEventTenantParams[];
 } {
   const calls: EnsureBillingEventTenantParams[] = [];
   const fn: EnsureBillingEventTenantFn = (params) => {
+    callOrder?.push("stamp");
     calls.push(params);
     return Promise.resolve(result);
   };
@@ -370,6 +384,46 @@ function unusedEnsureBillingEventTenant(): {
     );
   };
   return { fn, calls };
+}
+
+function createMarkBillingEventProcessedFake(
+  result: MarkBillingEventProcessedResult,
+  callOrder?: string[],
+): {
+  fn: MarkBillingEventProcessedFn;
+  calls: MarkBillingEventProcessedParams[];
+} {
+  const calls: MarkBillingEventProcessedParams[] = [];
+  const fn: MarkBillingEventProcessedFn = (params) => {
+    callOrder?.push("mark");
+    calls.push(params);
+    return Promise.resolve(result);
+  };
+  return { fn, calls };
+}
+
+function unusedMarkBillingEventProcessed(): {
+  fn: MarkBillingEventProcessedFn;
+  calls: MarkBillingEventProcessedParams[];
+} {
+  const calls: MarkBillingEventProcessedParams[] = [];
+  const fn: MarkBillingEventProcessedFn = (params) => {
+    calls.push(params);
+    throw new Error(
+      `mark helper must not be called, got ${JSON.stringify(params)}`,
+    );
+  };
+  return { fn, calls };
+}
+
+function markSuccessResult(): MarkBillingEventProcessedResult {
+  const result: MarkBillingEventProcessedResult = { ok: true };
+  return result;
+}
+
+function markFailureResult(): MarkBillingEventProcessedResult {
+  const result: MarkBillingEventProcessedResult = { ok: false };
+  return result;
 }
 
 function tenantStampSuccessResult(): EnsureBillingEventTenantResult {
@@ -812,11 +866,59 @@ function assertTenantStampCalledOnce(
   );
 }
 
-function assertProcessorDoesNotWriteProcessedAt(): void {
+function assertMarkCalledOnce(
+  calls: MarkBillingEventProcessedParams[],
+  expected: {
+    billingEventId: string;
+    tenantId: string;
+  },
+): void {
+  assertEquals(calls.length, 1, "mark helper call count");
+  const params = calls[0];
+  assert(params !== undefined, "mark helper params");
+  assertEquals(
+    Object.keys(params).sort(),
+    ["billingEventId", "tenantId"],
+    "mark helper param keys",
+  );
+  assertEquals(
+    params.billingEventId,
+    expected.billingEventId,
+    "billingEventId forwarded exactly",
+  );
+  assertEquals(
+    params.tenantId,
+    expected.tenantId,
+    "tenantId must be BF authority",
+  );
+  assert(
+    !("client" in params),
+    "processor-facing mark params must not include client",
+  );
+  assert(
+    !("processed_at" in params),
+    "processed_at must not be passed to the mark seam",
+  );
+}
+
+function assertProcessorWiresMarkThroughSeam(): void {
   const source = processCustomerSubscriptionEvent.toString();
   assert(
-    !source.includes("markBillingEventProcessed"),
-    "nodo 9 processed_at writer must remain unwired in the subscription processor",
+    source.includes("markBillingEventProcessedFn"),
+    "nodo 9 must be wired via the processor-facing mark dependency",
+  );
+  assert(
+    !source.includes("markBillingEventProcessed("),
+    "processor must not call markBillingEventProcessed helper directly",
+  );
+  assert(
+    !source.includes('.from("billing_events")') &&
+      !source.includes(".from('billing_events')"),
+    "processor must not access billing_events directly",
+  );
+  assert(
+    !/\.update\s*\(\s*\{[\s\S]*processed_at/.test(source),
+    "processor must not update processed_at directly",
   );
   assert(
     !source.includes("ensureTenantIdOnBillingEvent"),
@@ -844,6 +946,7 @@ Deno.test(
       unusedAdmissionClassifier().fn,
       unusedPersist().fn,
       unusedEnsureBillingEventTenant().fn,
+      unusedMarkBillingEventProcessed().fn,
     );
 
     assertEquals(
@@ -898,6 +1001,7 @@ Deno.test(
         unusedAdmissionClassifier().fn,
         unusedPersist().fn,
         unusedEnsureBillingEventTenant().fn,
+        unusedMarkBillingEventProcessed().fn,
       );
 
       assertOrchestratorForwardedSyntheticEnv(
@@ -952,6 +1056,7 @@ Deno.test(
         unusedAdmissionClassifier().fn,
         unusedPersist().fn,
         unusedEnsureBillingEventTenant().fn,
+        unusedMarkBillingEventProcessed().fn,
       );
 
       assertOrchestratorForwardedSyntheticEnv(
@@ -1006,6 +1111,7 @@ Deno.test(
         unusedAdmissionClassifier().fn,
         unusedPersist().fn,
         unusedEnsureBillingEventTenant().fn,
+        unusedMarkBillingEventProcessed().fn,
       );
 
       assertEquals(orchestrator.calls.length, 1, "orchestrator called once");
@@ -1059,6 +1165,7 @@ Deno.test(
       const stamp = createEnsureBillingEventTenantFake(
         tenantStampSuccessResult(),
       );
+      const mark = createMarkBillingEventProcessedFake(markSuccessResult());
 
       const response = await processCustomerSubscriptionEvent(
         event,
@@ -1070,6 +1177,7 @@ Deno.test(
         admissionClassifier.fn,
         persist.fn,
         stamp.fn,
+        mark.fn,
       );
 
       if (fetchResult.ok !== true) {
@@ -1131,7 +1239,11 @@ Deno.test(
         SYNTHETIC_BF_TENANT_ID,
         "tenant-stamp tenantId must be tenantResolutionResult.tenant_id",
       );
-      assertProcessorDoesNotWriteProcessedAt();
+      assertMarkCalledOnce(mark.calls, {
+        billingEventId: billingEvent.id,
+        tenantId: SYNTHETIC_BF_TENANT_ID,
+      });
+      assertProcessorWiresMarkThroughSeam();
       assertEquals(recorder.calls.length, 0, "recorder must not be called");
       await assertReceivedOk(response, eventId, eventType);
     });
@@ -1160,6 +1272,7 @@ Deno.test(
       unusedAdmissionClassifier().fn,
       unusedPersist().fn,
       unusedEnsureBillingEventTenant().fn,
+      unusedMarkBillingEventProcessed().fn,
     );
 
     assertEquals(
@@ -1214,6 +1327,7 @@ Deno.test(
         unusedAdmissionClassifier().fn,
         unusedPersist().fn,
         unusedEnsureBillingEventTenant().fn,
+        unusedMarkBillingEventProcessed().fn,
       );
 
       assertOrchestratorForwardedSyntheticEnv(
@@ -1276,6 +1390,7 @@ Deno.test(
         unusedAdmissionClassifier().fn,
         unusedPersist().fn,
         unusedEnsureBillingEventTenant().fn,
+        unusedMarkBillingEventProcessed().fn,
       );
 
       assertEquals(orchestrator.calls.length, 1, "orchestrator called once");
@@ -1328,6 +1443,7 @@ Deno.test(
         unusedAdmissionClassifier().fn,
         unusedPersist().fn,
         unusedEnsureBillingEventTenant().fn,
+        unusedMarkBillingEventProcessed().fn,
       );
 
       assertEquals(orchestrator.calls.length, 1, "orchestrator called once");
@@ -1388,6 +1504,7 @@ Deno.test(
         unusedAdmissionClassifier().fn,
         unusedPersist().fn,
         unusedEnsureBillingEventTenant().fn,
+        unusedMarkBillingEventProcessed().fn,
       );
 
       assertEquals(
@@ -1447,6 +1564,7 @@ Deno.test(
         unusedAdmissionClassifier().fn,
         unusedPersist().fn,
         unusedEnsureBillingEventTenant().fn,
+        unusedMarkBillingEventProcessed().fn,
       );
 
       assertEquals(
@@ -1499,6 +1617,7 @@ Deno.test(
       const stamp = createEnsureBillingEventTenantFake(
         tenantStampSuccessResult(),
       );
+      const mark = createMarkBillingEventProcessedFake(markSuccessResult());
 
       const response = await processCustomerSubscriptionEvent(
         event,
@@ -1510,6 +1629,7 @@ Deno.test(
         admissionClassifier.fn,
         persist.fn,
         stamp.fn,
+        mark.fn,
       );
 
       if (fetchResult.ok !== true) {
@@ -1552,7 +1672,11 @@ Deno.test(
         billingEventId: billingEvent.id,
         tenantId: SYNTHETIC_BF_TENANT_ID,
       });
-      assertProcessorDoesNotWriteProcessedAt();
+      assertMarkCalledOnce(mark.calls, {
+        billingEventId: billingEvent.id,
+        tenantId: SYNTHETIC_BF_TENANT_ID,
+      });
+      assertProcessorWiresMarkThroughSeam();
       assertEquals(recorder.calls.length, 0, "recorder must not be called");
       await assertReceivedOk(response, eventId, eventType);
     });
@@ -1590,6 +1714,7 @@ Deno.test(
         unusedAdmissionClassifier().fn,
         unusedPersist().fn,
         unusedEnsureBillingEventTenant().fn,
+        unusedMarkBillingEventProcessed().fn,
       );
 
       assertEquals(
@@ -1659,6 +1784,7 @@ Deno.test(
         unusedAdmissionClassifier().fn,
         unusedPersist().fn,
         unusedEnsureBillingEventTenant().fn,
+        unusedMarkBillingEventProcessed().fn,
       );
 
       assertEquals(
@@ -1714,6 +1840,7 @@ Deno.test(
         unusedAdmissionClassifier().fn,
         unusedPersist().fn,
         unusedEnsureBillingEventTenant().fn,
+        unusedMarkBillingEventProcessed().fn,
       );
 
       assertObservationForwardedExactly(
@@ -1764,6 +1891,7 @@ Deno.test(
         unusedAdmissionClassifier().fn,
         unusedPersist().fn,
         unusedEnsureBillingEventTenant().fn,
+        unusedMarkBillingEventProcessed().fn,
       );
 
       assertObservationForwardedExactly(
@@ -1817,6 +1945,7 @@ Deno.test(
       const stamp = createEnsureBillingEventTenantFake(
         tenantStampSuccessResult(),
       );
+      const mark = createMarkBillingEventProcessedFake(markSuccessResult());
 
       const response = await processCustomerSubscriptionEvent(
         event,
@@ -1828,6 +1957,7 @@ Deno.test(
         admissionClassifier.fn,
         persist.fn,
         stamp.fn,
+        mark.fn,
       );
 
       if (fetchResult.ok !== true) {
@@ -1873,7 +2003,11 @@ Deno.test(
         billingEventId: billingEvent.id,
         tenantId: SYNTHETIC_BF_TENANT_ID,
       });
-      assertProcessorDoesNotWriteProcessedAt();
+      assertMarkCalledOnce(mark.calls, {
+        billingEventId: billingEvent.id,
+        tenantId: SYNTHETIC_BF_TENANT_ID,
+      });
+      assertProcessorWiresMarkThroughSeam();
       assertEquals(recorder.calls.length, 0, "recorder must not be called");
       await assertReceivedOk(response, eventId, eventType);
     });
@@ -1916,6 +2050,7 @@ Deno.test(
       const stamp = createEnsureBillingEventTenantFake(
         tenantStampSuccessResult(),
       );
+      const mark = createMarkBillingEventProcessedFake(markSuccessResult());
 
       const response = await processCustomerSubscriptionEvent(
         event,
@@ -1927,6 +2062,7 @@ Deno.test(
         admissionClassifier.fn,
         persist.fn,
         stamp.fn,
+        mark.fn,
       );
 
       assertEquals(
@@ -1962,7 +2098,11 @@ Deno.test(
         SYNTHETIC_BF_TENANT_ID,
         "stale_event tenant-stamp tenantId must be tenantResolutionResult.tenant_id",
       );
-      assertProcessorDoesNotWriteProcessedAt();
+      assertMarkCalledOnce(mark.calls, {
+        billingEventId: billingEvent.id,
+        tenantId: SYNTHETIC_BF_TENANT_ID,
+      });
+      assertProcessorWiresMarkThroughSeam();
       assertEquals(recorder.calls.length, 0, "recorder must not be called");
       await assertReceivedOk(response, eventId, eventType);
     });
@@ -2005,6 +2145,7 @@ Deno.test(
       const stamp = createEnsureBillingEventTenantFake(
         tenantStampSuccessResult(),
       );
+      const mark = createMarkBillingEventProcessedFake(markSuccessResult());
 
       const response = await processCustomerSubscriptionEvent(
         event,
@@ -2016,6 +2157,7 @@ Deno.test(
         admissionClassifier.fn,
         persist.fn,
         stamp.fn,
+        mark.fn,
       );
 
       assertEquals(
@@ -2024,6 +2166,10 @@ Deno.test(
         "partial_retry must not rewrite tenant_subscriptions",
       );
       assertTenantStampCalledOnce(stamp.calls, {
+        billingEventId: billingEvent.id,
+        tenantId: SYNTHETIC_BF_TENANT_ID,
+      });
+      assertMarkCalledOnce(mark.calls, {
         billingEventId: billingEvent.id,
         tenantId: SYNTHETIC_BF_TENANT_ID,
       });
@@ -2067,6 +2213,7 @@ Deno.test(
 
       const persist = unusedPersist();
       const stamp = unusedEnsureBillingEventTenant();
+      const mark = unusedMarkBillingEventProcessed();
 
       const response = await processCustomerSubscriptionEvent(
         event,
@@ -2078,10 +2225,12 @@ Deno.test(
         admissionClassifier.fn,
         persist.fn,
         stamp.fn,
+        mark.fn,
       );
 
       assertEquals(persist.calls.length, 0, "persistence must not be called");
       assertEquals(stamp.calls.length, 0, "tenant-stamp must not be called");
+      assertEquals(mark.calls.length, 0, "mark must not be called");
       assertEquals(recorder.calls.length, 0, "recorder must not be called");
       await assertReceivedOk(response, eventId, eventType);
     });
@@ -2120,6 +2269,7 @@ Deno.test(
       });
       const persist = unusedPersist();
       const stamp = unusedEnsureBillingEventTenant();
+      const mark = unusedMarkBillingEventProcessed();
 
       const response = await processCustomerSubscriptionEvent(
         event,
@@ -2131,6 +2281,7 @@ Deno.test(
         admissionClassifier.fn,
         persist.fn,
         stamp.fn,
+        mark.fn,
       );
 
       assertEquals(
@@ -2178,6 +2329,7 @@ Deno.test(
       });
       const persist = unusedPersist();
       const stamp = unusedEnsureBillingEventTenant();
+      const mark = unusedMarkBillingEventProcessed();
 
       const response = await processCustomerSubscriptionEvent(
         event,
@@ -2189,6 +2341,7 @@ Deno.test(
         admissionClassifier.fn,
         persist.fn,
         stamp.fn,
+        mark.fn,
       );
 
       assertEquals(
@@ -2244,6 +2397,7 @@ Deno.test(
       const stamp = createEnsureBillingEventTenantFake(
         tenantStampSuccessResult(),
       );
+      const mark = createMarkBillingEventProcessedFake(markSuccessResult());
 
       const response = await processCustomerSubscriptionEvent(
         event,
@@ -2255,6 +2409,7 @@ Deno.test(
         admissionClassifier.fn,
         persist.fn,
         stamp.fn,
+        mark.fn,
       );
 
       if (fetchResult.ok !== true) {
@@ -2289,7 +2444,11 @@ Deno.test(
         billingEventId: billingEvent.id,
         tenantId: SYNTHETIC_BF_TENANT_ID,
       });
-      assertProcessorDoesNotWriteProcessedAt();
+      assertMarkCalledOnce(mark.calls, {
+        billingEventId: billingEvent.id,
+        tenantId: SYNTHETIC_BF_TENANT_ID,
+      });
+      assertProcessorWiresMarkThroughSeam();
       assertEquals(recorder.calls.length, 0, "recorder must not be called");
       await assertReceivedOk(response, eventId, eventType);
     });
@@ -2322,6 +2481,7 @@ Deno.test(
       });
       const persist = createPersistFake(persistInsertConflictResult());
       const stamp = unusedEnsureBillingEventTenant();
+      const mark = unusedMarkBillingEventProcessed();
 
       const response = await processCustomerSubscriptionEvent(
         event,
@@ -2333,6 +2493,7 @@ Deno.test(
         admissionClassifier.fn,
         persist.fn,
         stamp.fn,
+        mark.fn,
       );
 
       assertEquals(persist.calls.length, 1, "persistence called once");
@@ -2340,6 +2501,11 @@ Deno.test(
         stamp.calls.length,
         0,
         "tenant-stamp must not be called after persistence failure",
+      );
+      assertEquals(
+        mark.calls.length,
+        0,
+        "mark must not be called after persistence failure",
       );
       assertEquals(
         observationReader.calls.length,
@@ -2401,6 +2567,7 @@ Deno.test(
       });
       const persist = createPersistFake(persistCasMissResult());
       const stamp = unusedEnsureBillingEventTenant();
+      const mark = unusedMarkBillingEventProcessed();
 
       const response = await processCustomerSubscriptionEvent(
         event,
@@ -2412,6 +2579,7 @@ Deno.test(
         admissionClassifier.fn,
         persist.fn,
         stamp.fn,
+        mark.fn,
       );
 
       assertEquals(persist.calls.length, 1, "persistence called once");
@@ -2419,6 +2587,11 @@ Deno.test(
         stamp.calls.length,
         0,
         "tenant-stamp must not be called after persistence failure",
+      );
+      assertEquals(
+        mark.calls.length,
+        0,
+        "mark must not be called after persistence failure",
       );
       assertEquals(
         observationReader.calls.length,
@@ -2461,6 +2634,7 @@ Deno.test(
       });
       const persist = createPersistFake(persistFailedResult());
       const stamp = unusedEnsureBillingEventTenant();
+      const mark = unusedMarkBillingEventProcessed();
 
       const response = await processCustomerSubscriptionEvent(
         event,
@@ -2472,6 +2646,7 @@ Deno.test(
         admissionClassifier.fn,
         persist.fn,
         stamp.fn,
+        mark.fn,
       );
 
       assertEquals(persist.calls.length, 1, "persistence called once");
@@ -2479,6 +2654,11 @@ Deno.test(
         stamp.calls.length,
         0,
         "tenant-stamp must not be called after persistence failure",
+      );
+      assertEquals(
+        mark.calls.length,
+        0,
+        "mark must not be called after persistence failure",
       );
       assertEquals(
         observationReader.calls.length,
@@ -2539,6 +2719,7 @@ Deno.test(
       const stamp = createEnsureBillingEventTenantFake(
         tenantStampFailureResult(),
       );
+      const mark = unusedMarkBillingEventProcessed();
 
       const response = await processCustomerSubscriptionEvent(
         event,
@@ -2550,6 +2731,7 @@ Deno.test(
         admissionClassifier.fn,
         persist.fn,
         stamp.fn,
+        mark.fn,
       );
 
       assertEquals(
@@ -2566,7 +2748,12 @@ Deno.test(
         reason: "billing_event_tenant_stamp_failed",
         tenantId: null,
       });
-      assertProcessorDoesNotWriteProcessedAt();
+      assertEquals(
+        mark.calls.length,
+        0,
+        "mark must not be called after tenant-stamp failure",
+      );
+      assertProcessorWiresMarkThroughSeam();
       await assertGenericUpstreamFailure(
         response,
         "billing_event_tenant_stamp_failed",
@@ -2604,6 +2791,7 @@ Deno.test(
       const stamp = createEnsureBillingEventTenantFake(
         tenantStampFailureResult(),
       );
+      const mark = unusedMarkBillingEventProcessed();
 
       const response = await processCustomerSubscriptionEvent(
         event,
@@ -2615,6 +2803,7 @@ Deno.test(
         admissionClassifier.fn,
         persist.fn,
         stamp.fn,
+        mark.fn,
       );
 
       if (fetchResult.ok !== true) {
@@ -2641,7 +2830,12 @@ Deno.test(
         reason: "billing_event_tenant_stamp_failed",
         tenantId: null,
       });
-      assertProcessorDoesNotWriteProcessedAt();
+      assertEquals(
+        mark.calls.length,
+        0,
+        "mark must not be called after tenant-stamp failure",
+      );
+      assertProcessorWiresMarkThroughSeam();
       const bodyForLeakCheck = response.clone();
       await assertGenericUpstreamFailure(
         response,
@@ -2691,6 +2885,7 @@ Deno.test(
       const stamp = createEnsureBillingEventTenantFake(
         tenantStampSuccessResult(),
       );
+      const mark = createMarkBillingEventProcessedFake(markSuccessResult());
 
       const response = await processCustomerSubscriptionEvent(
         event,
@@ -2702,6 +2897,7 @@ Deno.test(
         admissionClassifier.fn,
         persist.fn,
         stamp.fn,
+        mark.fn,
       );
 
       if (fetchResult.ok !== true) {
@@ -2716,6 +2912,10 @@ Deno.test(
         billingEventId: billingEvent.id,
         tenantId: uniqueTenantId,
       });
+      assertMarkCalledOnce(mark.calls, {
+        billingEventId: billingEvent.id,
+        tenantId: uniqueTenantId,
+      });
       assertEquals(
         stamp.calls[0]?.tenantId === SYNTHETIC_BF_TENANT_ID,
         false,
@@ -2726,16 +2926,26 @@ Deno.test(
         false,
         "tenant-stamp must not use Stripe metadata tenant_id",
       );
-      assertProcessorDoesNotWriteProcessedAt();
+      assertEquals(
+        mark.calls[0]?.tenantId === SYNTHETIC_BF_TENANT_ID,
+        false,
+        "mark must not use a hardcoded tenant other than BF result",
+      );
+      assertEquals(
+        mark.calls[0]?.tenantId === SYNTHETIC_OTHER_TENANT_ID,
+        false,
+        "mark must not use Stripe metadata tenant_id",
+      );
+      assertProcessorWiresMarkThroughSeam();
       await assertReceivedOk(response, eventId, eventType);
     });
   },
 );
 
 Deno.test(
-  "30. source guard: processor does not wire markBillingEventProcessed",
+  "30. source guard: processor wires mark through seam, no direct processed_at write",
   () => {
-    assertProcessorDoesNotWriteProcessedAt();
+    assertProcessorWiresMarkThroughSeam();
   },
 );
 
@@ -2773,6 +2983,7 @@ Deno.test(
       const stamp = createEnsureBillingEventTenantFake(
         tenantStampFailureResult(),
       );
+      const mark = unusedMarkBillingEventProcessed();
 
       const response = await processCustomerSubscriptionEvent(
         event,
@@ -2784,6 +2995,7 @@ Deno.test(
         admissionClassifier.fn,
         persist.fn,
         stamp.fn,
+        mark.fn,
       );
 
       assertEquals(
@@ -2800,11 +3012,392 @@ Deno.test(
         reason: "billing_event_tenant_stamp_failed",
         tenantId: null,
       });
-      assertProcessorDoesNotWriteProcessedAt();
+      assertEquals(
+        mark.calls.length,
+        0,
+        "mark must not be called after tenant-stamp failure",
+      );
+      assertProcessorWiresMarkThroughSeam();
       await assertGenericUpstreamFailure(
         response,
         "billing_event_tenant_stamp_failed",
       );
+    });
+  },
+);
+
+Deno.test(
+  "32. candidate persist+stamp success + mark failure → persist once, stamp once, mark once, HTTP 502",
+  async () => {
+    await withSyntheticStripeEnv(async () => {
+      const subscriptionId = "sub_billing52_mark_fail_candidate";
+      const event = validSubscriptionEvent({
+        eventId: "evt_billing52_mark_fail_candidate",
+        subscriptionId,
+      });
+      const billingEvent = createBillingEvent(
+        "be_billing52_mark_fail_candidate",
+      );
+      const recorder = createRecorder("recorded");
+      const tenantResolver = createTenantResolverFake(
+        tenantResolverSuccessResult(),
+      );
+      const observationReader = createObservationReaderFake(
+        observationRowAbsentResult(),
+      );
+      const fetchResult = freshFetchSuccessResult(subscriptionId);
+      const orchestrator = createOrchestratorFake(fetchResult);
+      const admissionClassifier = createAdmissionClassifierFake({
+        ok: true,
+        kind: "candidate_row_absent",
+      });
+      const persist = createPersistFake(persistInsertedResult());
+      const stamp = createEnsureBillingEventTenantFake(
+        tenantStampSuccessResult(),
+      );
+      const mark = createMarkBillingEventProcessedFake(markFailureResult());
+
+      const response = await processCustomerSubscriptionEvent(
+        event,
+        billingEvent,
+        recorder.fn,
+        tenantResolver.fn,
+        observationReader.fn,
+        orchestrator.fn,
+        admissionClassifier.fn,
+        persist.fn,
+        stamp.fn,
+        mark.fn,
+      );
+
+      if (fetchResult.ok !== true) {
+        throw new Error("fresh fetch fixture must succeed");
+      }
+      assertPersistCalledOnce(persist.calls, {
+        tenant_id: SYNTHETIC_BF_TENANT_ID,
+        snapshot: fetchResult.value,
+        provider_event_created_at: SYNTHETIC_EVENT_CREATED,
+        provider_event_id: event.id,
+        operation: { kind: "insert" },
+      });
+      assertEquals(
+        persist.calls.length,
+        1,
+        "persistence must not be retried in-request after mark failure",
+      );
+      assertTenantStampCalledOnce(stamp.calls, {
+        billingEventId: billingEvent.id,
+        tenantId: SYNTHETIC_BF_TENANT_ID,
+      });
+      assertMarkCalledOnce(mark.calls, {
+        billingEventId: billingEvent.id,
+        tenantId: SYNTHETIC_BF_TENANT_ID,
+      });
+      assertRecorderCall(recorder.calls, {
+        billingEventId: billingEvent.id,
+        reason: "Failed to mark billing event as processed.",
+        tenantId: null,
+      });
+      const bodyForLeakCheck = response.clone();
+      await assertGenericUpstreamFailure(
+        response,
+        "Failed to mark billing event as processed.",
+      );
+      const serialized = JSON.stringify(await bodyForLeakCheck.json());
+      assert(
+        !serialized.includes("processed_at") &&
+          !serialized.includes("fully_applied") &&
+          !serialized.includes("supabase") &&
+          !serialized.includes("PGRST"),
+        "HTTP body must not leak DB/client mark failure details",
+      );
+    });
+  },
+);
+
+Deno.test(
+  "33. partial_retry + mark failure → persistence 0, stamp once, mark once, HTTP 502",
+  async () => {
+    await withSyntheticStripeEnv(async () => {
+      const subscriptionId = "sub_billing52_mark_fail_partial_retry";
+      const event = validSubscriptionEvent({
+        eventId: "evt_billing52_mark_fail_partial_retry",
+        subscriptionId,
+      });
+      const billingEvent = createBillingEvent(
+        "be_billing52_mark_fail_partial_retry",
+      );
+      const recorder = createRecorder("recorded");
+      const tenantResolver = createTenantResolverFake(
+        tenantResolverSuccessResult(),
+      );
+      const observationReader = createObservationReaderFake(
+        observationRowPresentResult(
+          SYNTHETIC_BF_TENANT_ID,
+          SYNTHETIC_WATERMARK_CREATED_AT,
+          SYNTHETIC_WATERMARK_EVENT_ID,
+        ),
+      );
+      const orchestrator = createOrchestratorFake(
+        freshFetchSuccessResult(subscriptionId),
+      );
+      const admissionClassifier = createAdmissionClassifierFake({
+        ok: true,
+        kind: "partial_retry",
+      });
+      const persist = unusedPersist();
+      const stamp = createEnsureBillingEventTenantFake(
+        tenantStampSuccessResult(),
+      );
+      const mark = createMarkBillingEventProcessedFake(markFailureResult());
+
+      const response = await processCustomerSubscriptionEvent(
+        event,
+        billingEvent,
+        recorder.fn,
+        tenantResolver.fn,
+        observationReader.fn,
+        orchestrator.fn,
+        admissionClassifier.fn,
+        persist.fn,
+        stamp.fn,
+        mark.fn,
+      );
+
+      assertEquals(
+        persist.calls.length,
+        0,
+        "partial_retry must not rewrite tenant_subscriptions",
+      );
+      assertTenantStampCalledOnce(stamp.calls, {
+        billingEventId: billingEvent.id,
+        tenantId: SYNTHETIC_BF_TENANT_ID,
+      });
+      assertMarkCalledOnce(mark.calls, {
+        billingEventId: billingEvent.id,
+        tenantId: SYNTHETIC_BF_TENANT_ID,
+      });
+      assertRecorderCall(recorder.calls, {
+        billingEventId: billingEvent.id,
+        reason: "Failed to mark billing event as processed.",
+        tenantId: null,
+      });
+      await assertGenericUpstreamFailure(
+        response,
+        "Failed to mark billing event as processed.",
+      );
+    });
+  },
+);
+
+Deno.test(
+  "34. stale_event + mark failure → persistence 0, stamp once, mark once, HTTP 502",
+  async () => {
+    await withSyntheticStripeEnv(async () => {
+      const subscriptionId = "sub_billing52_mark_fail_stale";
+      const event = validSubscriptionEvent({
+        eventId: "evt_billing52_mark_fail_stale",
+        subscriptionId,
+      });
+      const billingEvent = createBillingEvent(
+        "be_billing52_mark_fail_stale",
+      );
+      const recorder = createRecorder("recorded");
+      const tenantResolver = createTenantResolverFake(
+        tenantResolverSuccessResult(),
+      );
+      const observationReader = createObservationReaderFake(
+        observationRowPresentResult(
+          SYNTHETIC_BF_TENANT_ID,
+          SYNTHETIC_WATERMARK_CREATED_AT,
+          SYNTHETIC_WATERMARK_EVENT_ID,
+        ),
+      );
+      const orchestrator = createOrchestratorFake(
+        freshFetchSuccessResult(subscriptionId),
+      );
+      const admissionClassifier = createAdmissionClassifierFake({
+        ok: true,
+        kind: "stale_event",
+      });
+      const persist = unusedPersist();
+      const stamp = createEnsureBillingEventTenantFake(
+        tenantStampSuccessResult(),
+      );
+      const mark = createMarkBillingEventProcessedFake(markFailureResult());
+
+      const response = await processCustomerSubscriptionEvent(
+        event,
+        billingEvent,
+        recorder.fn,
+        tenantResolver.fn,
+        observationReader.fn,
+        orchestrator.fn,
+        admissionClassifier.fn,
+        persist.fn,
+        stamp.fn,
+        mark.fn,
+      );
+
+      assertEquals(
+        persist.calls.length,
+        0,
+        "stale_event must not rewrite tenant_subscriptions",
+      );
+      assertTenantStampCalledOnce(stamp.calls, {
+        billingEventId: billingEvent.id,
+        tenantId: SYNTHETIC_BF_TENANT_ID,
+      });
+      assertMarkCalledOnce(mark.calls, {
+        billingEventId: billingEvent.id,
+        tenantId: SYNTHETIC_BF_TENANT_ID,
+      });
+      assertRecorderCall(recorder.calls, {
+        billingEventId: billingEvent.id,
+        reason: "Failed to mark billing event as processed.",
+        tenantId: null,
+      });
+      await assertGenericUpstreamFailure(
+        response,
+        "Failed to mark billing event as processed.",
+      );
+    });
+  },
+);
+
+Deno.test(
+  "35. candidate order is persist → stamp → mark → ACK",
+  async () => {
+    await withSyntheticStripeEnv(async () => {
+      const subscriptionId = "sub_billing52_order_candidate";
+      const eventId = "evt_billing52_order_candidate";
+      const eventType = "customer.subscription.updated";
+      const event = validSubscriptionEvent({
+        eventId,
+        eventType,
+        subscriptionId,
+      });
+      const billingEvent = createBillingEvent(
+        "be_billing52_order_candidate",
+      );
+      const recorder = createRecorder("recorded");
+      const tenantResolver = createTenantResolverFake(
+        tenantResolverSuccessResult(),
+      );
+      const observationReader = createObservationReaderFake(
+        observationRowAbsentResult(),
+      );
+      const orchestrator = createOrchestratorFake(
+        freshFetchSuccessResult(subscriptionId),
+      );
+      const admissionClassifier = createAdmissionClassifierFake({
+        ok: true,
+        kind: "candidate_row_absent",
+      });
+      const callOrder: string[] = [];
+      const persist = createPersistFake(persistInsertedResult(), callOrder);
+      const stamp = createEnsureBillingEventTenantFake(
+        tenantStampSuccessResult(),
+        callOrder,
+      );
+      const mark = createMarkBillingEventProcessedFake(
+        markSuccessResult(),
+        callOrder,
+      );
+
+      const response = await processCustomerSubscriptionEvent(
+        event,
+        billingEvent,
+        recorder.fn,
+        tenantResolver.fn,
+        observationReader.fn,
+        orchestrator.fn,
+        admissionClassifier.fn,
+        persist.fn,
+        stamp.fn,
+        mark.fn,
+      );
+
+      assertEquals(
+        callOrder,
+        ["persist", "stamp", "mark"],
+        "candidate must run persist then stamp then mark before ACK",
+      );
+      assertEquals(recorder.calls.length, 0, "recorder must not be called");
+      await assertReceivedOk(response, eventId, eventType);
+    });
+  },
+);
+
+Deno.test(
+  "36. partial_retry order is stamp → mark → ACK",
+  async () => {
+    await withSyntheticStripeEnv(async () => {
+      const subscriptionId = "sub_billing52_order_partial_retry";
+      const eventId = "evt_billing52_order_partial_retry";
+      const eventType = "customer.subscription.updated";
+      const event = validSubscriptionEvent({
+        eventId,
+        eventType,
+        subscriptionId,
+      });
+      const billingEvent = createBillingEvent(
+        "be_billing52_order_partial_retry",
+      );
+      const recorder = createRecorder("recorded");
+      const tenantResolver = createTenantResolverFake(
+        tenantResolverSuccessResult(),
+      );
+      const observationReader = createObservationReaderFake(
+        observationRowPresentResult(
+          SYNTHETIC_BF_TENANT_ID,
+          SYNTHETIC_WATERMARK_CREATED_AT,
+          SYNTHETIC_WATERMARK_EVENT_ID,
+        ),
+      );
+      const orchestrator = createOrchestratorFake(
+        freshFetchSuccessResult(subscriptionId),
+      );
+      const admissionClassifier = createAdmissionClassifierFake({
+        ok: true,
+        kind: "partial_retry",
+      });
+      const callOrder: string[] = [];
+      const persist = unusedPersist();
+      const stamp = createEnsureBillingEventTenantFake(
+        tenantStampSuccessResult(),
+        callOrder,
+      );
+      const mark = createMarkBillingEventProcessedFake(
+        markSuccessResult(),
+        callOrder,
+      );
+
+      const response = await processCustomerSubscriptionEvent(
+        event,
+        billingEvent,
+        recorder.fn,
+        tenantResolver.fn,
+        observationReader.fn,
+        orchestrator.fn,
+        admissionClassifier.fn,
+        persist.fn,
+        stamp.fn,
+        mark.fn,
+      );
+
+      assertEquals(
+        persist.calls.length,
+        0,
+        "partial_retry must not rewrite tenant_subscriptions",
+      );
+      assertEquals(
+        callOrder,
+        ["stamp", "mark"],
+        "partial_retry must run stamp then mark before ACK",
+      );
+      assertEquals(recorder.calls.length, 0, "recorder must not be called");
+      await assertReceivedOk(response, eventId, eventType);
     });
   },
 );
