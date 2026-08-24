@@ -1144,9 +1144,9 @@ export async function processCustomerSubscriptionEvent(
   }
 
   switch (admissionResult.kind) {
-    case "stale_event":
     case "already_applied":
       return receivedOk(event);
+    case "stale_event":
     case "partial_retry": {
       const tenantStampResult = await ensureBillingEventTenantFn({
         billingEventId: billingEvent.id,

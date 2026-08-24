@@ -1,7 +1,7 @@
 /**
  * Component tests for processCustomerSubscriptionEvent
  * (BILLING-19 / BILLING-41 / BILLING-43 / BILLING-45 / BILLING-48 /
- * BILLING-50).
+ * BILLING-50 / BILLING-51).
  *
  * Imports the real stripe-webhook module after a test-only Deno.serve
  * replace/restore. Exercises the exported processor with synthetic
@@ -1881,18 +1881,18 @@ Deno.test(
 );
 
 Deno.test(
-  "18. BH ok:true stale_event → HTTP 200 receivedOk, recorder not called",
+  "18. stale_event → persistence NOT called, tenant-stamp once with BF tenant, HTTP 200",
   async () => {
     await withSyntheticStripeEnv(async () => {
-      const subscriptionId = "sub_billing45_stale";
-      const eventId = "evt_billing45_stale";
+      const subscriptionId = "sub_billing51_stale";
+      const eventId = "evt_billing51_stale";
       const eventType = "customer.subscription.updated";
       const event = validSubscriptionEvent({
         eventId,
         eventType,
         subscriptionId,
       });
-      const billingEvent = createBillingEvent("be_billing45_stale");
+      const billingEvent = createBillingEvent("be_billing51_stale");
       const recorder = createRecorder("recorded");
       const tenantResolver = createTenantResolverFake(
         tenantResolverSuccessResult(),
@@ -1913,7 +1913,9 @@ Deno.test(
       });
 
       const persist = unusedPersist();
-      const stamp = unusedEnsureBillingEventTenant();
+      const stamp = createEnsureBillingEventTenantFake(
+        tenantStampSuccessResult(),
+      );
 
       const response = await processCustomerSubscriptionEvent(
         event,
@@ -1927,8 +1929,40 @@ Deno.test(
         stamp.fn,
       );
 
-      assertEquals(persist.calls.length, 0, "persistence must not be called");
-      assertEquals(stamp.calls.length, 0, "tenant-stamp must not be called");
+      assertEquals(
+        tenantResolver.calls.length,
+        1,
+        "stale_event must still resolve BF tenant once",
+      );
+      assertObservationForwardedExactly(
+        observationReader.calls,
+        subscriptionId,
+      );
+      assertAdmissionClassifierInputs(admissionClassifier.calls, {
+        provider_event_id: eventId,
+        provider_event_created_at: event.created,
+        tenant_subscription_row: {
+          presence: "present",
+          last_applied_provider_event_created_at:
+            SYNTHETIC_WATERMARK_CREATED_AT,
+          last_applied_provider_event_id: SYNTHETIC_WATERMARK_EVENT_ID,
+        },
+      });
+      assertEquals(
+        persist.calls.length,
+        0,
+        "stale_event must not rewrite tenant_subscriptions",
+      );
+      assertTenantStampCalledOnce(stamp.calls, {
+        billingEventId: billingEvent.id,
+        tenantId: SYNTHETIC_BF_TENANT_ID,
+      });
+      assertEquals(
+        stamp.calls[0]?.tenantId,
+        SYNTHETIC_BF_TENANT_ID,
+        "stale_event tenant-stamp tenantId must be tenantResolutionResult.tenant_id",
+      );
+      assertProcessorDoesNotWriteProcessedAt();
       assertEquals(recorder.calls.length, 0, "recorder must not be called");
       await assertReceivedOk(response, eventId, eventType);
     });
@@ -2702,5 +2736,75 @@ Deno.test(
   "30. source guard: processor does not wire markBillingEventProcessed",
   () => {
     assertProcessorDoesNotWriteProcessedAt();
+  },
+);
+
+Deno.test(
+  "31. stale_event + tenant-stamp failure → persistence NOT called, HTTP 502",
+  async () => {
+    await withSyntheticStripeEnv(async () => {
+      const subscriptionId = "sub_billing51_stale_stamp_fail";
+      const event = validSubscriptionEvent({
+        eventId: "evt_billing51_stale_stamp_fail",
+        subscriptionId,
+      });
+      const billingEvent = createBillingEvent(
+        "be_billing51_stale_stamp_fail",
+      );
+      const recorder = createRecorder("recorded");
+      const tenantResolver = createTenantResolverFake(
+        tenantResolverSuccessResult(),
+      );
+      const observationReader = createObservationReaderFake(
+        observationRowPresentResult(
+          SYNTHETIC_BF_TENANT_ID,
+          SYNTHETIC_WATERMARK_CREATED_AT,
+          SYNTHETIC_WATERMARK_EVENT_ID,
+        ),
+      );
+      const orchestrator = createOrchestratorFake(
+        freshFetchSuccessResult(subscriptionId),
+      );
+      const admissionClassifier = createAdmissionClassifierFake({
+        ok: true,
+        kind: "stale_event",
+      });
+      const persist = unusedPersist();
+      const stamp = createEnsureBillingEventTenantFake(
+        tenantStampFailureResult(),
+      );
+
+      const response = await processCustomerSubscriptionEvent(
+        event,
+        billingEvent,
+        recorder.fn,
+        tenantResolver.fn,
+        observationReader.fn,
+        orchestrator.fn,
+        admissionClassifier.fn,
+        persist.fn,
+        stamp.fn,
+      );
+
+      assertEquals(
+        persist.calls.length,
+        0,
+        "stale_event must not rewrite tenant_subscriptions",
+      );
+      assertTenantStampCalledOnce(stamp.calls, {
+        billingEventId: billingEvent.id,
+        tenantId: SYNTHETIC_BF_TENANT_ID,
+      });
+      assertRecorderCall(recorder.calls, {
+        billingEventId: billingEvent.id,
+        reason: "billing_event_tenant_stamp_failed",
+        tenantId: null,
+      });
+      assertProcessorDoesNotWriteProcessedAt();
+      await assertGenericUpstreamFailure(
+        response,
+        "billing_event_tenant_stamp_failed",
+      );
+    });
   },
 );
