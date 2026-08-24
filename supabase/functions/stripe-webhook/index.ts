@@ -1010,6 +1010,39 @@ type PersistTenantSubscriptionCandidateFn = (
   params: Omit<PersistTenantSubscriptionCandidateParams, "client">,
 ) => ReturnType<typeof persistTenantSubscriptionCandidate>;
 
+type EnsureBillingEventTenantParams = {
+  billingEventId: string;
+  tenantId: string;
+};
+
+type EnsureBillingEventTenantResult =
+  | { ok: true }
+  | { ok: false; reason: string };
+
+type EnsureBillingEventTenantFn = (
+  params: EnsureBillingEventTenantParams,
+) => Promise<EnsureBillingEventTenantResult>;
+
+async function ensureBillingEventTenant(
+  supabase: SupabaseClient,
+  params: EnsureBillingEventTenantParams,
+): Promise<EnsureBillingEventTenantResult> {
+  const loaded = await fetchBillingEventById(supabase, params.billingEventId);
+  if (loaded.error || !loaded.row) {
+    console.error("[stripe-webhook] billing_events tenant-stamp load failed", {
+      billing_event_id: params.billingEventId,
+      tenant_id: params.tenantId,
+      error_code: loaded.error?.code,
+    });
+    return { ok: false, reason: "Failed to load billing_events row." };
+  }
+  return await ensureTenantIdOnBillingEvent(
+    supabase,
+    loaded.row,
+    params.tenantId,
+  );
+}
+
 export async function processCustomerSubscriptionEvent(
   event: CustomerSubscriptionProcessorEvent,
   billingEvent: Pick<BillingEventRow, "id">,
@@ -1021,6 +1054,7 @@ export async function processCustomerSubscriptionEvent(
   classifySubscriptionEventAdmissionFn: ClassifySubscriptionEventAdmissionFn =
     classifySubscriptionEventAdmission,
   persistTenantSubscriptionCandidateFn: PersistTenantSubscriptionCandidateFn,
+  ensureBillingEventTenantFn: EnsureBillingEventTenantFn,
 ): Promise<Response> {
   const respondAfterError = async (reason: string): Promise<Response> => {
     const recorded = await recordProcessingErrorFn(
@@ -1111,9 +1145,18 @@ export async function processCustomerSubscriptionEvent(
 
   switch (admissionResult.kind) {
     case "stale_event":
-    case "partial_retry":
     case "already_applied":
       return receivedOk(event);
+    case "partial_retry": {
+      const tenantStampResult = await ensureBillingEventTenantFn({
+        billingEventId: billingEvent.id,
+        tenantId: tenantResolutionResult.tenant_id,
+      });
+      if (tenantStampResult.ok === false) {
+        return await respondAfterError(tenantStampResult.reason);
+      }
+      return receivedOk(event);
+    }
     case "candidate_row_absent":
     case "candidate_row_present_uninitialized":
     case "candidate_newer_event":
@@ -1170,6 +1213,14 @@ export async function processCustomerSubscriptionEvent(
 
   if (persistResult.ok === false) {
     return await respondAfterError(persistResult.reason);
+  }
+
+  const tenantStampResult = await ensureBillingEventTenantFn({
+    billingEventId: billingEvent.id,
+    tenantId: tenantResolutionResult.tenant_id,
+  });
+  if (tenantStampResult.ok === false) {
+    return await respondAfterError(tenantStampResult.reason);
   }
 
   return receivedOk(event);
@@ -1306,6 +1357,7 @@ async function handler(req: Request): Promise<Response> {
           ...params,
           client: createTenantSubscriptionPersistenceClient(supabase),
         }),
+      (params) => ensureBillingEventTenant(supabase, params),
     );
   }
 
