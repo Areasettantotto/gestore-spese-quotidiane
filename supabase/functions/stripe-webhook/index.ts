@@ -1088,14 +1088,26 @@ export async function processCustomerSubscriptionEvent(
   }
 
   const stripeSecretKey = Deno.env.get("STRIPE_SECRET_KEY");
+  const supportedBaseMonthlyPriceId = Deno.env.get(
+    "STRIPE_PRICE_ID_BASE_MONTHLY",
+  );
+  const supportedBaseAnnualPriceId = Deno.env.get(
+    "STRIPE_PRICE_ID_BASE_ANNUAL",
+  );
   const supportedProMonthlyPriceId = Deno.env.get(
     "STRIPE_PRICE_ID_PRO_MONTHLY",
+  );
+  const supportedProAnnualPriceId = Deno.env.get(
+    "STRIPE_PRICE_ID_PRO_ANNUAL",
   );
 
   const result = await fetchNormalizedFromRuntimeConfig({
     provider_subscription_id: bootstrapResult.provider_subscription_id,
     stripeSecretKey,
     supportedProMonthlyPriceId,
+    supportedBaseMonthlyPriceId,
+    supportedBaseAnnualPriceId,
+    supportedProAnnualPriceId,
   });
 
   if (result.ok === false) {

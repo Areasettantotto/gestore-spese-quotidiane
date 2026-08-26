@@ -1,7 +1,7 @@
 /**
  * Component tests for processCustomerSubscriptionEvent
  * (BILLING-19 / BILLING-41 / BILLING-43 / BILLING-45 / BILLING-48 /
- * BILLING-50 / BILLING-51 / BILLING-52).
+ * BILLING-50 / BILLING-51 / BILLING-52 / BILLING-62).
  *
  * Imports the real stripe-webhook module after a test-only Deno.serve
  * replace/restore. Exercises the exported processor with synthetic
@@ -13,7 +13,7 @@
  * Run:
  *   deno test --no-lock --cached-only --no-prompt \
  *     --allow-read=supabase/functions \
- *     --allow-env=STRIPE_SECRET_KEY,STRIPE_PRICE_ID_PRO_MONTHLY \
+ *     --allow-env=STRIPE_SECRET_KEY,STRIPE_PRICE_ID_PRO_MONTHLY,STRIPE_PRICE_ID_BASE_MONTHLY,STRIPE_PRICE_ID_BASE_ANNUAL,STRIPE_PRICE_ID_PRO_ANNUAL \
  *     supabase/functions/stripe-webhook/processCustomerSubscriptionEvent_test.ts
  *
  * No network, Stripe API, Supabase, or remote assertion libraries.
@@ -31,8 +31,14 @@ declare const Deno: {
 
 const ENV_STRIPE_SECRET_KEY = "STRIPE_SECRET_KEY";
 const ENV_SUPPORTED_PRICE = "STRIPE_PRICE_ID_PRO_MONTHLY";
+const ENV_BASE_MONTHLY_PRICE = "STRIPE_PRICE_ID_BASE_MONTHLY";
+const ENV_BASE_ANNUAL_PRICE = "STRIPE_PRICE_ID_BASE_ANNUAL";
+const ENV_PRO_ANNUAL_PRICE = "STRIPE_PRICE_ID_PRO_ANNUAL";
 const SYNTHETIC_STRIPE_SECRET = "sk_test_billing19_synthetic_not_real";
 const SYNTHETIC_SUPPORTED_PRICE = "price_billing19_pro_monthly_synthetic";
+const SYNTHETIC_BASE_MONTHLY_PRICE = "price_billing62_base_monthly_synthetic";
+const SYNTHETIC_BASE_ANNUAL_PRICE = "price_billing62_base_annual_synthetic";
+const SYNTHETIC_PRO_ANNUAL_PRICE = "price_billing62_pro_annual_synthetic";
 const SYNTHETIC_PROVIDER_CUSTOMER_ID = "cus_billing19_fresh";
 const PUBLIC_SUBSCRIPTION_FAILURE_MESSAGE =
   "Failed to process Stripe subscription event.";
@@ -177,16 +183,42 @@ function restoreEnv(key: string, previous: string | undefined): void {
 
 async function withSyntheticStripeEnv(
   run: () => Promise<void>,
+  extraPriceEnv?: {
+    readonly baseMonthly?: string;
+    readonly baseAnnual?: string;
+    readonly proAnnual?: string;
+  },
 ): Promise<void> {
   const previousSecret = Deno.env.get(ENV_STRIPE_SECRET_KEY);
-  const previousPrice = Deno.env.get(ENV_SUPPORTED_PRICE);
+  const previousProMonthly = Deno.env.get(ENV_SUPPORTED_PRICE);
+  const previousBaseMonthly = Deno.env.get(ENV_BASE_MONTHLY_PRICE);
+  const previousBaseAnnual = Deno.env.get(ENV_BASE_ANNUAL_PRICE);
+  const previousProAnnual = Deno.env.get(ENV_PRO_ANNUAL_PRICE);
   try {
     Deno.env.set(ENV_STRIPE_SECRET_KEY, SYNTHETIC_STRIPE_SECRET);
     Deno.env.set(ENV_SUPPORTED_PRICE, SYNTHETIC_SUPPORTED_PRICE);
+    if (extraPriceEnv?.baseMonthly !== undefined) {
+      Deno.env.set(ENV_BASE_MONTHLY_PRICE, extraPriceEnv.baseMonthly);
+    } else {
+      Deno.env.delete(ENV_BASE_MONTHLY_PRICE);
+    }
+    if (extraPriceEnv?.baseAnnual !== undefined) {
+      Deno.env.set(ENV_BASE_ANNUAL_PRICE, extraPriceEnv.baseAnnual);
+    } else {
+      Deno.env.delete(ENV_BASE_ANNUAL_PRICE);
+    }
+    if (extraPriceEnv?.proAnnual !== undefined) {
+      Deno.env.set(ENV_PRO_ANNUAL_PRICE, extraPriceEnv.proAnnual);
+    } else {
+      Deno.env.delete(ENV_PRO_ANNUAL_PRICE);
+    }
     await run();
   } finally {
     restoreEnv(ENV_STRIPE_SECRET_KEY, previousSecret);
-    restoreEnv(ENV_SUPPORTED_PRICE, previousPrice);
+    restoreEnv(ENV_SUPPORTED_PRICE, previousProMonthly);
+    restoreEnv(ENV_BASE_MONTHLY_PRICE, previousBaseMonthly);
+    restoreEnv(ENV_BASE_ANNUAL_PRICE, previousBaseAnnual);
+    restoreEnv(ENV_PRO_ANNUAL_PRICE, previousProAnnual);
   }
 }
 
@@ -689,6 +721,106 @@ function assertOrchestratorForwardedSyntheticEnv(
     calls[0]?.supportedProMonthlyPriceId === SYNTHETIC_SUPPORTED_PRICE,
     "supportedProMonthlyPriceId forwarded from synthetic env",
   );
+  assert(
+    calls[0]?.supportedBaseMonthlyPriceId === undefined,
+    "legacy env must not invent Base Monthly",
+  );
+  assert(
+    calls[0]?.supportedBaseAnnualPriceId === undefined,
+    "legacy env must not invent Base Annual",
+  );
+  assert(
+    calls[0]?.supportedProAnnualPriceId === undefined,
+    "legacy env must not invent Pro Annual",
+  );
+  assert(
+    calls[0]?.supportedBaseMonthlyPriceId !==
+      calls[0]?.supportedProMonthlyPriceId,
+    "missing Base Monthly must not fall back to Pro Monthly",
+  );
+  assert(
+    calls[0]?.supportedBaseAnnualPriceId !==
+      calls[0]?.supportedProMonthlyPriceId,
+    "missing Base Annual must not fall back to Pro Monthly",
+  );
+  assert(
+    calls[0]?.supportedProAnnualPriceId !==
+      calls[0]?.supportedProMonthlyPriceId,
+    "missing Pro Annual must not fall back to Pro Monthly",
+  );
+}
+
+function assertOrchestratorForwardedFourSlotEnv(
+  calls: FetchParams[],
+  providerSubscriptionId: string,
+  prices: {
+    readonly baseMonthly: string;
+    readonly baseAnnual: string;
+    readonly proMonthly: string;
+    readonly proAnnual: string;
+  },
+): void {
+  assertEquals(calls.length, 1, "orchestrator call count");
+  const params = calls[0];
+  assert(params !== undefined, "orchestrator params");
+  assert(
+    params.provider_subscription_id === providerSubscriptionId,
+    "provider_subscription_id forwarded exactly",
+  );
+  assert(
+    params.stripeSecretKey === SYNTHETIC_STRIPE_SECRET,
+    "stripeSecretKey forwarded from synthetic env",
+  );
+  assert(
+    params.supportedBaseMonthlyPriceId === prices.baseMonthly,
+    "supportedBaseMonthlyPriceId raw identity",
+  );
+  assert(
+    params.supportedBaseAnnualPriceId === prices.baseAnnual,
+    "supportedBaseAnnualPriceId raw identity",
+  );
+  assert(
+    params.supportedProMonthlyPriceId === prices.proMonthly,
+    "supportedProMonthlyPriceId raw identity",
+  );
+  assert(
+    params.supportedProAnnualPriceId === prices.proAnnual,
+    "supportedProAnnualPriceId raw identity",
+  );
+  assert(
+    params.supportedBaseMonthlyPriceId !== params.supportedBaseAnnualPriceId,
+    "Base Monthly must not alias Base Annual",
+  );
+  assert(
+    params.supportedBaseMonthlyPriceId !== params.supportedProMonthlyPriceId,
+    "Base Monthly must not alias Pro Monthly",
+  );
+  assert(
+    params.supportedBaseMonthlyPriceId !== params.supportedProAnnualPriceId,
+    "Base Monthly must not alias Pro Annual",
+  );
+  assert(
+    params.supportedBaseAnnualPriceId !== params.supportedProMonthlyPriceId,
+    "Base Annual must not alias Pro Monthly",
+  );
+  assert(
+    params.supportedBaseAnnualPriceId !== params.supportedProAnnualPriceId,
+    "Base Annual must not alias Pro Annual",
+  );
+  assert(
+    params.supportedProMonthlyPriceId !== params.supportedProAnnualPriceId,
+    "Pro Monthly must not alias Pro Annual",
+  );
+}
+
+function optionalSlotConfigFailureResult(
+  reason:
+    | "invalid_supported_base_monthly_price_id"
+    | "invalid_supported_base_annual_price_id"
+    | "invalid_supported_pro_annual_price_id",
+): FetchResult {
+  const result: FetchResult = { ok: false, reason };
+  return result;
 }
 
 function assertObservationForwardedExactly(
@@ -3413,6 +3545,323 @@ Deno.test(
       );
       assertEquals(recorder.calls.length, 0, "recorder must not be called");
       await assertReceivedOk(response, eventId, eventType);
+    });
+  },
+);
+
+Deno.test(
+  "37. BILLING-62 legacy env: only Pro Monthly forwarded, optional slots omitted",
+  async () => {
+    await withSyntheticStripeEnv(async () => {
+      const subscriptionId = "sub_billing62_legacy_pro_monthly";
+      const event = validSubscriptionEvent({
+        eventId: "evt_billing62_legacy_pro_monthly",
+        subscriptionId,
+      });
+      const billingEvent = createBillingEvent(
+        "be_billing62_legacy_pro_monthly",
+      );
+      const recorder = createRecorder("recorded");
+      const orchestrator = createOrchestratorFake(configFailureResult());
+
+      const response = await processCustomerSubscriptionEvent(
+        event,
+        billingEvent,
+        recorder.fn,
+        unusedTenantResolver().fn,
+        unusedObservationReader().fn,
+        orchestrator.fn,
+        unusedAdmissionClassifier().fn,
+        unusedPersist().fn,
+        unusedEnsureBillingEventTenant().fn,
+        unusedMarkBillingEventProcessed().fn,
+      );
+
+      assertOrchestratorForwardedSyntheticEnv(
+        orchestrator.calls,
+        subscriptionId,
+      );
+      assertRecorderCall(recorder.calls, {
+        billingEventId: billingEvent.id,
+        reason: "invalid_stripe_secret_key",
+        tenantId: null,
+      });
+      await assertGenericUpstreamFailure(
+        response,
+        "invalid_stripe_secret_key",
+      );
+    });
+  },
+);
+
+Deno.test(
+  "38. BILLING-62 four-slot env: raw values forwarded with identity preserved",
+  async () => {
+    await withSyntheticStripeEnv(async () => {
+      const subscriptionId = "sub_billing62_four_slot";
+      const event = validSubscriptionEvent({
+        eventId: "evt_billing62_four_slot",
+        subscriptionId,
+      });
+      const billingEvent = createBillingEvent("be_billing62_four_slot");
+      const recorder = createRecorder("recorded");
+      const orchestrator = createOrchestratorFake(configFailureResult());
+
+      const response = await processCustomerSubscriptionEvent(
+        event,
+        billingEvent,
+        recorder.fn,
+        unusedTenantResolver().fn,
+        unusedObservationReader().fn,
+        orchestrator.fn,
+        unusedAdmissionClassifier().fn,
+        unusedPersist().fn,
+        unusedEnsureBillingEventTenant().fn,
+        unusedMarkBillingEventProcessed().fn,
+      );
+
+      assertOrchestratorForwardedFourSlotEnv(
+        orchestrator.calls,
+        subscriptionId,
+        {
+          baseMonthly: SYNTHETIC_BASE_MONTHLY_PRICE,
+          baseAnnual: SYNTHETIC_BASE_ANNUAL_PRICE,
+          proMonthly: SYNTHETIC_SUPPORTED_PRICE,
+          proAnnual: SYNTHETIC_PRO_ANNUAL_PRICE,
+        },
+      );
+      assertRecorderCall(recorder.calls, {
+        billingEventId: billingEvent.id,
+        reason: "invalid_stripe_secret_key",
+        tenantId: null,
+      });
+      await assertGenericUpstreamFailure(
+        response,
+        "invalid_stripe_secret_key",
+      );
+    }, {
+      baseMonthly: SYNTHETIC_BASE_MONTHLY_PRICE,
+      baseAnnual: SYNTHETIC_BASE_ANNUAL_PRICE,
+      proAnnual: SYNTHETIC_PRO_ANNUAL_PRICE,
+    });
+  },
+);
+
+Deno.test(
+  "39. BILLING-62 missing optional env: no fallback across slots",
+  async () => {
+    await withSyntheticStripeEnv(async () => {
+      const subscriptionId = "sub_billing62_missing_optional";
+      const event = validSubscriptionEvent({
+        eventId: "evt_billing62_missing_optional",
+        subscriptionId,
+      });
+      const billingEvent = createBillingEvent(
+        "be_billing62_missing_optional",
+      );
+      const recorder = createRecorder("recorded");
+      const orchestrator = createOrchestratorFake(configFailureResult());
+
+      const response = await processCustomerSubscriptionEvent(
+        event,
+        billingEvent,
+        recorder.fn,
+        unusedTenantResolver().fn,
+        unusedObservationReader().fn,
+        orchestrator.fn,
+        unusedAdmissionClassifier().fn,
+        unusedPersist().fn,
+        unusedEnsureBillingEventTenant().fn,
+        unusedMarkBillingEventProcessed().fn,
+      );
+
+      assertEquals(orchestrator.calls.length, 1, "orchestrator call count");
+      const params = orchestrator.calls[0];
+      assert(params !== undefined, "orchestrator params");
+      assert(
+        params.stripeSecretKey === SYNTHETIC_STRIPE_SECRET,
+        "STRIPE_SECRET_KEY still forwarded",
+      );
+      assert(
+        params.supportedBaseMonthlyPriceId === SYNTHETIC_BASE_MONTHLY_PRICE,
+        "present Base Monthly forwarded as-is",
+      );
+      assert(
+        params.supportedProMonthlyPriceId === SYNTHETIC_SUPPORTED_PRICE,
+        "required Pro Monthly forwarded as-is",
+      );
+      assert(
+        params.supportedBaseAnnualPriceId === undefined,
+        "missing Base Annual must stay omitted",
+      );
+      assert(
+        params.supportedProAnnualPriceId === undefined,
+        "missing Pro Annual must stay omitted",
+      );
+      assert(
+        params.supportedBaseAnnualPriceId !== params.supportedBaseMonthlyPriceId,
+        "missing Base Annual must not fall back to Base Monthly",
+      );
+      assert(
+        params.supportedBaseAnnualPriceId !== params.supportedProMonthlyPriceId,
+        "missing Base Annual must not fall back to Pro Monthly",
+      );
+      assert(
+        params.supportedProAnnualPriceId !== params.supportedBaseMonthlyPriceId,
+        "missing Pro Annual must not fall back to Base Monthly",
+      );
+      assert(
+        params.supportedProAnnualPriceId !== params.supportedProMonthlyPriceId,
+        "missing Pro Annual must not fall back to Pro Monthly",
+      );
+      await assertGenericUpstreamFailure(
+        response,
+        "invalid_stripe_secret_key",
+      );
+      assertEquals(recorder.calls.length, 1, "recorder call count");
+    }, {
+      baseMonthly: SYNTHETIC_BASE_MONTHLY_PRICE,
+    });
+  },
+);
+
+Deno.test(
+  "40. BILLING-62 empty optional env: raw empty string reaches shared failure",
+  async () => {
+    await withSyntheticStripeEnv(async () => {
+      const subscriptionId = "sub_billing62_empty_base_monthly";
+      const event = validSubscriptionEvent({
+        eventId: "evt_billing62_empty_base_monthly",
+        subscriptionId,
+      });
+      const billingEvent = createBillingEvent(
+        "be_billing62_empty_base_monthly",
+      );
+      const recorder = createRecorder("recorded");
+      const orchestrator = createOrchestratorFake(
+        optionalSlotConfigFailureResult(
+          "invalid_supported_base_monthly_price_id",
+        ),
+      );
+
+      const response = await processCustomerSubscriptionEvent(
+        event,
+        billingEvent,
+        recorder.fn,
+        unusedTenantResolver().fn,
+        unusedObservationReader().fn,
+        orchestrator.fn,
+        unusedAdmissionClassifier().fn,
+        unusedPersist().fn,
+        unusedEnsureBillingEventTenant().fn,
+        unusedMarkBillingEventProcessed().fn,
+      );
+
+      assertEquals(orchestrator.calls.length, 1, "orchestrator call count");
+      const params = orchestrator.calls[0];
+      assert(params !== undefined, "orchestrator params");
+      assert(
+        params.supportedBaseMonthlyPriceId === "",
+        "empty Base Monthly env must be forwarded as empty string, not undefined",
+      );
+      assert(
+        params.supportedBaseMonthlyPriceId !== undefined,
+        "empty Base Monthly must not be converted to omitted",
+      );
+      assert(
+        params.supportedProMonthlyPriceId === SYNTHETIC_SUPPORTED_PRICE,
+        "required Pro Monthly still forwarded",
+      );
+      assert(
+        params.supportedBaseAnnualPriceId === undefined,
+        "unset Base Annual must stay omitted",
+      );
+      assert(
+        params.supportedProAnnualPriceId === undefined,
+        "unset Pro Annual must stay omitted",
+      );
+      assert(
+        params.stripeSecretKey === SYNTHETIC_STRIPE_SECRET,
+        "STRIPE_SECRET_KEY still forwarded",
+      );
+      assertRecorderCall(recorder.calls, {
+        billingEventId: billingEvent.id,
+        reason: "invalid_supported_base_monthly_price_id",
+        tenantId: null,
+      });
+      await assertGenericUpstreamFailure(
+        response,
+        "invalid_supported_base_monthly_price_id",
+      );
+    }, {
+      baseMonthly: "",
+    });
+  },
+);
+
+Deno.test(
+  "41. BILLING-62 invalid optional env: raw value forwarded, specific shared reason",
+  async () => {
+    const invalidBaseAnnual = " ";
+    await withSyntheticStripeEnv(async () => {
+      const subscriptionId = "sub_billing62_invalid_base_annual";
+      const event = validSubscriptionEvent({
+        eventId: "evt_billing62_invalid_base_annual",
+        subscriptionId,
+      });
+      const billingEvent = createBillingEvent(
+        "be_billing62_invalid_base_annual",
+      );
+      const recorder = createRecorder("recorded");
+      const orchestrator = createOrchestratorFake(
+        optionalSlotConfigFailureResult(
+          "invalid_supported_base_annual_price_id",
+        ),
+      );
+
+      const response = await processCustomerSubscriptionEvent(
+        event,
+        billingEvent,
+        recorder.fn,
+        unusedTenantResolver().fn,
+        unusedObservationReader().fn,
+        orchestrator.fn,
+        unusedAdmissionClassifier().fn,
+        unusedPersist().fn,
+        unusedEnsureBillingEventTenant().fn,
+        unusedMarkBillingEventProcessed().fn,
+      );
+
+      assertEquals(orchestrator.calls.length, 1, "orchestrator call count");
+      const params = orchestrator.calls[0];
+      assert(params !== undefined, "orchestrator params");
+      assert(
+        params.supportedBaseAnnualPriceId === invalidBaseAnnual,
+        "invalid Base Annual raw value must be preserved",
+      );
+      assert(
+        params.supportedBaseMonthlyPriceId === undefined,
+        "unset Base Monthly must stay omitted",
+      );
+      assert(
+        params.supportedProMonthlyPriceId === SYNTHETIC_SUPPORTED_PRICE,
+        "required Pro Monthly still forwarded",
+      );
+      assert(
+        params.supportedProAnnualPriceId === undefined,
+        "unset Pro Annual must stay omitted",
+      );
+      assertRecorderCall(recorder.calls, {
+        billingEventId: billingEvent.id,
+        reason: "invalid_supported_base_annual_price_id",
+        tenantId: null,
+      });
+      await assertGenericUpstreamFailure(
+        response,
+        "invalid_supported_base_annual_price_id",
+      );
+    }, {
+      baseAnnual: invalidBaseAnnual,
     });
   },
 );
