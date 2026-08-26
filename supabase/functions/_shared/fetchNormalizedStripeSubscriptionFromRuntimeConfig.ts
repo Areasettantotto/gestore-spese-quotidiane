@@ -1,6 +1,6 @@
 /**
  * Orchestrator: raw runtime config → Stripe retrieve client → fresh
- * normalized subscription (BILLING-10 / BILLING-38).
+ * normalized subscription (BILLING-10 / BILLING-38 / BILLING-61).
  *
  * Composes existing fail-closed boundaries only:
  *   resolveStripeSubscriptionSyncRuntimeConfig
@@ -9,7 +9,12 @@
  *
  * The catalog is built inside the runtime-config boundary and consumed
  * here as `runtimeConfig.catalog`. This module does not reconstruct the
- * catalog.
+ * catalog, validate Price IDs, map tier/interval, or invent env names.
+ *
+ * Required slot: Pro monthly (`supportedProMonthlyPriceId`). Optional
+ * additive slots, when supplied, are forwarded verbatim to the runtime
+ * config: Base monthly, Base annual, Pro annual. Omitted optional slots
+ * are not filled here.
  *
  * Does not read Deno.env / process.env / import.meta.env, import
  * stripe-webhook, bootstrap events, pre-admission, tenant mapping,
@@ -35,6 +40,9 @@ export type FetchNormalizedStripeSubscriptionFromRuntimeConfigParams = {
   provider_subscription_id: unknown;
   stripeSecretKey: unknown;
   supportedProMonthlyPriceId: unknown;
+  supportedBaseMonthlyPriceId?: unknown;
+  supportedBaseAnnualPriceId?: unknown;
+  supportedProAnnualPriceId?: unknown;
 };
 
 export type FetchNormalizedStripeSubscriptionFromRuntimeConfigResult =
@@ -54,6 +62,9 @@ export async function fetchNormalizedStripeSubscriptionFromRuntimeConfig(
   const runtimeConfig = resolveStripeSubscriptionSyncRuntimeConfig({
     stripeSecretKey: params.stripeSecretKey,
     supportedProMonthlyPriceId: params.supportedProMonthlyPriceId,
+    supportedBaseMonthlyPriceId: params.supportedBaseMonthlyPriceId,
+    supportedBaseAnnualPriceId: params.supportedBaseAnnualPriceId,
+    supportedProAnnualPriceId: params.supportedProAnnualPriceId,
   });
 
   if (runtimeConfig.ok === false) {
