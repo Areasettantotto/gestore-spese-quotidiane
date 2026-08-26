@@ -11,7 +11,11 @@ import {
   parseJsonBody,
   parseTenantBody,
 } from "../_shared/auth.ts";
-import { resolveCheckoutKnownStripePrice } from "./resolveCheckoutKnownStripePrice.ts";
+import type { CommercialPriceSelection } from "../_shared/resolveKnownStripePrice.ts";
+import {
+  normalizeCheckoutPlanCode,
+  resolveCheckoutKnownStripePrice,
+} from "./resolveCheckoutKnownStripePrice.ts";
 
 declare const Deno: {
   serve: (handler: (req: Request) => Response | Promise<Response>) => void;
@@ -20,42 +24,30 @@ declare const Deno: {
   };
 };
 
-type CheckoutPlanCode = "pro_monthly" | "pro";
 type CheckoutRequestBody = {
   tenant_id: string;
   plan_code?: unknown;
 };
 
 const BILLING_NOT_CONFIGURED_MESSAGE = "Billing checkout is not configured.";
+const PLAN_CODE_REQUIRED_MESSAGE =
+  "Field 'plan_code' is required and must be one of: base_monthly, base_annual, pro_monthly, pro_annual, pro.";
 
 function normalizePlanCode(
   body: unknown,
-): { planCode: "pro_monthly" } | Response {
+): { planCode: CommercialPriceSelection } | Response {
   if (!body || typeof body !== "object") {
-    return unprocessableEntity(
-      "Field 'plan_code' is required and must be one of: pro_monthly, pro.",
-    );
+    return unprocessableEntity(PLAN_CODE_REQUIRED_MESSAGE);
   }
 
-  const planCode = (body as CheckoutRequestBody).plan_code;
-  if (typeof planCode !== "string") {
-    return unprocessableEntity(
-      "Field 'plan_code' is required and must be one of: pro_monthly, pro.",
-    );
+  const normalized = normalizeCheckoutPlanCode(
+    (body as CheckoutRequestBody).plan_code,
+  );
+  if (normalized.ok === false) {
+    return unprocessableEntity(PLAN_CODE_REQUIRED_MESSAGE);
   }
 
-  const normalizedInput = planCode.trim().toLowerCase() as CheckoutPlanCode;
-  if (normalizedInput !== "pro_monthly" && normalizedInput !== "pro") {
-    return unprocessableEntity(
-      "Field 'plan_code' is required and must be one of: pro_monthly, pro.",
-    );
-  }
-
-  if (normalizedInput === "pro") {
-    return { planCode: "pro_monthly" };
-  }
-
-  return { planCode: normalizedInput };
+  return { planCode: normalized.planCode };
 }
 
 function getAppBaseUrl(): string | Response {
@@ -120,7 +112,10 @@ async function handler(req: Request): Promise<Response> {
   }
 
   const stripeSecretKey = Deno.env.get("STRIPE_SECRET_KEY");
+  const baseMonthlyPriceId = Deno.env.get("STRIPE_PRICE_ID_BASE_MONTHLY");
+  const baseAnnualPriceId = Deno.env.get("STRIPE_PRICE_ID_BASE_ANNUAL");
   const proMonthlyPriceId = Deno.env.get("STRIPE_PRICE_ID_PRO_MONTHLY");
+  const proAnnualPriceId = Deno.env.get("STRIPE_PRICE_ID_PRO_ANNUAL");
   const appBaseUrl = getAppBaseUrl();
 
   if (appBaseUrl instanceof Response) {
@@ -141,8 +136,10 @@ async function handler(req: Request): Promise<Response> {
 
   const resolvedPrice = resolveCheckoutKnownStripePrice({
     proMonthlyPriceId,
-    tier: "pro",
-    interval: "monthly",
+    baseMonthlyPriceId,
+    baseAnnualPriceId,
+    proAnnualPriceId,
+    selection: parsedPlan.planCode,
   });
   if (resolvedPrice.ok === false) {
     console.error(
