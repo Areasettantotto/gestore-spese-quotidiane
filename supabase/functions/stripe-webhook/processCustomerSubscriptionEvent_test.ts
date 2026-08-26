@@ -587,6 +587,7 @@ function freshFetchSuccessResult(subscriptionId: string): FetchResult {
       provider_subscription_id: subscriptionId,
       provider_customer_id: SYNTHETIC_PROVIDER_CUSTOMER_ID,
       plan_code: "paid",
+      productTier: "pro",
       status: "active",
       current_period_start: "2023-11-14T22:13:20.000Z",
       current_period_end: "2023-11-18T00:26:40.000Z",
@@ -793,6 +794,20 @@ function assertPersistCalledOnce(
     params.snapshot,
     expected.snapshot,
     "snapshot must be the normalized subscription",
+  );
+  assertEquals(
+    params.snapshot.productTier,
+    expected.snapshot.productTier,
+    "processor must forward productTier without reinterpretation",
+  );
+  assertEquals(
+    params.snapshot.plan_code,
+    expected.snapshot.plan_code,
+    "processor must not remap plan_code",
+  );
+  assert(
+    !("interval" in params.snapshot),
+    "processor snapshot must not add interval",
   );
   assertEquals(
     params.provider_event_created_at,

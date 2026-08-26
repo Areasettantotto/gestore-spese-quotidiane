@@ -10,6 +10,7 @@
 import {
   extractStripeCustomerId,
   normalizeStripeSubscription,
+  type NormalizedStripeSubscription,
   type NormalizeStripeSubscriptionConfig,
   type NormalizeStripeSubscriptionResult,
   type StripeSubscriptionLike,
@@ -114,6 +115,7 @@ Deno.test("1. active + supported paid product → success", () => {
   expectSuccess(result);
   assertEquals(result.value.status, "active", "status");
   assertEquals(result.value.plan_code, "paid", "plan_code");
+  assertEquals(result.value.productTier, "pro", "productTier from catalog");
   assertEquals(
     result.value.provider_subscription_id,
     "sub_test_1",
@@ -697,3 +699,84 @@ Deno.test("F1: trial_end outside Date range while trialing → invalid_trial_end
     "invalid_trial_end",
   );
 });
+
+type _AssertNoIntervalOnNormalized =
+  "interval" extends keyof NormalizedStripeSubscription ? never : true;
+const _assertNoIntervalOnNormalized: _AssertNoIntervalOnNormalized = true;
+void _assertNoIntervalOnNormalized;
+
+type _AssertProductTierNotPlanCode =
+  NormalizedStripeSubscription["productTier"] extends
+    NormalizedStripeSubscription["plan_code"] ? never
+    : true;
+const _assertProductTierNotPlanCode: _AssertProductTierNotPlanCode = true;
+void _assertProductTierNotPlanCode;
+
+Deno.test(
+  "BILLING-57: Pro Monthly KnownStripePrice.tier is preserved as productTier; plan_code stays paid",
+  () => {
+    const result = normalizeStripeSubscription(baseSubscription(), CONFIG);
+    expectSuccess(result);
+    assertEquals(result.value.productTier, "pro", "catalog Pro Monthly");
+    assertEquals(result.value.plan_code, "paid", "plan_code axis unchanged");
+    assertEquals(
+      Object.prototype.hasOwnProperty.call(result.value, "interval"),
+      false,
+      "interval is not on the normalized contract",
+    );
+    assertEquals(
+      result.value.productTier,
+      PRO_MONTHLY_ENTRY.tier,
+      "productTier is KnownStripePrice.tier, not reinterpreted",
+    );
+  },
+);
+
+Deno.test(
+  "BILLING-57: synthetic Base catalog entry → productTier base, not derived from plan_code",
+  () => {
+    const baseEntry: KnownStripePrice = {
+      priceId: "price_test_base_monthly_synthetic",
+      tier: "base",
+      interval: "monthly",
+    };
+    const result = normalizeStripeSubscription(
+      baseSubscription({
+        metadata: { plan_code: "pro_monthly" },
+        items: {
+          data: [{ price: { id: "price_test_base_monthly_synthetic" } }],
+        },
+      }),
+      { catalog: [baseEntry] },
+    );
+    expectSuccess(result);
+    assertEquals(
+      result.value.productTier,
+      "base",
+      "productTier from KnownStripePrice.tier",
+    );
+    assertEquals(
+      result.value.plan_code,
+      "paid",
+      "plan_code stays paid; not remapped to base",
+    );
+  },
+);
+
+Deno.test(
+  "BILLING-57: unknown Price remains fail-closed; no partial productTier",
+  () => {
+    const result = normalizeStripeSubscription(
+      baseSubscription({
+        items: { data: [{ price: { id: "price_unknown_exact" } }] },
+      }),
+      CONFIG,
+    );
+    expectFailure(result, "unsupported_price");
+    assertEquals(
+      Object.prototype.hasOwnProperty.call(result, "value"),
+      false,
+      "fail-closed: no partial normalized value",
+    );
+  },
+);

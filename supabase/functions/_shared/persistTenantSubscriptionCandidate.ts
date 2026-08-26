@@ -71,6 +71,7 @@ export type TenantSubscriptionInsertWriteValues = {
   provider_subscription_id: string;
   provider_customer_id: string;
   plan_code: NormalizedStripeSubscription["plan_code"];
+  product_tier: NormalizedStripeSubscription["productTier"];
   status: NormalizedStripeSubscription["status"];
   current_period_start: string | null;
   current_period_end: string | null;
@@ -84,6 +85,7 @@ export type TenantSubscriptionUpdateWriteValues = {
   provider_subscription_id: string;
   provider_customer_id: string;
   plan_code: NormalizedStripeSubscription["plan_code"];
+  product_tier: NormalizedStripeSubscription["productTier"];
   status: NormalizedStripeSubscription["status"];
   current_period_start: string | null;
   current_period_end: string | null;
@@ -177,6 +179,7 @@ function snapshotWriteFields(snapshot: NormalizedStripeSubscription) {
     provider_subscription_id: snapshot.provider_subscription_id,
     provider_customer_id: snapshot.provider_customer_id,
     plan_code: snapshot.plan_code,
+    product_tier: snapshot.productTier,
     status: snapshot.status,
     current_period_start: snapshot.current_period_start,
     current_period_end: snapshot.current_period_end,

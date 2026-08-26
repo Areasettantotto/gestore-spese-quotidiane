@@ -37,6 +37,7 @@ const SNAPSHOT: NormalizedStripeSubscription = {
   provider_subscription_id: SUB_ID,
   provider_customer_id: CUSTOMER_ID,
   plan_code: "paid",
+  productTier: "pro",
   status: "active",
   current_period_start: "2023-11-14T22:01:40.000Z",
   current_period_end: "2023-12-14T22:01:40.000Z",
@@ -49,13 +50,16 @@ const FORBIDDEN_WRITE_KEYS = [
   "processed_at",
   "tier",
   "interval",
+  "productTier",
   "metadata",
+  "commercial_access_source",
 ] as const;
 
 const EXPECTED_SNAPSHOT_FIELDS = {
   provider_subscription_id: SUB_ID,
   provider_customer_id: CUSTOMER_ID,
   plan_code: "paid",
+  product_tier: "pro",
   status: "active",
   current_period_start: "2023-11-14T22:01:40.000Z",
   current_period_end: "2023-12-14T22:01:40.000Z",
@@ -626,16 +630,26 @@ Deno.test("11. write payload never includes revision/processed_at/tier/interval/
   const updateValues = updateCalls[0]?.values ?? {};
   assertNoForbiddenKeys(insertValues);
   assertNoForbiddenKeys(updateValues);
+  assertEquals(
+    insertValues.product_tier,
+    "pro",
+    "INSERT persists product_tier from snapshot",
+  );
+  assertEquals(
+    updateValues.product_tier,
+    "pro",
+    "UPDATE persists product_tier from snapshot",
+  );
   for (const key of FORBIDDEN_WRITE_KEYS) {
     assertEquals(
-      JSON.stringify(insertValues).includes(key),
+      JSON.stringify(insertValues).includes(`"${key}":`),
       false,
-      `INSERT serialized payload must not mention ${key}`,
+      `INSERT serialized payload must not mention JSON key ${key}`,
     );
     assertEquals(
-      JSON.stringify(updateValues).includes(key),
+      JSON.stringify(updateValues).includes(`"${key}":`),
       false,
-      `UPDATE serialized payload must not mention ${key}`,
+      `UPDATE serialized payload must not mention JSON key ${key}`,
     );
   }
 });
@@ -696,3 +710,40 @@ Deno.test("UPDATE 23505 is persistence_failed, not insert_conflict", async () =>
     "no raw leak",
   );
 });
+
+Deno.test(
+  "BILLING-57: INSERT writes product_tier from snapshot.productTier; plan_code paid; no interval",
+  async () => {
+    const calls: FakeCall[] = [];
+    const client = createFakeClient(confirmedRow(), calls);
+    const snapshot: NormalizedStripeSubscription = {
+      ...SNAPSHOT,
+      productTier: "base",
+    };
+
+    const result = await persistTenantSubscriptionCandidate({
+      ...baseParams(client, { kind: "insert" }),
+      snapshot,
+    });
+
+    expectSuccess(result, "inserted");
+    const call = calls[0];
+    assert(call !== undefined && call.method === "insert", "INSERT");
+    assertEquals(call.values.product_tier, "base", "product_tier from snapshot");
+    assertEquals(call.values.plan_code, "paid", "plan_code stays paid");
+    assertEquals(
+      call.values.product_tier === call.values.plan_code,
+      false,
+      "product_tier is not derived from plan_code",
+    );
+    assert(
+      !Object.prototype.hasOwnProperty.call(call.values, "interval"),
+      "interval must not be persisted",
+    );
+    assert(
+      !Object.prototype.hasOwnProperty.call(call.values, "productTier"),
+      "camelCase productTier must map to product_tier",
+    );
+    assertNoForbiddenKeys(call.values);
+  },
+);

@@ -5,6 +5,7 @@
  * Does not resolve tenants, touch W_sub, or derive Snapshot(S).
  */
 
+import type { ProductTier } from "./resolveEffectiveAccess.ts";
 import {
   type KnownStripePrice,
   resolveKnownStripePrice,
@@ -27,6 +28,8 @@ export type NormalizedStripeSubscription = {
   provider_subscription_id: string;
   provider_customer_id: string;
   plan_code: NormalizedStripeSubscriptionPlanCode;
+  /** Catalog ProductTier. Distinct from plan_code; never derived from it. */
+  productTier: ProductTier;
   status: SupportedStripeSubscriptionStatus;
   current_period_start: string | null;
   current_period_end: string | null;
@@ -353,6 +356,7 @@ export function normalizeStripeSubscription(
       provider_subscription_id: providerSubscriptionId,
       provider_customer_id: providerCustomerId,
       plan_code: planResult.plan_code,
+      productTier: knownPriceResult.value.tier,
       status,
       current_period_start: periodStart.value,
       current_period_end: periodEnd.value,
