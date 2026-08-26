@@ -1,5 +1,6 @@
 /**
- * Deno tests for resolveStripePriceCatalogFromConfig (BILLING-29).
+ * Deno tests for resolveStripePriceCatalogFromConfig
+ * (BILLING-29 / BILLING-59).
  *
  * Run:
  *   deno test --no-lock --cached-only --no-prompt \
@@ -21,6 +22,9 @@ declare const Deno: {
 };
 
 const PRICE_PRO_MONTHLY = "price_test_pro_monthly";
+const PRICE_BASE_MONTHLY = "price_test_base_monthly";
+const PRICE_BASE_ANNUAL = "price_test_base_annual";
+const PRICE_PRO_ANNUAL = "price_test_pro_annual";
 
 function assert(condition: boolean, message: string): void {
   if (!condition) {
@@ -187,5 +191,275 @@ Deno.test("14. success never returns an empty catalog", () => {
     result.catalog.length,
     1,
     "current catalog has exactly one slot",
+  );
+});
+
+function fourSlotParams() {
+  return {
+    baseMonthlyPriceId: PRICE_BASE_MONTHLY,
+    baseAnnualPriceId: PRICE_BASE_ANNUAL,
+    proMonthlyPriceId: PRICE_PRO_MONTHLY,
+    proAnnualPriceId: PRICE_PRO_ANNUAL,
+  };
+}
+
+function findByAxes(
+  catalog: readonly KnownStripePrice[],
+  tier: KnownStripePrice["tier"],
+  interval: KnownStripePrice["interval"],
+): KnownStripePrice | undefined {
+  return catalog.find((entry) =>
+    entry.tier === tier && entry.interval === interval
+  );
+}
+
+Deno.test("15. legacy singleton Pro Monthly is unchanged", () => {
+  const result = resolveStripePriceCatalogFromConfig({
+    proMonthlyPriceId: PRICE_PRO_MONTHLY,
+  });
+
+  expectSuccess(result);
+  assertEquals(result.catalog, [
+    {
+      priceId: PRICE_PRO_MONTHLY,
+      tier: "pro",
+      interval: "monthly",
+    },
+  ], "legacy singleton catalog");
+});
+
+Deno.test("16. four valid inputs → catalog of four distinct entries", () => {
+  const result = resolveStripePriceCatalogFromConfig(fourSlotParams());
+
+  expectSuccess(result);
+  assertEquals(result.catalog.length, 4, "catalog length");
+  const priceIds = result.catalog.map((entry) => entry.priceId);
+  assertEquals(new Set(priceIds).size, 4, "four distinct Price IDs");
+});
+
+Deno.test("17. Base Monthly maps to tier base / interval monthly", () => {
+  const result = resolveStripePriceCatalogFromConfig(fourSlotParams());
+
+  expectSuccess(result);
+  const entry = findByAxes(result.catalog, "base", "monthly");
+  assert(entry !== undefined, "Base Monthly entry must exist");
+  assertEquals(entry?.tier, "base", "tier");
+  assertEquals(entry?.interval, "monthly", "interval");
+});
+
+Deno.test("18. Base Annual maps to tier base / interval annual", () => {
+  const result = resolveStripePriceCatalogFromConfig(fourSlotParams());
+
+  expectSuccess(result);
+  const entry = findByAxes(result.catalog, "base", "annual");
+  assert(entry !== undefined, "Base Annual entry must exist");
+  assertEquals(entry?.tier, "base", "tier");
+  assertEquals(entry?.interval, "annual", "interval");
+});
+
+Deno.test("19. Pro Monthly maps to tier pro / interval monthly", () => {
+  const result = resolveStripePriceCatalogFromConfig(fourSlotParams());
+
+  expectSuccess(result);
+  const entry = findByAxes(result.catalog, "pro", "monthly");
+  assert(entry !== undefined, "Pro Monthly entry must exist");
+  assertEquals(entry?.tier, "pro", "tier");
+  assertEquals(entry?.interval, "monthly", "interval");
+});
+
+Deno.test("20. Pro Annual maps to tier pro / interval annual", () => {
+  const result = resolveStripePriceCatalogFromConfig(fourSlotParams());
+
+  expectSuccess(result);
+  const entry = findByAxes(result.catalog, "pro", "annual");
+  assert(entry !== undefined, "Pro Annual entry must exist");
+  assertEquals(entry?.tier, "pro", "tier");
+  assertEquals(entry?.interval, "annual", "interval");
+});
+
+Deno.test("21. returned Price IDs are exactly the caller-supplied values", () => {
+  const params = fourSlotParams();
+  const result = resolveStripePriceCatalogFromConfig(params);
+
+  expectSuccess(result);
+  assertEquals(
+    findByAxes(result.catalog, "base", "monthly")?.priceId,
+    params.baseMonthlyPriceId,
+    "Base Monthly Price ID",
+  );
+  assertEquals(
+    findByAxes(result.catalog, "base", "annual")?.priceId,
+    params.baseAnnualPriceId,
+    "Base Annual Price ID",
+  );
+  assertEquals(
+    findByAxes(result.catalog, "pro", "monthly")?.priceId,
+    params.proMonthlyPriceId,
+    "Pro Monthly Price ID",
+  );
+  assertEquals(
+    findByAxes(result.catalog, "pro", "annual")?.priceId,
+    params.proAnnualPriceId,
+    "Pro Annual Price ID",
+  );
+  assert(
+    findByAxes(result.catalog, "base", "monthly")?.priceId ===
+      params.baseMonthlyPriceId,
+    "Base Monthly identity must match input (no canonicalization)",
+  );
+  assert(
+    findByAxes(result.catalog, "pro", "annual")?.priceId ===
+      params.proAnnualPriceId,
+    "Pro Annual identity must match input (no canonicalization)",
+  );
+});
+
+Deno.test("22. no Price ID is constructed — only caller-supplied values appear", () => {
+  const params = {
+    baseMonthlyPriceId: "caller_supplied_base_monthly",
+    baseAnnualPriceId: "caller_supplied_base_annual",
+    proMonthlyPriceId: "caller_supplied_pro_monthly",
+    proAnnualPriceId: "caller_supplied_pro_annual",
+  };
+  const result = resolveStripePriceCatalogFromConfig(params);
+
+  expectSuccess(result);
+  const returned = result.catalog.map((entry) => entry.priceId).sort();
+  const supplied = [
+    params.baseMonthlyPriceId,
+    params.baseAnnualPriceId,
+    params.proMonthlyPriceId,
+    params.proAnnualPriceId,
+  ].sort();
+  assertEquals(returned, supplied, "catalog Price IDs equal caller inputs");
+  for (const entry of result.catalog) {
+    assert(
+      supplied.includes(entry.priceId),
+      `unexpected constructed Price ID: ${entry.priceId}`,
+    );
+  }
+});
+
+Deno.test("23. config without new inputs → historical singleton", () => {
+  const result = resolveStripePriceCatalogFromConfig({
+    proMonthlyPriceId: PRICE_PRO_MONTHLY,
+  });
+
+  expectSuccess(result);
+  assertEquals(result.catalog.length, 1, "singleton length");
+  assertEquals(result.catalog[0]?.priceId, PRICE_PRO_MONTHLY, "priceId");
+  assertEquals(result.catalog[0]?.tier, "pro", "tier");
+  assertEquals(result.catalog[0]?.interval, "monthly", "interval");
+  assert(
+    findByAxes(result.catalog, "base", "monthly") === undefined,
+    "Base Monthly must be absent when not supplied",
+  );
+  assert(
+    findByAxes(result.catalog, "base", "annual") === undefined,
+    "Base Annual must be absent when not supplied",
+  );
+  assert(
+    findByAxes(result.catalog, "pro", "annual") === undefined,
+    "Pro Annual must be absent when not supplied",
+  );
+});
+
+Deno.test("24. invalid optional input → failure with no partial catalog", () => {
+  expectFailure(
+    resolveStripePriceCatalogFromConfig({
+      proMonthlyPriceId: PRICE_PRO_MONTHLY,
+      baseMonthlyPriceId: ` ${PRICE_BASE_MONTHLY}`,
+    }),
+    "invalid_base_monthly_price_id",
+  );
+  expectFailure(
+    resolveStripePriceCatalogFromConfig({
+      proMonthlyPriceId: PRICE_PRO_MONTHLY,
+      baseAnnualPriceId: "",
+    }),
+    "invalid_base_annual_price_id",
+  );
+  expectFailure(
+    resolveStripePriceCatalogFromConfig({
+      proMonthlyPriceId: PRICE_PRO_MONTHLY,
+      proAnnualPriceId: null,
+    }),
+    "invalid_pro_annual_price_id",
+  );
+});
+
+Deno.test("25. no fallback between slots — missing optional slots stay absent", () => {
+  const result = resolveStripePriceCatalogFromConfig({
+    proMonthlyPriceId: PRICE_PRO_MONTHLY,
+    baseAnnualPriceId: PRICE_BASE_ANNUAL,
+  });
+
+  expectSuccess(result);
+  assertEquals(result.catalog.length, 2, "only configured slots");
+  assertEquals(
+    findByAxes(result.catalog, "pro", "monthly")?.priceId,
+    PRICE_PRO_MONTHLY,
+    "Pro Monthly",
+  );
+  assertEquals(
+    findByAxes(result.catalog, "base", "annual")?.priceId,
+    PRICE_BASE_ANNUAL,
+    "Base Annual",
+  );
+  assert(
+    findByAxes(result.catalog, "base", "monthly") === undefined,
+    "must not fill Base Monthly from another slot",
+  );
+  assert(
+    findByAxes(result.catalog, "pro", "annual") === undefined,
+    "must not fill Pro Annual from another slot",
+  );
+});
+
+Deno.test("26. builder is a pure function of caller params — no env/runtime", () => {
+  const params = fourSlotParams();
+  const first = resolveStripePriceCatalogFromConfig(params);
+  const second = resolveStripePriceCatalogFromConfig(params);
+
+  expectSuccess(first);
+  expectSuccess(second);
+  assertEquals(first, second, "same params must yield the same catalog");
+  assertEquals(
+    first.catalog.map((entry) => entry.priceId).sort(),
+    [
+      PRICE_BASE_MONTHLY,
+      PRICE_BASE_ANNUAL,
+      PRICE_PRO_MONTHLY,
+      PRICE_PRO_ANNUAL,
+    ].sort(),
+    "catalog is fully determined by caller-supplied Price IDs",
+  );
+});
+
+Deno.test("27. partial config: Pro Monthly + one new slot → only those entries", () => {
+  const result = resolveStripePriceCatalogFromConfig({
+    proMonthlyPriceId: PRICE_PRO_MONTHLY,
+    baseMonthlyPriceId: PRICE_BASE_MONTHLY,
+  });
+
+  expectSuccess(result);
+  assertEquals(result.catalog.length, 2, "two configured slots");
+  assertEquals(
+    findByAxes(result.catalog, "base", "monthly")?.priceId,
+    PRICE_BASE_MONTHLY,
+    "Base Monthly",
+  );
+  assertEquals(
+    findByAxes(result.catalog, "pro", "monthly")?.priceId,
+    PRICE_PRO_MONTHLY,
+    "Pro Monthly",
+  );
+  assert(
+    findByAxes(result.catalog, "base", "annual") === undefined,
+    "unconfigured Base Annual must be absent",
+  );
+  assert(
+    findByAxes(result.catalog, "pro", "annual") === undefined,
+    "unconfigured Pro Annual must be absent",
   );
 });
