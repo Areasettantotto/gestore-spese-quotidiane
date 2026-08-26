@@ -1,17 +1,29 @@
 /**
- * Pure known Stripe price catalog resolvers (BILLING-27 / BILLING-32).
+ * Pure known Stripe price catalog resolvers (BILLING-27 / BILLING-32 / BILLING-58).
  *
  * - resolveKnownStripePrice: exact Price ID + catalog → descriptor
- * - resolveKnownStripePriceForSelection: tier + interval + catalog → descriptor
+ * - resolveKnownStripePriceForSelection: tier + interval, or a canonical
+ *   commercial slot, + catalog → descriptor
  *
  * Does NOT read Deno.env, construct Stripe, call the network, import
  * checkout/webhook, normalize subscriptions, or produce entitlements.
  * The catalog source is the caller's responsibility.
+ * Canonical slots never invent Price IDs or fall back across tier/interval.
  */
 
 import type { ProductTier } from "./resolveEffectiveAccess.ts";
 
 export type BillingInterval = "monthly" | "annual";
+
+/**
+ * Canonical commercial slots. Not plan_code, not HTTP aliases, not Price IDs.
+ * Historical checkout alias `pro` is not a selector slot.
+ */
+export type CommercialPriceSelection =
+  | "base_monthly"
+  | "base_annual"
+  | "pro_monthly"
+  | "pro_annual";
 
 export type KnownStripePrice = {
   readonly priceId: string;
@@ -34,11 +46,16 @@ export type ResolveKnownStripePriceResult =
   | { ok: true; value: KnownStripePrice }
   | { ok: false; reason: ResolveKnownStripePriceFailureReason };
 
-export type ResolveKnownStripePriceForSelectionParams = {
-  readonly tier: ProductTier;
-  readonly interval: BillingInterval;
-  readonly catalog: readonly KnownStripePrice[];
-};
+export type ResolveKnownStripePriceForSelectionParams =
+  | {
+    readonly tier: ProductTier;
+    readonly interval: BillingInterval;
+    readonly catalog: readonly KnownStripePrice[];
+  }
+  | {
+    readonly selection: CommercialPriceSelection;
+    readonly catalog: readonly KnownStripePrice[];
+  };
 
 export type ResolveKnownStripePriceForSelectionFailureReason =
   | "invalid_catalog_entry"
@@ -52,8 +69,43 @@ export type ResolveKnownStripePriceForSelectionResult =
 
 type CatalogValidationFailure = "invalid_catalog_entry" | "duplicate_price_id";
 
+type SelectionAxes = {
+  readonly tier: ProductTier;
+  readonly interval: BillingInterval;
+};
+
 function failWith<R extends string>(reason: R): { ok: false; reason: R } {
   return { ok: false, reason };
+}
+
+/**
+ * Exact ProductTier + BillingInterval for a canonical slot.
+ * Unknown tokens (including historical HTTP alias `pro`) are rejected.
+ */
+function axesForCommercialSelection(
+  selection: string,
+): SelectionAxes | null {
+  switch (selection) {
+    case "base_monthly":
+      return { tier: "base", interval: "monthly" };
+    case "base_annual":
+      return { tier: "base", interval: "annual" };
+    case "pro_monthly":
+      return { tier: "pro", interval: "monthly" };
+    case "pro_annual":
+      return { tier: "pro", interval: "annual" };
+    default:
+      return null;
+  }
+}
+
+function selectionAxesFromParams(
+  params: ResolveKnownStripePriceForSelectionParams,
+): SelectionAxes | null {
+  if ("selection" in params) {
+    return axesForCommercialSelection(params.selection);
+  }
+  return { tier: params.tier, interval: params.interval };
 }
 
 /**
@@ -115,9 +167,11 @@ export function resolveKnownStripePrice(
 }
 
 /**
- * Resolve a commercially typed tier + interval against a known catalog.
- * Fail-closed: an invalid catalog is never partially authoritative, and
- * a unique matching descriptor is required. Does not pick by order.
+ * Resolve a commercially typed selection against a known catalog.
+ * Accepts ProductTier + BillingInterval, or a canonical commercial slot
+ * that maps onto those axes. Fail-closed: an invalid catalog is never
+ * partially authoritative, and a unique matching descriptor is required.
+ * Does not pick by order, invent Price IDs, or fall back across axes.
  */
 export function resolveKnownStripePriceForSelection(
   params: ResolveKnownStripePriceForSelectionParams,
@@ -127,9 +181,14 @@ export function resolveKnownStripePriceForSelection(
     return failWith(catalogFailure);
   }
 
+  const axes = selectionAxesFromParams(params);
+  if (axes === null) {
+    return failWith("unsupported_selection");
+  }
+
   let match: KnownStripePrice | null = null;
   for (const entry of params.catalog) {
-    if (entry.tier !== params.tier || entry.interval !== params.interval) {
+    if (entry.tier !== axes.tier || entry.interval !== axes.interval) {
       continue;
     }
     if (match !== null) {

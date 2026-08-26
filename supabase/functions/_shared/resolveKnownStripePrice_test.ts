@@ -1,6 +1,6 @@
 /**
  * Deno tests for resolveKnownStripePrice (BILLING-27) and
- * resolveKnownStripePriceForSelection (BILLING-32).
+ * resolveKnownStripePriceForSelection (BILLING-32 / BILLING-58).
  *
  * Run:
  *   deno test --no-lock --cached-only --no-prompt \
@@ -13,6 +13,7 @@
 import type { ProductTier } from "./resolveEffectiveAccess.ts";
 import {
   type BillingInterval,
+  type CommercialPriceSelection,
   type KnownStripePrice,
   resolveKnownStripePrice,
   type ResolveKnownStripePriceFailureReason,
@@ -97,6 +98,43 @@ function resolveSelection(
   catalog: readonly KnownStripePrice[],
 ): ResolveKnownStripePriceForSelectionResult {
   return resolveKnownStripePriceForSelection({ tier, interval, catalog });
+}
+
+function resolveCommercialSelection(
+  selection: CommercialPriceSelection,
+  catalog: readonly KnownStripePrice[],
+): ResolveKnownStripePriceForSelectionResult {
+  return resolveKnownStripePriceForSelection({ selection, catalog });
+}
+
+function resolveCommercialSelectionToken(
+  selection: string,
+  catalog: readonly KnownStripePrice[],
+): ResolveKnownStripePriceForSelectionResult {
+  return resolveKnownStripePriceForSelection({
+    selection: selection as CommercialPriceSelection,
+    catalog,
+  });
+}
+
+function fourSlotCatalog(): {
+  catalog: readonly KnownStripePrice[];
+  baseMonthly: KnownStripePrice;
+  baseAnnual: KnownStripePrice;
+  proMonthly: KnownStripePrice;
+  proAnnual: KnownStripePrice;
+} {
+  const baseMonthly = knownPrice(PRICE_BASE_MONTHLY, "base", "monthly");
+  const baseAnnual = knownPrice(PRICE_BASE_ANNUAL, "base", "annual");
+  const proMonthly = knownPrice(PRICE_PRO_MONTHLY, "pro", "monthly");
+  const proAnnual = knownPrice(PRICE_PRO_ANNUAL, "pro", "annual");
+  return {
+    catalog: [proMonthly, baseMonthly, baseAnnual, proAnnual],
+    baseMonthly,
+    baseAnnual,
+    proMonthly,
+    proAnnual,
+  };
 }
 
 function expectSelectionSuccess(
@@ -430,4 +468,108 @@ Deno.test("26. selection: returned descriptor is not mutated", () => {
   );
   assertEquals(JSON.stringify(entry), entrySnapshot, "source descriptor");
   assert(catalog[0] === entry, "catalog entry identity");
+});
+
+Deno.test("27. canonical slot: four-slot catalog, base_monthly → exact Base Monthly", () => {
+  const { catalog, baseMonthly } = fourSlotCatalog();
+  const result = resolveCommercialSelection("base_monthly", catalog);
+
+  expectSelectionSuccess(result);
+  assert(result.value === baseMonthly, "must return the Base Monthly descriptor");
+  assertEquals(result.value.priceId, PRICE_BASE_MONTHLY, "priceId from catalog");
+  assertEquals(result.value.tier, "base", "tier");
+  assertEquals(result.value.interval, "monthly", "interval");
+});
+
+Deno.test("28. canonical slot: four-slot catalog, base_annual → exact Base Annual", () => {
+  const { catalog, baseAnnual } = fourSlotCatalog();
+  const result = resolveCommercialSelection("base_annual", catalog);
+
+  expectSelectionSuccess(result);
+  assert(result.value === baseAnnual, "must return the Base Annual descriptor");
+  assertEquals(result.value.priceId, PRICE_BASE_ANNUAL, "priceId from catalog");
+  assertEquals(result.value.tier, "base", "tier");
+  assertEquals(result.value.interval, "annual", "interval");
+});
+
+Deno.test("29. canonical slot: four-slot catalog, pro_monthly → exact Pro Monthly", () => {
+  const { catalog, proMonthly } = fourSlotCatalog();
+  const result = resolveCommercialSelection("pro_monthly", catalog);
+
+  expectSelectionSuccess(result);
+  assert(result.value === proMonthly, "must return the Pro Monthly descriptor");
+  assertEquals(result.value.priceId, PRICE_PRO_MONTHLY, "priceId from catalog");
+  assertEquals(result.value.tier, "pro", "tier");
+  assertEquals(result.value.interval, "monthly", "interval");
+});
+
+Deno.test("30. canonical slot: four-slot catalog, pro_annual → exact Pro Annual", () => {
+  const { catalog, proAnnual } = fourSlotCatalog();
+  const result = resolveCommercialSelection("pro_annual", catalog);
+
+  expectSelectionSuccess(result);
+  assert(result.value === proAnnual, "must return the Pro Annual descriptor");
+  assertEquals(result.value.priceId, PRICE_PRO_ANNUAL, "priceId from catalog");
+  assertEquals(result.value.tier, "pro", "tier");
+  assertEquals(result.value.interval, "annual", "interval");
+});
+
+Deno.test("31. canonical slot: known slot absent from catalog → unsupported_selection", () => {
+  expectSelectionFailure(
+    resolveCommercialSelection("base_annual", [
+      knownPrice(PRICE_PRO_MONTHLY, "pro", "monthly"),
+      knownPrice(PRICE_BASE_MONTHLY, "base", "monthly"),
+    ]),
+    "unsupported_selection",
+  );
+});
+
+Deno.test("32. canonical slot: no ProductTier fallback (base_monthly vs only Pro Monthly)", () => {
+  const proMonthly = knownPrice(PRICE_PRO_MONTHLY, "pro", "monthly");
+  const result = resolveCommercialSelection("base_monthly", [proMonthly]);
+
+  expectSelectionFailure(result, "unsupported_selection");
+});
+
+Deno.test("33. canonical slot: no interval fallback (pro_annual vs only Pro Monthly)", () => {
+  const proMonthly = knownPrice(PRICE_PRO_MONTHLY, "pro", "monthly");
+  const result = resolveCommercialSelection("pro_annual", [proMonthly]);
+
+  expectSelectionFailure(result, "unsupported_selection");
+});
+
+Deno.test("34. canonical slot: returned priceId is the catalog entry, never constructed", () => {
+  const { catalog, proAnnual } = fourSlotCatalog();
+  const result = resolveCommercialSelection("pro_annual", catalog);
+
+  expectSelectionSuccess(result);
+  assert(result.value === proAnnual, "must preserve catalog descriptor identity");
+  assertEquals(result.value.priceId, proAnnual.priceId, "priceId");
+  assert(
+    result.value.priceId === PRICE_PRO_ANNUAL,
+    "priceId is the fixture catalog value",
+  );
+});
+
+Deno.test("35. canonical slot pro_monthly matches existing axes Pro Monthly behavior", () => {
+  const { catalog, proMonthly } = fourSlotCatalog();
+  const viaSlot = resolveCommercialSelection("pro_monthly", catalog);
+  const viaAxes = resolveSelection("pro", "monthly", catalog);
+
+  expectSelectionSuccess(viaSlot);
+  expectSelectionSuccess(viaAxes);
+  assert(viaSlot.value === proMonthly, "slot path preserves catalog identity");
+  assert(viaAxes.value === proMonthly, "axes path preserves catalog identity");
+  assert(viaSlot.value === viaAxes.value, "slot and axes resolve the same entry");
+  assertEquals(viaSlot.value.priceId, PRICE_PRO_MONTHLY, "priceId");
+});
+
+Deno.test("36. non-canonical tokens are not aliases (pro/base/annual/monthly)", () => {
+  const { catalog } = fourSlotCatalog();
+  for (const token of ["pro", "base", "annual", "monthly"]) {
+    expectSelectionFailure(
+      resolveCommercialSelectionToken(token, catalog),
+      "unsupported_selection",
+    );
+  }
 });
