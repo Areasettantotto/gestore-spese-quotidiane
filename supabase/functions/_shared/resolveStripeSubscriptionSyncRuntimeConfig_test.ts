@@ -1,9 +1,10 @@
 /**
  * Deno tests for resolveStripeSubscriptionSyncRuntimeConfig (BILLING-06 /
- * BILLING-38).
+ * BILLING-38 / BILLING-60).
  *
  * Run:
- *   deno test supabase/functions/_shared/resolveStripeSubscriptionSyncRuntimeConfig_test.ts
+ *   deno test --no-lock --cached-only --no-prompt \
+ *     supabase/functions/_shared/resolveStripeSubscriptionSyncRuntimeConfig_test.ts
  *
  * No network/env/write/run capabilities required.
  * Fixtures are synthetic and clearly fake — not real secrets or env values.
@@ -22,6 +23,10 @@ declare const Deno: {
 
 const VALID_SECRET = "sk_test_fake";
 const VALID_PRICE = "price_fake";
+const PRICE_PRO_MONTHLY = "price_test_pro_monthly";
+const PRICE_BASE_MONTHLY = "price_test_base_monthly";
+const PRICE_BASE_ANNUAL = "price_test_base_annual";
+const PRICE_PRO_ANNUAL = "price_test_pro_annual";
 
 const NON_STRING_VALUES: unknown[] = [
   undefined,
@@ -292,5 +297,352 @@ Deno.test("L. internal whitespace remains accepted (current contract, not a new 
     result.catalog[0]?.priceId,
     price,
     "internal whitespace in price is currently accepted as-is",
+  );
+});
+
+function fourSlotParams() {
+  return {
+    stripeSecretKey: VALID_SECRET,
+    supportedProMonthlyPriceId: PRICE_PRO_MONTHLY,
+    supportedBaseMonthlyPriceId: PRICE_BASE_MONTHLY,
+    supportedBaseAnnualPriceId: PRICE_BASE_ANNUAL,
+    supportedProAnnualPriceId: PRICE_PRO_ANNUAL,
+  };
+}
+
+function findByAxes(
+  catalog: readonly KnownStripePrice[],
+  tier: KnownStripePrice["tier"],
+  interval: KnownStripePrice["interval"],
+): KnownStripePrice | undefined {
+  return catalog.find((entry) =>
+    entry.tier === tier && entry.interval === interval
+  );
+}
+
+function assertSuccessPublicKeys(
+  result: Extract<
+    ResolveStripeSubscriptionSyncRuntimeConfigResult,
+    { ok: true }
+  >,
+): void {
+  assertEquals(
+    Object.keys(result).sort(),
+    ["catalog", "ok", "stripeSecretKey"].sort(),
+    "public success contract exposes only ok+stripeSecretKey+catalog",
+  );
+  assert(
+    !("supportedProMonthlyPriceId" in result),
+    "success must not expose supportedProMonthlyPriceId",
+  );
+  assert(
+    !("supportedBaseMonthlyPriceId" in result),
+    "success must not expose supportedBaseMonthlyPriceId",
+  );
+  assert(
+    !("supportedBaseAnnualPriceId" in result),
+    "success must not expose supportedBaseAnnualPriceId",
+  );
+  assert(
+    !("supportedProAnnualPriceId" in result),
+    "success must not expose supportedProAnnualPriceId",
+  );
+}
+
+Deno.test("M. legacy Pro Monthly singleton is unchanged", () => {
+  const result = resolveStripeSubscriptionSyncRuntimeConfig({
+    stripeSecretKey: VALID_SECRET,
+    supportedProMonthlyPriceId: VALID_PRICE,
+  });
+
+  expectSuccess(result);
+  assertEquals(
+    result,
+    {
+      ok: true,
+      stripeSecretKey: VALID_SECRET,
+      catalog: [
+        {
+          priceId: VALID_PRICE,
+          tier: "pro",
+          interval: "monthly",
+        },
+      ],
+    },
+    "legacy singleton payload",
+  );
+  assertSuccessPublicKeys(result);
+  assertOneEntryProMonthlyCatalog(result.catalog, VALID_PRICE);
+  assert(
+    findByAxes(result.catalog, "base", "monthly") === undefined,
+    "Base Monthly must be absent when not supplied",
+  );
+  assert(
+    findByAxes(result.catalog, "base", "annual") === undefined,
+    "Base Annual must be absent when not supplied",
+  );
+  assert(
+    findByAxes(result.catalog, "pro", "annual") === undefined,
+    "Pro Annual must be absent when not supplied",
+  );
+});
+
+Deno.test("N. four valid Price IDs → success catalog of four entries", () => {
+  const result = resolveStripeSubscriptionSyncRuntimeConfig(fourSlotParams());
+
+  expectSuccess(result);
+  assertEquals(result.stripeSecretKey, VALID_SECRET, "secret");
+  assertEquals(result.catalog.length, 4, "catalog length");
+  const priceIds = result.catalog.map((entry) => entry.priceId);
+  assertEquals(new Set(priceIds).size, 4, "four distinct Price IDs");
+  assertSuccessPublicKeys(result);
+});
+
+Deno.test("O. Base Monthly maps to tier base / interval monthly", () => {
+  const result = resolveStripeSubscriptionSyncRuntimeConfig(fourSlotParams());
+
+  expectSuccess(result);
+  const entry = findByAxes(result.catalog, "base", "monthly");
+  assert(entry !== undefined, "Base Monthly entry must exist");
+  assertEquals(entry?.tier, "base", "tier");
+  assertEquals(entry?.interval, "monthly", "interval");
+});
+
+Deno.test("P. Base Annual maps to tier base / interval annual", () => {
+  const result = resolveStripeSubscriptionSyncRuntimeConfig(fourSlotParams());
+
+  expectSuccess(result);
+  const entry = findByAxes(result.catalog, "base", "annual");
+  assert(entry !== undefined, "Base Annual entry must exist");
+  assertEquals(entry?.tier, "base", "tier");
+  assertEquals(entry?.interval, "annual", "interval");
+});
+
+Deno.test("Q. Pro Monthly maps to tier pro / interval monthly", () => {
+  const result = resolveStripeSubscriptionSyncRuntimeConfig(fourSlotParams());
+
+  expectSuccess(result);
+  const entry = findByAxes(result.catalog, "pro", "monthly");
+  assert(entry !== undefined, "Pro Monthly entry must exist");
+  assertEquals(entry?.tier, "pro", "tier");
+  assertEquals(entry?.interval, "monthly", "interval");
+});
+
+Deno.test("R. Pro Annual maps to tier pro / interval annual", () => {
+  const result = resolveStripeSubscriptionSyncRuntimeConfig(fourSlotParams());
+
+  expectSuccess(result);
+  const entry = findByAxes(result.catalog, "pro", "annual");
+  assert(entry !== undefined, "Pro Annual entry must exist");
+  assertEquals(entry?.tier, "pro", "tier");
+  assertEquals(entry?.interval, "annual", "interval");
+});
+
+Deno.test("S. catalog Price IDs are exactly the caller-supplied values", () => {
+  const params = fourSlotParams();
+  const result = resolveStripeSubscriptionSyncRuntimeConfig(params);
+
+  expectSuccess(result);
+  assertEquals(
+    findByAxes(result.catalog, "base", "monthly")?.priceId,
+    params.supportedBaseMonthlyPriceId,
+    "Base Monthly Price ID",
+  );
+  assertEquals(
+    findByAxes(result.catalog, "base", "annual")?.priceId,
+    params.supportedBaseAnnualPriceId,
+    "Base Annual Price ID",
+  );
+  assertEquals(
+    findByAxes(result.catalog, "pro", "monthly")?.priceId,
+    params.supportedProMonthlyPriceId,
+    "Pro Monthly Price ID",
+  );
+  assertEquals(
+    findByAxes(result.catalog, "pro", "annual")?.priceId,
+    params.supportedProAnnualPriceId,
+    "Pro Annual Price ID",
+  );
+  assert(
+    findByAxes(result.catalog, "base", "monthly")?.priceId ===
+      params.supportedBaseMonthlyPriceId,
+    "Base Monthly identity must match input (no canonicalization)",
+  );
+  assert(
+    findByAxes(result.catalog, "pro", "annual")?.priceId ===
+      params.supportedProAnnualPriceId,
+    "Pro Annual identity must match input (no canonicalization)",
+  );
+  const returned = result.catalog.map((entry) => entry.priceId).sort();
+  const supplied = [
+    params.supportedBaseMonthlyPriceId,
+    params.supportedBaseAnnualPriceId,
+    params.supportedProMonthlyPriceId,
+    params.supportedProAnnualPriceId,
+  ].sort();
+  assertEquals(returned, supplied, "catalog Price IDs equal caller inputs");
+});
+
+Deno.test("T. partial config → only configured slots, no fallback", () => {
+  const result = resolveStripeSubscriptionSyncRuntimeConfig({
+    stripeSecretKey: VALID_SECRET,
+    supportedProMonthlyPriceId: PRICE_PRO_MONTHLY,
+    supportedBaseAnnualPriceId: PRICE_BASE_ANNUAL,
+  });
+
+  expectSuccess(result);
+  assertEquals(result.catalog.length, 2, "only configured slots");
+  assertEquals(
+    findByAxes(result.catalog, "pro", "monthly")?.priceId,
+    PRICE_PRO_MONTHLY,
+    "Pro Monthly",
+  );
+  assertEquals(
+    findByAxes(result.catalog, "base", "annual")?.priceId,
+    PRICE_BASE_ANNUAL,
+    "Base Annual",
+  );
+  assert(
+    findByAxes(result.catalog, "base", "monthly") === undefined,
+    "must not fill Base Monthly from another slot",
+  );
+  assert(
+    findByAxes(result.catalog, "pro", "annual") === undefined,
+    "must not fill Pro Annual from another slot",
+  );
+  assertSuccessPublicKeys(result);
+});
+
+Deno.test("U. invalid optional Base Monthly → invalid_supported_base_monthly_price_id", () => {
+  expectFailure(
+    resolveStripeSubscriptionSyncRuntimeConfig({
+      stripeSecretKey: VALID_SECRET,
+      supportedProMonthlyPriceId: PRICE_PRO_MONTHLY,
+      supportedBaseMonthlyPriceId: ` ${PRICE_BASE_MONTHLY}`,
+    }),
+    "invalid_supported_base_monthly_price_id",
+  );
+  expectFailure(
+    resolveStripeSubscriptionSyncRuntimeConfig({
+      stripeSecretKey: VALID_SECRET,
+      supportedProMonthlyPriceId: PRICE_PRO_MONTHLY,
+      supportedBaseMonthlyPriceId: "",
+    }),
+    "invalid_supported_base_monthly_price_id",
+  );
+  expectFailure(
+    resolveStripeSubscriptionSyncRuntimeConfig({
+      stripeSecretKey: VALID_SECRET,
+      supportedProMonthlyPriceId: PRICE_PRO_MONTHLY,
+      supportedBaseMonthlyPriceId: null,
+    }),
+    "invalid_supported_base_monthly_price_id",
+  );
+});
+
+Deno.test("V. invalid optional Base Annual → invalid_supported_base_annual_price_id", () => {
+  expectFailure(
+    resolveStripeSubscriptionSyncRuntimeConfig({
+      stripeSecretKey: VALID_SECRET,
+      supportedProMonthlyPriceId: PRICE_PRO_MONTHLY,
+      supportedBaseAnnualPriceId: "",
+    }),
+    "invalid_supported_base_annual_price_id",
+  );
+  expectFailure(
+    resolveStripeSubscriptionSyncRuntimeConfig({
+      stripeSecretKey: VALID_SECRET,
+      supportedProMonthlyPriceId: PRICE_PRO_MONTHLY,
+      supportedBaseAnnualPriceId: " ",
+    }),
+    "invalid_supported_base_annual_price_id",
+  );
+  expectFailure(
+    resolveStripeSubscriptionSyncRuntimeConfig({
+      stripeSecretKey: VALID_SECRET,
+      supportedProMonthlyPriceId: PRICE_PRO_MONTHLY,
+      supportedBaseAnnualPriceId: 1,
+    }),
+    "invalid_supported_base_annual_price_id",
+  );
+});
+
+Deno.test("W. invalid optional Pro Annual → invalid_supported_pro_annual_price_id", () => {
+  expectFailure(
+    resolveStripeSubscriptionSyncRuntimeConfig({
+      stripeSecretKey: VALID_SECRET,
+      supportedProMonthlyPriceId: PRICE_PRO_MONTHLY,
+      supportedProAnnualPriceId: null,
+    }),
+    "invalid_supported_pro_annual_price_id",
+  );
+  expectFailure(
+    resolveStripeSubscriptionSyncRuntimeConfig({
+      stripeSecretKey: VALID_SECRET,
+      supportedProMonthlyPriceId: PRICE_PRO_MONTHLY,
+      supportedProAnnualPriceId: `${PRICE_PRO_ANNUAL} `,
+    }),
+    "invalid_supported_pro_annual_price_id",
+  );
+  expectFailure(
+    resolveStripeSubscriptionSyncRuntimeConfig({
+      stripeSecretKey: VALID_SECRET,
+      supportedProMonthlyPriceId: PRICE_PRO_MONTHLY,
+      supportedProAnnualPriceId: ["price"],
+    }),
+    "invalid_supported_pro_annual_price_id",
+  );
+});
+
+Deno.test("X. invalid stripeSecretKey still precedes catalog slot failures", () => {
+  expectFailure(
+    resolveStripeSubscriptionSyncRuntimeConfig({
+      stripeSecretKey: "",
+      supportedProMonthlyPriceId: PRICE_PRO_MONTHLY,
+      supportedBaseMonthlyPriceId: ` ${PRICE_BASE_MONTHLY}`,
+    }),
+    "invalid_stripe_secret_key",
+  );
+  expectFailure(
+    resolveStripeSubscriptionSyncRuntimeConfig({
+      stripeSecretKey: null,
+      supportedProMonthlyPriceId: undefined,
+      supportedProAnnualPriceId: "",
+    }),
+    "invalid_stripe_secret_key",
+  );
+  expectFailure(
+    resolveWith(" sk_test_fake", VALID_PRICE),
+    "invalid_stripe_secret_key",
+  );
+});
+
+Deno.test("Y. runtime config is a pure function of caller params — no env/runtime", () => {
+  const params = fourSlotParams();
+  const first = resolveStripeSubscriptionSyncRuntimeConfig(params);
+  const second = resolveStripeSubscriptionSyncRuntimeConfig(params);
+
+  expectSuccess(first);
+  expectSuccess(second);
+  assertEquals(first, second, "same params must yield the same result");
+  assertEquals(
+    first.catalog.map((entry) => entry.priceId).sort(),
+    [
+      PRICE_BASE_MONTHLY,
+      PRICE_BASE_ANNUAL,
+      PRICE_PRO_MONTHLY,
+      PRICE_PRO_ANNUAL,
+    ].sort(),
+    "catalog is fully determined by caller-supplied Price IDs",
+  );
+  assertEquals(
+    first.catalog.map((entry) => entry.priceId).sort(),
+    [
+      params.supportedBaseMonthlyPriceId,
+      params.supportedBaseAnnualPriceId,
+      params.supportedProMonthlyPriceId,
+      params.supportedProAnnualPriceId,
+    ].sort(),
+    "no constructed or env-sourced Price IDs",
   );
 });
