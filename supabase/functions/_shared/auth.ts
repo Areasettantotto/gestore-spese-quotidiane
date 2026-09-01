@@ -146,3 +146,96 @@ export async function ensureTenantBillingAccess(
 
   return { ok: true, userId: user.userId, role: membership.role };
 }
+
+export type TenantMembershipRole = "admin" | "user" | "billing";
+
+export type TenantMembershipLookupError = {
+  code?: string;
+  message?: string;
+};
+
+export type TenantMembershipLookupResponse = {
+  data: { role?: unknown } | null;
+  error: TenantMembershipLookupError | null;
+};
+
+/**
+ * Structural subset of a user-scoped Supabase client for:
+ *   .from("tenant_memberships").select("role").eq(tenant_id).eq(user_id).maybeSingle()
+ */
+export type TenantMembershipLookupClient = {
+  from: (table: string) => {
+    select: (columns: string) => {
+      eq: (
+        column: string,
+        value: string,
+      ) => {
+        eq: (
+          column: string,
+          value: string,
+        ) => {
+          maybeSingle: () => PromiseLike<TenantMembershipLookupResponse>;
+        };
+      };
+    };
+  };
+};
+
+export type EnsureTenantMembershipDependencies = {
+  getAuthenticatedUser: (
+    auth: AuthContext,
+  ) => Promise<{ userId: string } | Response>;
+  createUserScopedClient: (
+    token: string,
+  ) => TenantMembershipLookupClient | Response;
+};
+
+function isTenantMembershipRole(value: unknown): value is TenantMembershipRole {
+  return value === "admin" || value === "user" || value === "billing";
+}
+
+export async function ensureTenantMembership(
+  auth: AuthContext,
+  tenantId: string,
+  dependencies?: EnsureTenantMembershipDependencies,
+): Promise<{ ok: true; userId: string; role: TenantMembershipRole } | Response> {
+  const authenticateUser = dependencies?.getAuthenticatedUser ?? getAuthenticatedUser;
+  const createScopedClient = dependencies?.createUserScopedClient ??
+    ((token: string) =>
+      createUserScopedClient(token) as TenantMembershipLookupClient | Response);
+
+  const user = await authenticateUser(auth);
+  if (user instanceof Response) {
+    return user;
+  }
+
+  const supabase = createScopedClient(auth.token);
+  if (supabase instanceof Response) {
+    return supabase;
+  }
+
+  try {
+    const { data: membership, error } = await supabase
+      .from("tenant_memberships")
+      .select("role")
+      .eq("tenant_id", tenantId)
+      .eq("user_id", user.userId)
+      .maybeSingle();
+
+    if (error) {
+      return forbidden();
+    }
+
+    if (!membership) {
+      return forbidden();
+    }
+
+    if (!isTenantMembershipRole(membership.role)) {
+      return forbidden();
+    }
+
+    return { ok: true, userId: user.userId, role: membership.role };
+  } catch {
+    return forbidden();
+  }
+}
