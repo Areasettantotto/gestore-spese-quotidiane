@@ -7,7 +7,8 @@ export type ErrorCode =
   | "UNPROCESSABLE_ENTITY"
   | "SERVICE_UNAVAILABLE"
   | "UPSTREAM_ERROR"
-  | "NOT_IMPLEMENTED";
+  | "NOT_IMPLEMENTED"
+  | "INTERNAL_ERROR";
 
 type JsonHeadersInit = Record<string, string>;
 
@@ -150,5 +151,19 @@ export function upstreamError(
       },
     },
     502,
+  );
+}
+
+export function internalError(
+  message = "Internal server error.",
+): Response {
+  return jsonResponse(
+    {
+      error: {
+        code: "INTERNAL_ERROR",
+        message,
+      },
+    },
+    500,
   );
 }
