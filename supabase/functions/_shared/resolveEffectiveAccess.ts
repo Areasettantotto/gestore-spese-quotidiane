@@ -4,10 +4,17 @@
  * Resolves Product Tier, Access Mode, normalized entitlement candidates,
  * static Base/Pro capabilities, and explicit Demo/Internal mode profiles.
  *
+ * Demo/Internal profiles are caller-supplied for domain testability.
+ * Production callers should inject canonicalModeCapabilityProfiles.
+ * Profile consumption is fail-closed (BILLING-105): missing, empty,
+ * unknown, or duplicate capabilities never grant.
+ *
  * Does NOT parse Stripe, SQL, ISO dates, Price IDs, grants, or metadata.
  * No DB, Supabase, Deno.env, Stripe SDK, HTTP, or wall-clock.
  * Deterministic: same input → same output.
  */
+
+import { readModeCapabilityProfile } from "./modeCapabilityProfiles.ts";
 
 export type ProductTier = "base" | "pro";
 
@@ -80,7 +87,7 @@ export type EffectiveAccess =
   }
   | {
     status: "invalid";
-    mode: "standard";
+    mode: AccessMode;
     tier: null;
     source: null;
     expiresAt: null;
@@ -180,6 +187,28 @@ function grantedModeProfile(
   };
 }
 
+function invalidModeProfile(mode: "demo" | "internal"): EffectiveAccess {
+  return {
+    status: "invalid",
+    mode,
+    tier: null,
+    source: null,
+    expiresAt: null,
+    capabilities: EMPTY_CAPABILITIES,
+  };
+}
+
+function resolveModeProfileAccess(
+  mode: "demo" | "internal",
+  modeProfiles: ModeCapabilityProfiles,
+): EffectiveAccess {
+  const profile = readModeCapabilityProfile(modeProfiles, mode);
+  if (profile.ok === false) {
+    return invalidModeProfile(mode);
+  }
+  return grantedModeProfile(mode, profile.capabilities);
+}
+
 /**
  * Fail-closed per source: unknown kind or unknown tier cannot grant.
  * Does not inspect ISO / Date / provider fields.
@@ -249,15 +278,17 @@ function resolveStandardAccess(
 /**
  * Resolve effective access from already-normalized domain input.
  * Demo/Internal mode profiles precede commercial Stripe/complimentary slots.
+ * Invalid Demo/Internal profiles fail closed and do not fall back to
+ * persisted entitlement, ProductTier, or the canonical source.
  */
 export function resolveEffectiveAccess(
   params: ResolveEffectiveAccessParams,
 ): EffectiveAccess {
   if (params.mode === "demo") {
-    return grantedModeProfile("demo", params.modeProfiles.demo);
+    return resolveModeProfileAccess("demo", params.modeProfiles);
   }
   if (params.mode === "internal") {
-    return grantedModeProfile("internal", params.modeProfiles.internal);
+    return resolveModeProfileAccess("internal", params.modeProfiles);
   }
   return resolveStandardAccess(
     params.stripeCandidate,
