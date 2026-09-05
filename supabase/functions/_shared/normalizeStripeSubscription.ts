@@ -7,6 +7,7 @@
 
 import type { ProductTier } from "./resolveEffectiveAccess.ts";
 import {
+  type CommercialPriceSelection,
   type KnownStripePrice,
   resolveKnownStripePrice,
 } from "./resolveKnownStripePrice.ts";
@@ -90,11 +91,24 @@ const SUPPORTED_STATUSES = new Set<SupportedStripeSubscriptionStatus>([
 ]);
 
 /**
- * Canonical product metadata written on Subscription by create-checkout-session.
- * Request alias `pro` is normalized to `pro_monthly` only at the checkout input boundary;
- * this mapper accepts the exact canonical metadata value and never invents aliases.
+ * Canonical commercial slots written on Subscription by create-checkout-session.
+ * Request alias `pro` is normalized to `pro_monthly` only at the checkout input
+ * boundary; this mapper accepts the exact four-slot metadata values and never
+ * invents aliases. Present metadata is a commercial-selection signal only:
+ * persisted plan_code stays `paid`, and ProductTier stays catalog-authoritative.
  */
-const CANONICAL_PRODUCT_PLAN_METADATA = "pro_monthly";
+function isCanonicalCommercialPlanMetadata(
+  value: string,
+): value is CommercialPriceSelection {
+  return value === "base_monthly" || value === "base_annual" ||
+    value === "pro_monthly" || value === "pro_annual";
+}
+
+function commercialSlotForKnownPrice(
+  price: KnownStripePrice,
+): CommercialPriceSelection {
+  return `${price.tier}_${price.interval}`;
+}
 
 const MAX_SAFE_UNIX_SECONDS = Math.floor(Number.MAX_SAFE_INTEGER / 1000);
 
@@ -235,6 +249,7 @@ function readMetadataPlanCode(
 
 function normalizePlanCodeFromSignals(
   metadata: unknown,
+  knownPrice: KnownStripePrice,
 ):
   | { ok: true; plan_code: NormalizedStripeSubscriptionPlanCode }
   | { ok: false; reason: NormalizeStripeSubscriptionFailureReason } {
@@ -247,10 +262,16 @@ function normalizePlanCodeFromSignals(
     return { ok: true, plan_code: "paid" };
   }
 
-  // Present metadata must be exactly the canonical checkout product code.
+  // Present metadata must be an exact four-slot checkout value.
   // Alias `pro`, casing/whitespace variants, paid/free/trial/demo/internal,
   // and unknown values all fail closed.
-  if (metaPlan.value !== CANONICAL_PRODUCT_PLAN_METADATA) {
+  if (!isCanonicalCommercialPlanMetadata(metaPlan.value)) {
+    return { ok: false, reason: "incompatible_plan_metadata" };
+  }
+
+  // Metadata is a commercial-selection signal, not ProductTier authority.
+  // When both Price and metadata are present, they must name the same slot.
+  if (metaPlan.value !== commercialSlotForKnownPrice(knownPrice)) {
     return { ok: false, reason: "incompatible_plan_metadata" };
   }
 
@@ -305,7 +326,10 @@ export function normalizeStripeSubscription(
     }
   }
 
-  const planResult = normalizePlanCodeFromSignals(subscription.metadata);
+  const planResult = normalizePlanCodeFromSignals(
+    subscription.metadata,
+    knownPriceResult.value,
+  );
   if (planResult.ok === false) {
     return planResult;
   }

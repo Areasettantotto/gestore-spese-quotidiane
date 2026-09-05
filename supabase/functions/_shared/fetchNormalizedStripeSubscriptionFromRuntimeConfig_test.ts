@@ -596,6 +596,13 @@ Deno.test(
   },
 );
 
+function metadataSlotForFourSlotPriceId(priceId: string): string {
+  if (priceId === PRICE_BASE_MONTHLY) return "base_monthly";
+  if (priceId === PRICE_BASE_ANNUAL) return "base_annual";
+  if (priceId === PRICE_PRO_ANNUAL) return "pro_annual";
+  return "pro_monthly";
+}
+
 async function assertSlotIdentityPreserved(
   priceId: string,
   expectedTier: KnownStripePrice["tier"],
@@ -605,6 +612,7 @@ async function assertSlotIdentityPreserved(
   const fake = createFakeRetrieveClientFactory({
     kind: "resolve",
     subscription: validRawSubscription({
+      metadata: { plan_code: metadataSlotForFourSlotPriceId(priceId) },
       items: { data: [{ price: { id: priceId } }] },
     }),
   });
@@ -679,6 +687,7 @@ Deno.test(
     const fake = createFakeRetrieveClientFactory({
       kind: "resolve",
       subscription: validRawSubscription({
+        metadata: { plan_code: "base_annual" },
         items: { data: [{ price: { id: PRICE_BASE_ANNUAL } }] },
       }),
     });
@@ -857,6 +866,7 @@ Deno.test(
     const fourSlotFake = createFakeRetrieveClientFactory({
       kind: "resolve",
       subscription: validRawSubscription({
+        metadata: { plan_code: "base_monthly" },
         items: { data: [{ price: { id: PRICE_BASE_MONTHLY } }] },
       }),
     });
@@ -896,12 +906,14 @@ Deno.test(
     const firstFake = createFakeRetrieveClientFactory({
       kind: "resolve",
       subscription: validRawSubscription({
+        metadata: { plan_code: "pro_annual" },
         items: { data: [{ price: { id: PRICE_PRO_ANNUAL } }] },
       }),
     });
     const secondFake = createFakeRetrieveClientFactory({
       kind: "resolve",
       subscription: validRawSubscription({
+        metadata: { plan_code: "pro_annual" },
         items: { data: [{ price: { id: PRICE_PRO_ANNUAL } }] },
       }),
     });

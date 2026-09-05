@@ -23,6 +23,9 @@ declare const Deno: {
 };
 
 const SUPPORTED_PRICE = "price_test_pro_monthly_supported";
+const PRICE_BASE_MONTHLY = "price_test_base_monthly";
+const PRICE_BASE_ANNUAL = "price_test_base_annual";
+const PRICE_PRO_ANNUAL = "price_test_pro_annual";
 
 const PRO_MONTHLY_ENTRY: KnownStripePrice = {
   priceId: SUPPORTED_PRICE,
@@ -30,9 +33,59 @@ const PRO_MONTHLY_ENTRY: KnownStripePrice = {
   interval: "monthly",
 };
 
+const BASE_MONTHLY_ENTRY: KnownStripePrice = {
+  priceId: PRICE_BASE_MONTHLY,
+  tier: "base",
+  interval: "monthly",
+};
+
+const BASE_ANNUAL_ENTRY: KnownStripePrice = {
+  priceId: PRICE_BASE_ANNUAL,
+  tier: "base",
+  interval: "annual",
+};
+
+const PRO_ANNUAL_ENTRY: KnownStripePrice = {
+  priceId: PRICE_PRO_ANNUAL,
+  tier: "pro",
+  interval: "annual",
+};
+
 const CONFIG: NormalizeStripeSubscriptionConfig = {
   catalog: [PRO_MONTHLY_ENTRY],
 };
+
+const FOUR_SLOT_CONFIG: NormalizeStripeSubscriptionConfig = {
+  catalog: [
+    BASE_MONTHLY_ENTRY,
+    BASE_ANNUAL_ENTRY,
+    PRO_MONTHLY_ENTRY,
+    PRO_ANNUAL_ENTRY,
+  ],
+};
+
+const FOUR_SLOT_CASES = [
+  {
+    slot: "base_monthly",
+    priceId: PRICE_BASE_MONTHLY,
+    productTier: "base",
+  },
+  {
+    slot: "base_annual",
+    priceId: PRICE_BASE_ANNUAL,
+    productTier: "base",
+  },
+  {
+    slot: "pro_monthly",
+    priceId: SUPPORTED_PRICE,
+    productTier: "pro",
+  },
+  {
+    slot: "pro_annual",
+    priceId: PRICE_PRO_ANNUAL,
+    productTier: "pro",
+  },
+] as const;
 
 function assert(condition: boolean, message: string): void {
   if (!condition) {
@@ -742,7 +795,7 @@ Deno.test(
     };
     const result = normalizeStripeSubscription(
       baseSubscription({
-        metadata: { plan_code: "pro_monthly" },
+        metadata: { plan_code: "base_monthly" },
         items: {
           data: [{ price: { id: "price_test_base_monthly_synthetic" } }],
         },
@@ -759,6 +812,156 @@ Deno.test(
       result.value.plan_code,
       "paid",
       "plan_code stays paid; not remapped to base",
+    );
+    assertEquals(
+      (result.value.productTier as string) === "base_monthly",
+      false,
+      "ProductTier is not the metadata slot string",
+    );
+  },
+);
+
+Deno.test(
+  "BILLING-108: four-slot checkout metadata + matching Price → paid + catalog ProductTier",
+  () => {
+    for (const fixture of FOUR_SLOT_CASES) {
+      const result = normalizeStripeSubscription(
+        baseSubscription({
+          metadata: { plan_code: fixture.slot },
+          items: { data: [{ price: { id: fixture.priceId } }] },
+        }),
+        FOUR_SLOT_CONFIG,
+      );
+      expectSuccess(result);
+      assertEquals(
+        result.value.plan_code,
+        "paid",
+        `${fixture.slot} persists plan_code paid`,
+      );
+      assertEquals(
+        result.value.productTier,
+        fixture.productTier,
+        `${fixture.slot} ProductTier from catalog Price`,
+      );
+      assertEquals(
+        (result.value.productTier as string) === fixture.slot,
+        false,
+        `${fixture.slot} must not become ProductTier`,
+      );
+      assertEquals(
+        Object.prototype.hasOwnProperty.call(result.value, "interval"),
+        false,
+        `${fixture.slot} interval is not persisted`,
+      );
+    }
+  },
+);
+
+Deno.test(
+  "BILLING-108: absent metadata remains compatible for all four catalog Prices",
+  () => {
+    for (const fixture of FOUR_SLOT_CASES) {
+      const result = normalizeStripeSubscription(
+        baseSubscription({
+          metadata: undefined,
+          items: { data: [{ price: { id: fixture.priceId } }] },
+        }),
+        FOUR_SLOT_CONFIG,
+      );
+      expectSuccess(result);
+      assertEquals(
+        result.value.plan_code,
+        "paid",
+        `${fixture.slot} absent metadata → paid`,
+      );
+      assertEquals(
+        result.value.productTier,
+        fixture.productTier,
+        `${fixture.slot} ProductTier still from Price`,
+      );
+    }
+  },
+);
+
+Deno.test(
+  "BILLING-108: known four-slot metadata incompatible with Price → fail-closed",
+  () => {
+    expectFailure(
+      normalizeStripeSubscription(
+        baseSubscription({
+          metadata: { plan_code: "pro_annual" },
+          items: { data: [{ price: { id: PRICE_BASE_MONTHLY } }] },
+        }),
+        FOUR_SLOT_CONFIG,
+      ),
+      "incompatible_plan_metadata",
+    );
+    expectFailure(
+      normalizeStripeSubscription(
+        baseSubscription({
+          metadata: { plan_code: "base_monthly" },
+          items: { data: [{ price: { id: SUPPORTED_PRICE } }] },
+        }),
+        FOUR_SLOT_CONFIG,
+      ),
+      "incompatible_plan_metadata",
+    );
+    expectFailure(
+      normalizeStripeSubscription(
+        baseSubscription({
+          metadata: { plan_code: "pro_monthly" },
+          items: { data: [{ price: { id: PRICE_BASE_MONTHLY } }] },
+        }),
+        FOUR_SLOT_CONFIG,
+      ),
+      "incompatible_plan_metadata",
+    );
+  },
+);
+
+Deno.test(
+  "BILLING-108: unknown / invented metadata remains fail-closed",
+  () => {
+    for (const planCode of [
+      "enterprise",
+      "pro_weekly",
+      "base",
+      "monthly",
+      "pro_monthly_plus",
+    ]) {
+      expectFailure(
+        normalizeStripeSubscription(
+          baseSubscription({ metadata: { plan_code: planCode } }),
+          CONFIG,
+        ),
+        "incompatible_plan_metadata",
+      );
+    }
+  },
+);
+
+Deno.test(
+  "BILLING-108: ProductTier stays catalog-authoritative, not parsed from metadata",
+  () => {
+    const result = normalizeStripeSubscription(
+      baseSubscription({
+        metadata: { plan_code: "base_annual" },
+        items: { data: [{ price: { id: PRICE_BASE_ANNUAL } }] },
+      }),
+      FOUR_SLOT_CONFIG,
+    );
+    expectSuccess(result);
+    assertEquals(result.value.productTier, "base", "tier from Price catalog");
+    assertEquals(result.value.plan_code, "paid", "plan_code stays paid");
+    assertEquals(
+      BASE_ANNUAL_ENTRY.tier,
+      result.value.productTier,
+      "productTier equals KnownStripePrice.tier",
+    );
+    assertEquals(
+      (result.value.productTier as string) === "base_annual",
+      false,
+      "metadata slot is not ProductTier",
     );
   },
 );
