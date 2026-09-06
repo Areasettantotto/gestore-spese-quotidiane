@@ -6,7 +6,48 @@ type AccountMenuProps = {
   onSignOut: () => void;
 };
 
+type ResolvedAvatar = {
+  email: string;
+  url: string;
+};
+
 const NEUTRAL_INITIALS = '?';
+const GRAVATAR_SIZE = 80;
+
+function normalizeEmail(email: string | null): string | null {
+  if (!email) return null;
+  const normalized = email.trim().toLowerCase();
+  return normalized || null;
+}
+
+function toHexLowercase(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let hex = '';
+  for (const byte of bytes) {
+    hex += byte.toString(16).padStart(2, '0');
+  }
+  return hex;
+}
+
+async function sha256Hex(value: string): Promise<string | null> {
+  const subtle = globalThis.crypto?.subtle;
+  if (!subtle) return null;
+
+  const normalized = normalizeEmail(value);
+  if (!normalized) return null;
+
+  try {
+    const bytes = new TextEncoder().encode(normalized);
+    const digest = await subtle.digest('SHA-256', bytes);
+    return toHexLowercase(digest);
+  } catch {
+    return null;
+  }
+}
+
+function gravatarAvatarUrl(hash: string): string {
+  return `https://gravatar.com/avatar/${hash}?s=${GRAVATAR_SIZE}&r=g&d=404`;
+}
 
 function initialsFromEmail(email: string | null): string {
   if (!email) return NEUTRAL_INITIALS;
@@ -31,10 +72,39 @@ function initialsFromEmail(email: string | null): string {
 
 export function AccountMenu({ userEmail, onSignOut }: AccountMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [resolvedAvatar, setResolvedAvatar] = useState<ResolvedAvatar | null>(null);
+  const [avatarFailed, setAvatarFailed] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuId = useId();
   const initials = initialsFromEmail(userEmail);
+  const normalizedEmail = normalizeEmail(userEmail);
+  const showAvatar =
+    resolvedAvatar !== null &&
+    !avatarFailed &&
+    normalizedEmail !== null &&
+    resolvedAvatar.email === normalizedEmail;
+
+  useEffect(() => {
+    let cancelled = false;
+    setResolvedAvatar(null);
+    setAvatarFailed(false);
+
+    if (!normalizedEmail) return;
+
+    void (async () => {
+      const hash = await sha256Hex(normalizedEmail);
+      if (cancelled || !hash) return;
+      setResolvedAvatar({
+        email: normalizedEmail,
+        url: gravatarAvatarUrl(hash),
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [normalizedEmail]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -78,7 +148,18 @@ export function AccountMenu({ userEmail, onSignOut }: AccountMenuProps) {
         onClick={() => setIsOpen((current) => !current)}
         className="flex h-10 w-10 items-center justify-center rounded-full bg-zinc-100 text-sm font-semibold text-zinc-700 transition-colors hover:bg-zinc-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:ring-offset-2"
       >
-        <span aria-hidden="true">{initials}</span>
+        {showAvatar && resolvedAvatar ? (
+          <img
+            src={resolvedAvatar.url}
+            alt=""
+            aria-hidden="true"
+            referrerPolicy="no-referrer"
+            onError={() => setAvatarFailed(true)}
+            className="h-10 w-10 rounded-full object-cover"
+          />
+        ) : (
+          <span aria-hidden="true">{initials}</span>
+        )}
       </button>
 
       {isOpen ? (
