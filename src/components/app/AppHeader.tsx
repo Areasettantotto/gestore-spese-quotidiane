@@ -6,6 +6,7 @@ type AppHeaderProps = {
   userEmail: string | null;
   addDisabled: boolean;
   accessBadgeLabel: string | null;
+  accountTier: 'base' | 'pro' | null;
   billingNotice: string | null;
   showBillingPlaceholder: boolean;
   onAdd: () => void;
@@ -17,6 +18,7 @@ export function AppHeader({
   userEmail,
   addDisabled,
   accessBadgeLabel,
+  accountTier,
   billingNotice,
   showBillingPlaceholder,
   onAdd,
@@ -55,7 +57,7 @@ export function AppHeader({
             <span>Aggiungi</span>
           </button>
 
-          <AccountMenu userEmail={userEmail} onSignOut={onSignOut} />
+          <AccountMenu userEmail={userEmail} accountTier={accountTier} onSignOut={onSignOut} />
         </div>
       </div>
     </header>

@@ -1,9 +1,17 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { LogOut } from 'lucide-react';
 
+type AccountTier = 'base' | 'pro';
+
 type AccountMenuProps = {
   userEmail: string | null;
+  accountTier: AccountTier | null;
   onSignOut: () => void;
+};
+
+const ACCOUNT_TIER_BORDER: Record<AccountTier, string> = {
+  base: 'border-zinc-300',
+  pro: 'border-emerald-500',
 };
 
 type ResolvedAvatar = {
@@ -70,7 +78,7 @@ function initialsFromEmail(email: string | null): string {
   return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
 }
 
-export function AccountMenu({ userEmail, onSignOut }: AccountMenuProps) {
+export function AccountMenu({ userEmail, accountTier, onSignOut }: AccountMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [resolvedAvatar, setResolvedAvatar] = useState<ResolvedAvatar | null>(null);
   const [avatarFailed, setAvatarFailed] = useState(false);
@@ -146,7 +154,9 @@ export function AccountMenu({ userEmail, onSignOut }: AccountMenuProps) {
         aria-expanded={isOpen}
         aria-controls={menuId}
         onClick={() => setIsOpen((current) => !current)}
-        className="flex h-10 w-10 items-center justify-center rounded-full bg-zinc-100 text-sm font-semibold text-zinc-700 transition-colors hover:bg-zinc-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:ring-offset-2"
+        className={`flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border-2 bg-zinc-100 text-sm font-semibold text-zinc-700 transition-colors hover:bg-zinc-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:ring-offset-2 ${
+          accountTier ? ACCOUNT_TIER_BORDER[accountTier] : 'border-transparent'
+        }`}
       >
         {showAvatar && resolvedAvatar ? (
           <img
@@ -155,7 +165,7 @@ export function AccountMenu({ userEmail, onSignOut }: AccountMenuProps) {
             aria-hidden="true"
             referrerPolicy="no-referrer"
             onError={() => setAvatarFailed(true)}
-            className="h-10 w-10 rounded-full object-cover"
+            className="h-full w-full rounded-full object-cover"
           />
         ) : (
           <span aria-hidden="true">{initials}</span>

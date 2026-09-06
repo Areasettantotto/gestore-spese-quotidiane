@@ -27,23 +27,31 @@ import { AllExpensesView } from '@/src/components/app/AllExpensesView';
 
 type ViewMode = 'home' | 'all';
 
-function accessBadgeLabelFromEffectiveAccess(access: UseEffectiveAccessResult): string | null {
+type AccessPresentation = {
+  badgeLabel: string | null;
+  accountTier: 'base' | 'pro' | null;
+};
+
+function accessPresentationFromEffectiveAccess(access: UseEffectiveAccessResult): AccessPresentation {
   if (access.status !== 'success') {
-    return null;
+    return { badgeLabel: null, accountTier: null };
   }
 
   const payload = access.data;
   if (payload.status !== 'granted') {
-    return null;
+    return { badgeLabel: null, accountTier: null };
   }
 
   switch (payload.mode) {
     case 'standard':
-      return payload.tier === 'base' ? 'Piano Base' : 'Piano Pro';
+      return {
+        badgeLabel: payload.tier === 'base' ? 'Piano Base' : 'Piano Pro',
+        accountTier: payload.tier,
+      };
     case 'internal':
-      return 'Admin';
+      return { badgeLabel: 'Admin', accountTier: null };
     case 'demo':
-      return 'Demo';
+      return { badgeLabel: 'Demo', accountTier: null };
   }
 }
 
@@ -67,7 +75,7 @@ export default function App() {
     activeTenantId,
     isTenantContextLoading,
   });
-  const accessBadgeLabel = accessBadgeLabelFromEffectiveAccess(effectiveAccess);
+  const { badgeLabel: accessBadgeLabel, accountTier } = accessPresentationFromEffectiveAccess(effectiveAccess);
 
   const { billingNotice, showCtaPlaceholder } = useBillingSnapshot({
     activeTenantPlan,
@@ -243,6 +251,7 @@ export default function App() {
         userEmail={userEmail}
         addDisabled={!userId || !activeTenantId || isTenantContextLoading}
         accessBadgeLabel={accessBadgeLabel}
+        accountTier={accountTier}
         billingNotice={userId && activeTenantId ? billingNotice : null}
         showBillingPlaceholder={userId && activeTenantId ? showCtaPlaceholder : false}
         onAdd={() => setIsAdding(true)}
