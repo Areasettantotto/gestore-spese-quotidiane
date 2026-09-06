@@ -12,6 +12,10 @@ import { supabase } from './lib/supabaseClient';
 import { useExpenses } from '@/src/features/expenses/useExpenses';
 import { useActiveTenant } from '@/src/features/tenancy/useActiveTenant';
 import { useBillingSnapshot } from '@/src/features/billing/useBillingSnapshot';
+import {
+  useEffectiveAccess,
+  type UseEffectiveAccessResult,
+} from '@/src/features/billing/useEffectiveAccess';
 import { AppHeader } from '@/src/components/app/AppHeader';
 import { WorkspaceLoadingState } from '@/src/components/app/WorkspaceLoadingState';
 import { WorkspaceUnavailableState } from '@/src/components/app/WorkspaceUnavailableState';
@@ -22,6 +26,26 @@ import { ExpenseForm } from '@/src/components/app/ExpenseForm';
 import { AllExpensesView } from '@/src/components/app/AllExpensesView';
 
 type ViewMode = 'home' | 'all';
+
+function accessBadgeLabelFromEffectiveAccess(access: UseEffectiveAccessResult): string | null {
+  if (access.status !== 'success') {
+    return null;
+  }
+
+  const payload = access.data;
+  if (payload.status !== 'granted') {
+    return null;
+  }
+
+  switch (payload.mode) {
+    case 'standard':
+      return payload.tier === 'base' ? 'Piano Base' : 'Piano Pro';
+    case 'internal':
+      return 'Admin';
+    case 'demo':
+      return 'Demo';
+  }
+}
 
 export default function App() {
   const [view, setView] = useState<ViewMode>('home');
@@ -39,7 +63,13 @@ export default function App() {
     resetTenantState,
   } = useActiveTenant();
 
-  const { planBadgeLabel, billingNotice, showCtaPlaceholder } = useBillingSnapshot({
+  const effectiveAccess = useEffectiveAccess({
+    activeTenantId,
+    isTenantContextLoading,
+  });
+  const accessBadgeLabel = accessBadgeLabelFromEffectiveAccess(effectiveAccess);
+
+  const { billingNotice, showCtaPlaceholder } = useBillingSnapshot({
     activeTenantPlan,
     membershipRole,
   });
@@ -212,7 +242,7 @@ export default function App() {
         dateLabel={format(new Date(), 'EEEE d MMMM', { locale: it })}
         userEmail={userEmail}
         addDisabled={!userId || !activeTenantId || isTenantContextLoading}
-        billingPlanLabel={userId && activeTenantId ? planBadgeLabel : null}
+        accessBadgeLabel={accessBadgeLabel}
         billingNotice={userId && activeTenantId ? billingNotice : null}
         showBillingPlaceholder={userId && activeTenantId ? showCtaPlaceholder : false}
         onAdd={() => setIsAdding(true)}
