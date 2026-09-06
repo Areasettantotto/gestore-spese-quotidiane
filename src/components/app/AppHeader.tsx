@@ -1,4 +1,5 @@
-import { Plus, LogOut } from 'lucide-react';
+import { Plus } from 'lucide-react';
+import { AccountMenu } from '@/src/components/app/AccountMenu';
 
 type AppHeaderProps = {
   dateLabel: string;
@@ -39,7 +40,7 @@ export function AppHeader({
             </div>
           ) : null}
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex shrink-0 items-center gap-3 sm:gap-4">
           <button
             type="button"
             onClick={onAdd}
@@ -50,17 +51,7 @@ export function AppHeader({
             <span>Aggiungi</span>
           </button>
 
-          <div className="flex items-center gap-3">
-            {userEmail ? <span className="text-sm text-zinc-600 hidden sm:inline">{userEmail}</span> : null}
-            <button
-              onClick={onSignOut}
-              aria-label="Logout"
-              title="Logout"
-              className="p-2 rounded-full hover:bg-zinc-100 transition-colors"
-            >
-              <LogOut size={18} />
-            </button>
-          </div>
+          <AccountMenu userEmail={userEmail} onSignOut={onSignOut} />
         </div>
       </div>
     </header>
