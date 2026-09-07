@@ -17,6 +17,7 @@ import {
   type UseEffectiveAccessResult,
 } from '@/src/features/billing/useEffectiveAccess';
 import { AppHeader } from '@/src/components/app/AppHeader';
+import { BottomNavigation } from '@/src/components/app/BottomNavigation';
 import { WorkspaceLoadingState } from '@/src/components/app/WorkspaceLoadingState';
 import { WorkspaceUnavailableState } from '@/src/components/app/WorkspaceUnavailableState';
 import { ExpensesLoadErrorBanner } from '@/src/components/app/ExpensesLoadErrorBanner';
@@ -245,7 +246,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen pb-20">
+    <div className="min-h-screen pb-28 sm:pb-20">
       <AppHeader
         dateLabel={format(new Date(), 'EEEE d MMMM', { locale: it })}
         userEmail={userEmail}
@@ -292,6 +293,16 @@ export default function App() {
           />
         ) : null}
       </main>
+
+      {!isAdding ? (
+        <BottomNavigation
+          activeView={view}
+          onHome={() => setView('home')}
+          onExpenses={() => setView('all')}
+          onAdd={() => setIsAdding(true)}
+          addDisabled={!userId || !activeTenantId || isTenantContextLoading}
+        />
+      ) : null}
 
       <ExpenseForm
         isOpen={isAdding}
