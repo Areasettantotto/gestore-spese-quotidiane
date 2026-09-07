@@ -14,7 +14,7 @@ type JsonHeadersInit = Record<string, string>;
 
 const CORS_HEADERS: JsonHeadersInit = {
   "access-control-allow-origin": "*",
-  "access-control-allow-headers": "authorization, content-type",
+  "access-control-allow-headers": "authorization, x-client-info, apikey, content-type",
   "access-control-allow-methods": "POST, OPTIONS",
   "content-type": "application/json; charset=utf-8",
 };

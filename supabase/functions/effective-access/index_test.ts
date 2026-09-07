@@ -157,6 +157,23 @@ async function readBody(res: Response): Promise<unknown> {
   return await res.json();
 }
 
+const REQUIRED_ALLOW_HEADERS = [
+  "authorization",
+  "content-type",
+  "apikey",
+  "x-client-info",
+] as const;
+
+function parseAllowHeaders(value: string | null): string[] {
+  if (value === null) {
+    return [];
+  }
+  return value
+    .split(",")
+    .map((header) => header.trim().toLowerCase())
+    .filter((header) => header.length > 0);
+}
+
 function assertCors(res: Response, messagePrefix: string): void {
   assertEquals(
     res.headers.get("access-control-allow-origin"),
@@ -164,14 +181,21 @@ function assertCors(res: Response, messagePrefix: string): void {
     `${messagePrefix} CORS origin`,
   );
   assertEquals(
-    res.headers.get("access-control-allow-headers"),
-    "authorization, content-type",
-    `${messagePrefix} CORS headers`,
-  );
-  assertEquals(
     res.headers.get("access-control-allow-methods"),
     "POST, OPTIONS",
     `${messagePrefix} CORS methods`,
+  );
+  const allowHeaders = [
+    ...new Set(parseAllowHeaders(res.headers.get("access-control-allow-headers"))),
+  ].sort();
+  assert(
+    !allowHeaders.includes("*"),
+    `${messagePrefix} CORS headers must not use a wildcard`,
+  );
+  assertEquals(
+    allowHeaders,
+    [...REQUIRED_ALLOW_HEADERS].sort(),
+    `${messagePrefix} CORS headers`,
   );
 }
 

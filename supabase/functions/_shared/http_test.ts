@@ -9,6 +9,7 @@
 
 import {
   internalError,
+  jsonResponse,
   unauthorized,
   upstreamError,
 } from "./http.ts";
@@ -37,13 +38,42 @@ function assertEquals(
   }
 }
 
-const EXPECTED_CORS = {
-  "access-control-allow-origin": "*",
-  "access-control-allow-headers": "authorization, content-type",
-  "access-control-allow-methods": "POST, OPTIONS",
-} as const;
+const EXPECTED_CORS_ORIGIN = "*";
+const EXPECTED_CORS_METHODS = "POST, OPTIONS";
+const REQUIRED_ALLOW_HEADERS = [
+  "authorization",
+  "content-type",
+  "apikey",
+  "x-client-info",
+] as const;
 
 const CONTENT_TYPE = "application/json; charset=utf-8";
+
+function parseAllowHeaders(value: string | null): string[] {
+  if (value === null) {
+    return [];
+  }
+  return value
+    .split(",")
+    .map((header) => header.trim().toLowerCase())
+    .filter((header) => header.length > 0);
+}
+
+function assertAllowHeaders(response: Response, messagePrefix: string): void {
+  const actual = parseAllowHeaders(
+    response.headers.get("access-control-allow-headers"),
+  );
+  const unique = [...new Set(actual)].sort();
+  assert(
+    !unique.includes("*"),
+    `${messagePrefix} access-control-allow-headers must not use a wildcard`,
+  );
+  assertEquals(
+    unique,
+    [...REQUIRED_ALLOW_HEADERS].sort(),
+    `${messagePrefix} access-control-allow-headers set`,
+  );
+}
 
 const LEAK_TOKENS = [
   "reason",
@@ -67,13 +97,17 @@ function assertSharedHeaders(response: Response, messagePrefix: string): void {
     CONTENT_TYPE,
     `${messagePrefix} content-type`,
   );
-  for (const [name, value] of Object.entries(EXPECTED_CORS)) {
-    assertEquals(
-      response.headers.get(name),
-      value,
-      `${messagePrefix} ${name}`,
-    );
-  }
+  assertEquals(
+    response.headers.get("access-control-allow-origin"),
+    EXPECTED_CORS_ORIGIN,
+    `${messagePrefix} access-control-allow-origin`,
+  );
+  assertEquals(
+    response.headers.get("access-control-allow-methods"),
+    EXPECTED_CORS_METHODS,
+    `${messagePrefix} access-control-allow-methods`,
+  );
+  assertAllowHeaders(response, messagePrefix);
 }
 
 Deno.test("A–E. internalError() default is opaque HTTP 500 Pattern-A", async () => {
@@ -150,5 +184,43 @@ Deno.test("G. unauthorized() contract unchanged after INTERNAL_ERROR", async () 
       },
     },
     "unauthorized envelope unchanged",
+  );
+});
+
+Deno.test("CORS. OPTIONS-shaped jsonResponse keeps origin, methods, body, and supabase-js headers", async () => {
+  const response = jsonResponse({ data: { ok: true } }, 200);
+  assertEquals(response.status, 200, "OPTIONS-shaped status 200");
+  assertEquals(
+    response.headers.get("access-control-allow-origin"),
+    EXPECTED_CORS_ORIGIN,
+    "CORS origin unchanged",
+  );
+  assertEquals(
+    response.headers.get("access-control-allow-methods"),
+    EXPECTED_CORS_METHODS,
+    "CORS methods unchanged",
+  );
+  assertAllowHeaders(response, "OPTIONS-shaped jsonResponse");
+  assertEquals(
+    await readBody(response),
+    { data: { ok: true } },
+    "OPTIONS-shaped body unchanged",
+  );
+});
+
+Deno.test("CORS. supabase-js browser headers are allowed without a wildcard", () => {
+  const response = jsonResponse({ data: { ok: true } }, 200);
+  const allowHeaders = parseAllowHeaders(
+    response.headers.get("access-control-allow-headers"),
+  );
+  for (const header of REQUIRED_ALLOW_HEADERS) {
+    assert(
+      allowHeaders.includes(header),
+      `allow-headers must contain ${header}`,
+    );
+  }
+  assert(
+    !allowHeaders.includes("*"),
+    "allow-headers must not contain a wildcard",
   );
 });
