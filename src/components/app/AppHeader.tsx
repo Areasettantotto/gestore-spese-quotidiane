@@ -1,17 +1,28 @@
-import { Plus } from 'lucide-react';
+import { Badge, Crown, Gift, Plus } from 'lucide-react';
 import { AccountMenu } from '@/src/components/app/AccountMenu';
+
+type AccountTier = 'base' | 'pro';
 
 type AppHeaderProps = {
   dateLabel: string;
   userEmail: string | null;
   addDisabled: boolean;
   accessBadgeLabel: string | null;
-  accountTier: 'base' | 'pro' | null;
-  billingNotice: string | null;
-  showBillingPlaceholder: boolean;
+  accountTier: AccountTier | null;
+  giftLabel: 'Gift' | null;
   onAdd: () => void;
   onSignOut: () => void;
 };
+
+function PlanTierIcon({ accountTier }: { accountTier: AccountTier | null }) {
+  if (accountTier === 'pro') {
+    return <Crown size={12} className="shrink-0" aria-hidden="true" />;
+  }
+  if (accountTier === 'base') {
+    return <Badge size={12} className="shrink-0" aria-hidden="true" />;
+  }
+  return null;
+}
 
 export function AppHeader({
   dateLabel,
@@ -19,12 +30,11 @@ export function AppHeader({
   addDisabled,
   accessBadgeLabel,
   accountTier,
-  billingNotice,
-  showBillingPlaceholder,
+  giftLabel,
   onAdd,
   onSignOut,
 }: AppHeaderProps) {
-  const showAccessRow = Boolean(accessBadgeLabel) || Boolean(billingNotice) || showBillingPlaceholder;
+  const showAccessRow = Boolean(accessBadgeLabel) || Boolean(giftLabel);
 
   return (
     <header className="bg-white border-b border-zinc-200 sticky top-0 z-10">
@@ -35,13 +45,16 @@ export function AppHeader({
           {showAccessRow ? (
             <div className="mt-2 flex flex-wrap items-center gap-2">
               {accessBadgeLabel ? (
-                <span className="inline-flex items-center rounded-full border border-zinc-200 bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700">
+                <span className="inline-flex items-center gap-1 rounded-full border border-zinc-200 bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700">
+                  <PlanTierIcon accountTier={accountTier} />
                   {accessBadgeLabel}
                 </span>
               ) : null}
-              {billingNotice ? <span className="text-xs text-zinc-500">{billingNotice}</span> : null}
-              {showBillingPlaceholder ? (
-                <span className="text-xs text-zinc-400 cursor-not-allowed">CTA billing disponibile a breve</span>
+              {giftLabel ? (
+                <span className="inline-flex items-center gap-1 rounded-full border border-zinc-200 bg-white px-2 py-0.5 text-xs font-medium text-zinc-500">
+                  <Gift size={12} className="shrink-0" aria-hidden="true" />
+                  {giftLabel}
+                </span>
               ) : null}
             </div>
           ) : null}

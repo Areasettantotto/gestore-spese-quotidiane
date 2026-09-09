@@ -11,7 +11,6 @@ import { type Expense, type Category, CATEGORIES, type Accompagnatore } from './
 import { supabase } from './lib/supabaseClient';
 import { useExpenses } from '@/src/features/expenses/useExpenses';
 import { useActiveTenant } from '@/src/features/tenancy/useActiveTenant';
-import { useBillingSnapshot } from '@/src/features/billing/useBillingSnapshot';
 import {
   useEffectiveAccess,
   type UseEffectiveAccessResult,
@@ -31,16 +30,17 @@ type ViewMode = 'home' | 'all';
 type AccessPresentation = {
   badgeLabel: string | null;
   accountTier: 'base' | 'pro' | null;
+  giftLabel: 'Gift' | null;
 };
 
 function accessPresentationFromEffectiveAccess(access: UseEffectiveAccessResult): AccessPresentation {
   if (access.status !== 'success') {
-    return { badgeLabel: null, accountTier: null };
+    return { badgeLabel: null, accountTier: null, giftLabel: null };
   }
 
   const payload = access.data;
   if (payload.status !== 'granted') {
-    return { badgeLabel: null, accountTier: null };
+    return { badgeLabel: null, accountTier: null, giftLabel: null };
   }
 
   switch (payload.mode) {
@@ -48,11 +48,12 @@ function accessPresentationFromEffectiveAccess(access: UseEffectiveAccessResult)
       return {
         badgeLabel: payload.tier === 'base' ? 'Piano Base' : 'Piano Pro',
         accountTier: payload.tier,
+        giftLabel: payload.source === 'complimentary' ? 'Gift' : null,
       };
     case 'internal':
-      return { badgeLabel: 'Admin', accountTier: null };
+      return { badgeLabel: 'Admin', accountTier: null, giftLabel: null };
     case 'demo':
-      return { badgeLabel: 'Demo', accountTier: null };
+      return { badgeLabel: 'Demo', accountTier: null, giftLabel: null };
   }
 }
 
@@ -63,8 +64,6 @@ export default function App() {
 
   const {
     activeTenantId,
-    membershipRole,
-    activeTenantPlan,
     isTenantContextLoading,
     tenantError,
     loadDefaultTenant,
@@ -76,12 +75,7 @@ export default function App() {
     activeTenantId,
     isTenantContextLoading,
   });
-  const { badgeLabel: accessBadgeLabel, accountTier } = accessPresentationFromEffectiveAccess(effectiveAccess);
-
-  const { billingNotice, showCtaPlaceholder } = useBillingSnapshot({
-    activeTenantPlan,
-    membershipRole,
-  });
+  const { badgeLabel: accessBadgeLabel, accountTier, giftLabel } = accessPresentationFromEffectiveAccess(effectiveAccess);
 
   const { expenses, expensesLoadError, saveExpense, deleteExpense } = useExpenses({
     userId,
@@ -253,8 +247,7 @@ export default function App() {
         addDisabled={!userId || !activeTenantId || isTenantContextLoading}
         accessBadgeLabel={accessBadgeLabel}
         accountTier={accountTier}
-        billingNotice={userId && activeTenantId ? billingNotice : null}
-        showBillingPlaceholder={userId && activeTenantId ? showCtaPlaceholder : false}
+        giftLabel={giftLabel}
         onAdd={() => setIsAdding(true)}
         onSignOut={handleSignOut}
       />
