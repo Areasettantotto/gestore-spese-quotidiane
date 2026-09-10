@@ -13,6 +13,9 @@ import {
   CartesianGrid,
 } from 'recharts';
 
+import { BudgetCard, type BudgetCardModel } from '@/src/components/app/home/BudgetCard';
+import type { CurrentMonthlyBudgetStatus } from '@/src/features/budgets/useCurrentMonthlyBudget';
+
 const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#64748b'];
 
 type CategoryDataPoint = {
@@ -30,9 +33,14 @@ type SummaryCardsProps = {
   currentPeriodTotal: number;
   previousComparablePeriodTotal: number;
   previousMonthName: string;
+  currentMonthName: string;
+  budgetStatus: CurrentMonthlyBudgetStatus;
+  budgetAmount: number | null;
+  budgetCanWrite: boolean;
   categoryData: CategoryDataPoint[];
   dailyData: DailyDataPoint[];
   onOpenCurrentMonthExpenses: () => void;
+  onSaveBudget: (amount: number) => Promise<{ ok: true } | { ok: false; message: string }>;
 };
 
 function formatEuroAmount(value: number): string {
@@ -107,25 +115,41 @@ function MonthToDateHint({
   );
 }
 
+function toBudgetCardModel(
+  status: CurrentMonthlyBudgetStatus,
+  amount: number | null,
+  canWrite: boolean
+): BudgetCardModel | null {
+  if (status === 'hidden') return null;
+  return { status, amount, canWrite };
+}
+
 export function SummaryCards({
   totalMonthly,
   currentPeriodTotal,
   previousComparablePeriodTotal,
   previousMonthName,
+  currentMonthName,
+  budgetStatus,
+  budgetAmount,
+  budgetCanWrite,
   categoryData,
   dailyData,
   onOpenCurrentMonthExpenses,
+  onSaveBudget,
 }: SummaryCardsProps) {
+  const budgetModel = toBudgetCardModel(budgetStatus, budgetAmount, budgetCanWrite);
+
   return (
     <>
-      <div className="grid grid-cols-1 items-start md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:items-stretch">
         <motion.button
           type="button"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           onClick={onOpenCurrentMonthExpenses}
           aria-label="Apri le spese del mese corrente"
-          className="card w-full p-4 text-left hover:border-emerald-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40"
+          className="card h-full min-w-0 w-full p-4 text-left hover:border-emerald-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40"
         >
           <div className="flex items-start gap-3">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
@@ -147,6 +171,15 @@ export function SummaryCards({
             </div>
           </div>
         </motion.button>
+
+        {budgetModel ? (
+          <BudgetCard
+            model={budgetModel}
+            spent={totalMonthly}
+            monthName={currentMonthName}
+            onSave={onSaveBudget}
+          />
+        ) : null}
 
         <motion.div
           initial={{ opacity: 0, y: 20 }}

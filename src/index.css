@@ -28,3 +28,27 @@ body {
   }
 }
 
+@keyframes budget-progress-zebra {
+  to {
+    background-position: 12px 0;
+  }
+}
+
+.budget-progress-zebra {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    rgba(255, 255, 255, 0.16) 0,
+    rgba(255, 255, 255, 0.16) 5px,
+    transparent 5px,
+    transparent 10px
+  );
+  background-size: 12px 12px;
+  animation: budget-progress-zebra 1.8s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .budget-progress-zebra {
+    animation: none;
+  }
+}
+

@@ -11,6 +11,8 @@ import { type Expense, type Category, CATEGORIES, type Accompagnatore } from './
 import { supabase } from './lib/supabaseClient';
 import { useExpenses } from '@/src/features/expenses/useExpenses';
 import { useActiveTenant } from '@/src/features/tenancy/useActiveTenant';
+import { currentCalendarMonthStartDate } from '@/src/features/budgets/monthlyBudgets';
+import { useCurrentMonthlyBudget } from '@/src/features/budgets/useCurrentMonthlyBudget';
 import {
   useEffectiveAccess,
   type UseEffectiveAccessResult,
@@ -77,6 +79,7 @@ export default function App() {
 
   const {
     activeTenantId,
+    membershipRole,
     isTenantContextLoading,
     tenantError,
     loadDefaultTenant,
@@ -95,6 +98,17 @@ export default function App() {
     activeTenantId,
     isTenantContextLoading,
     resolveTenantForMutation,
+  });
+
+  const now = new Date();
+  const periodMonth = currentCalendarMonthStartDate(now);
+  const currentMonthName = format(now, 'MMMM', { locale: it });
+
+  const currentMonthlyBudget = useCurrentMonthlyBudget({
+    activeTenantId,
+    isTenantContextLoading,
+    membershipRole,
+    periodMonth,
   });
 
   const [filterMonth, setFilterMonth] = useState(format(new Date(), 'yyyy-MM'));
@@ -154,22 +168,22 @@ export default function App() {
     resetTenantState();
   };
 
-  const { totalMonthly, currentPeriodTotal, previousComparablePeriodTotal, previousMonthName } = useMemo(() => {
-    const now = new Date();
-    const currentStart = format(startOfMonth(now), 'yyyy-MM-dd');
-    const currentEnd = format(now, 'yyyy-MM-dd');
-    const currentMonthEnd = format(endOfMonth(now), 'yyyy-MM-dd');
-    const previousStartDate = startOfMonth(subMonths(now, 1));
-    const previousStart = format(previousStartDate, 'yyyy-MM-dd');
-    const previousEnd = format(comparablePreviousPeriodEnd(now), 'yyyy-MM-dd');
+  const { totalMonthly, currentPeriodTotal, previousComparablePeriodTotal, previousMonthName } =
+    useMemo(() => {
+      const currentStart = periodMonth;
+      const currentEnd = format(now, 'yyyy-MM-dd');
+      const currentMonthEnd = format(endOfMonth(now), 'yyyy-MM-dd');
+      const previousStartDate = startOfMonth(subMonths(now, 1));
+      const previousStart = format(previousStartDate, 'yyyy-MM-dd');
+      const previousEnd = format(comparablePreviousPeriodEnd(now), 'yyyy-MM-dd');
 
-    return {
-      totalMonthly: sumExpensesBetween(expenses, currentStart, currentMonthEnd),
-      currentPeriodTotal: sumExpensesBetween(expenses, currentStart, currentEnd),
-      previousComparablePeriodTotal: sumExpensesBetween(expenses, previousStart, previousEnd),
-      previousMonthName: format(previousStartDate, 'MMMM', { locale: it }),
-    };
-  }, [expenses]);
+      return {
+        totalMonthly: sumExpensesBetween(expenses, currentStart, currentMonthEnd),
+        currentPeriodTotal: sumExpensesBetween(expenses, currentStart, currentEnd),
+        previousComparablePeriodTotal: sumExpensesBetween(expenses, previousStart, previousEnd),
+        previousMonthName: format(previousStartDate, 'MMMM', { locale: it }),
+      };
+    }, [expenses, periodMonth]);
 
   const categoryData = useMemo(() => {
     return CATEGORIES.map((cat) => ({
@@ -288,8 +302,13 @@ export default function App() {
               currentPeriodTotal={currentPeriodTotal}
               previousComparablePeriodTotal={previousComparablePeriodTotal}
               previousMonthName={previousMonthName}
+              currentMonthName={currentMonthName}
+              budgetStatus={currentMonthlyBudget.status}
+              budgetAmount={currentMonthlyBudget.amount}
+              budgetCanWrite={currentMonthlyBudget.canWrite}
               categoryData={categoryData}
               dailyData={dailyData}
+              onSaveBudget={currentMonthlyBudget.saveCurrentMonthlyBudget}
               onOpenCurrentMonthExpenses={() => {
                 setFilterMonth(format(new Date(), 'yyyy-MM'));
                 setFilterCategory('Tutte');
