@@ -1,27 +1,11 @@
 import { motion } from 'motion/react';
-import { ArrowDownRight, ArrowUpRight, ChevronRight, TrendingUp, Wallet } from 'lucide-react';
-import {
-  PieChart,
-  Pie,
-  Cell,
-  ResponsiveContainer,
-  Tooltip,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-} from 'recharts';
+import { ArrowDownRight, ArrowUpRight, ChevronRight, Wallet } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip } from 'recharts';
 
 import { BudgetCard, type BudgetCardModel } from '@/src/components/app/home/BudgetCard';
+import { ExpenseDistributionCard } from '@/src/components/app/home/ExpenseDistributionCard';
 import type { CurrentMonthlyBudgetStatus } from '@/src/features/budgets/useCurrentMonthlyBudget';
-
-const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#64748b'];
-
-type CategoryDataPoint = {
-  name: string;
-  value: number;
-};
+import type { Expense } from '@/src/types';
 
 type DailyDataPoint = {
   date: string;
@@ -37,7 +21,7 @@ type SummaryCardsProps = {
   budgetStatus: CurrentMonthlyBudgetStatus;
   budgetAmount: number | null;
   budgetCanWrite: boolean;
-  categoryData: CategoryDataPoint[];
+  currentMonthExpenses: Expense[];
   dailyData: DailyDataPoint[];
   onOpenCurrentMonthExpenses: () => void;
   onSaveBudget: (amount: number) => Promise<{ ok: true } | { ok: false; message: string }>;
@@ -133,7 +117,7 @@ export function SummaryCards({
   budgetStatus,
   budgetAmount,
   budgetCanWrite,
-  categoryData,
+  currentMonthExpenses,
   dailyData,
   onOpenCurrentMonthExpenses,
   onSaveBudget,
@@ -183,38 +167,7 @@ export function SummaryCards({
           />
         ) : null}
 
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="card col-span-2 flex flex-col justify-between p-6 md:col-span-1"
-        >
-          <div className="flex justify-between items-start">
-            <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
-              <TrendingUp size={24} />
-            </div>
-            <span className="text-xs font-medium text-blue-600 bg-blue-50 px-2 py-1 rounded-full">Distribuzione</span>
-          </div>
-          <div className="mt-4 h-24">
-            {categoryData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={categoryData} cx="50%" cy="50%" innerRadius={30} outerRadius={45} paddingAngle={5} dataKey="value">
-                    {categoryData.map((_, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    formatter={(value: number) => `€${value.toFixed(2)}`}
-                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-full flex items-center justify-center text-zinc-400 text-xs italic">Nessun dato disponibile</div>
-            )}
-          </div>
-        </motion.div>
+        <ExpenseDistributionCard expenses={currentMonthExpenses} totalMonthly={totalMonthly} />
       </div>
 
       <div className="grid grid-cols-1 gap-4">

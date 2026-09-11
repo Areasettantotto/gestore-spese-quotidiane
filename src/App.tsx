@@ -7,7 +7,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { format, parseISO, startOfMonth, endOfMonth, lastDayOfMonth, setDate, subMonths } from 'date-fns';
 import { it } from 'date-fns/locale';
 
-import { type Expense, type Category, CATEGORIES, type Accompagnatore } from './types';
+import { type Expense, type Category, type Accompagnatore } from './types';
 import { supabase } from './lib/supabaseClient';
 import { useExpenses } from '@/src/features/expenses/useExpenses';
 import { useActiveTenant } from '@/src/features/tenancy/useActiveTenant';
@@ -44,8 +44,16 @@ function comparablePreviousPeriodEnd(today: Date): Date {
   return setDate(previousMonthStart, today.getDate());
 }
 
+function expensesBetween(expenses: Expense[], fromDate: string, toDate: string): Expense[] {
+  return expenses.filter((expense) => expense.date >= fromDate && expense.date <= toDate);
+}
+
+function sumExpenses(expenses: Expense[]): number {
+  return expenses.reduce((acc, curr) => acc + curr.amount, 0);
+}
+
 function sumExpensesBetween(expenses: Expense[], fromDate: string, toDate: string): number {
-  return expenses.filter((expense) => expense.date >= fromDate && expense.date <= toDate).reduce((acc, curr) => acc + curr.amount, 0);
+  return sumExpenses(expensesBetween(expenses, fromDate, toDate));
 }
 
 function accessPresentationFromEffectiveAccess(access: UseEffectiveAccessResult): AccessPresentation {
@@ -168,7 +176,7 @@ export default function App() {
     resetTenantState();
   };
 
-  const { totalMonthly, currentPeriodTotal, previousComparablePeriodTotal, previousMonthName } =
+  const { currentMonthExpenses, totalMonthly, currentPeriodTotal, previousComparablePeriodTotal, previousMonthName } =
     useMemo(() => {
       const currentStart = periodMonth;
       const currentEnd = format(now, 'yyyy-MM-dd');
@@ -176,21 +184,16 @@ export default function App() {
       const previousStartDate = startOfMonth(subMonths(now, 1));
       const previousStart = format(previousStartDate, 'yyyy-MM-dd');
       const previousEnd = format(comparablePreviousPeriodEnd(now), 'yyyy-MM-dd');
+      const currentMonthExpenses = expensesBetween(expenses, currentStart, currentMonthEnd);
 
       return {
-        totalMonthly: sumExpensesBetween(expenses, currentStart, currentMonthEnd),
+        currentMonthExpenses,
+        totalMonthly: sumExpenses(currentMonthExpenses),
         currentPeriodTotal: sumExpensesBetween(expenses, currentStart, currentEnd),
         previousComparablePeriodTotal: sumExpensesBetween(expenses, previousStart, previousEnd),
         previousMonthName: format(previousStartDate, 'MMMM', { locale: it }),
       };
     }, [expenses, periodMonth]);
-
-  const categoryData = useMemo(() => {
-    return CATEGORIES.map((cat) => ({
-      name: cat,
-      value: expenses.filter((e) => e.category === cat).reduce((acc, curr) => acc + curr.amount, 0),
-    })).filter((d) => d.value > 0);
-  }, [expenses]);
 
   const recentExpenses = useMemo(() => {
     return [...expenses].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
@@ -306,7 +309,7 @@ export default function App() {
               budgetStatus={currentMonthlyBudget.status}
               budgetAmount={currentMonthlyBudget.amount}
               budgetCanWrite={currentMonthlyBudget.canWrite}
-              categoryData={categoryData}
+              currentMonthExpenses={currentMonthExpenses}
               dailyData={dailyData}
               onSaveBudget={currentMonthlyBudget.saveCurrentMonthlyBudget}
               onOpenCurrentMonthExpenses={() => {
