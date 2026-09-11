@@ -64,12 +64,12 @@ function MonthToDateHint({
   previousMonthName: string;
 }) {
   if (currentPeriodTotal === 0 && previousComparablePeriodTotal === 0) {
-    return <p className="mt-1 text-xs leading-snug text-zinc-500 sm:text-sm">Nessuna spesa questo mese</p>;
+    return <p className="mt-1 text-xs leading-snug text-zinc-500 md:text-sm">Nessuna spesa questo mese</p>;
   }
 
   if (!(previousComparablePeriodTotal > 0)) {
     return (
-      <p className="mt-1 text-xs leading-snug text-zinc-500 sm:text-sm">
+      <p className="mt-1 text-xs leading-snug text-zinc-500 md:text-sm">
         Nessuna spesa nello stesso periodo di {previousMonthName}
       </p>
     );
@@ -78,11 +78,11 @@ function MonthToDateHint({
   const percentageChange = ((currentPeriodTotal - previousComparablePeriodTotal) / previousComparablePeriodTotal) * 100;
   const roundedChange = Number(percentageChange.toFixed(1));
 
-  const periodLabel = `vs stesso periodo di ${previousMonthName}`;
+  const periodLabel = `vs ${previousMonthName}`;
 
   if (roundedChange === 0) {
     return (
-      <p className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs leading-snug sm:text-sm">
+      <p className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs leading-snug md:text-sm">
         <span className="font-semibold text-zinc-500">0%</span>
         <span className="font-normal text-zinc-500">{periodLabel}</span>
       </p>
@@ -95,7 +95,7 @@ function MonthToDateHint({
 
   return (
     <p
-      className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs leading-snug sm:text-sm"
+      className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs leading-snug md:text-sm"
       aria-label={
         isDown
           ? `Spesa in calo del ${percentLabel} rispetto allo stesso periodo di ${previousMonthName}`
@@ -142,25 +142,27 @@ export function SummaryCards({
 
   return (
     <>
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:items-stretch">
+      <div className="grid grid-cols-2 items-stretch gap-3 md:gap-4">
         <motion.button
           type="button"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           onClick={onOpenCurrentMonthExpenses}
           aria-label="Apri le spese del mese corrente"
-          className="card h-full min-w-0 w-full p-4 text-left hover:border-emerald-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40"
+          className={`card flex h-full min-w-0 w-full flex-col p-3 text-left hover:border-emerald-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40 md:p-4 ${
+            budgetModel ? '' : 'col-span-2 md:col-span-1'
+          }`}
         >
-          <div className="flex items-start gap-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
-              <Wallet size={18} aria-hidden="true" />
+          <div className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2 gap-y-1 md:gap-x-3">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 md:row-span-2 md:h-9 md:w-9">
+              <Wallet className="size-4 md:size-[18px]" aria-hidden="true" />
             </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-start justify-between gap-2">
-                <p className="text-sm font-medium text-zinc-500">Totale spese</p>
-                <ChevronRight size={18} className="mt-0.5 shrink-0 text-zinc-400" aria-hidden="true" />
-              </div>
-              <p className="mt-0.5 break-words text-3xl font-bold tabular-nums tracking-tight text-zinc-900">
+            <div className="flex min-w-0 items-start justify-between gap-1">
+              <p className="text-sm font-medium text-zinc-500">Totale spese</p>
+              <ChevronRight className="mt-0.5 size-4 shrink-0 text-zinc-400 md:size-[18px]" aria-hidden="true" />
+            </div>
+            <div className="col-span-2 min-w-0 md:col-span-1">
+              <p className="break-words text-xl font-bold tabular-nums tracking-tight text-zinc-900 md:text-3xl">
                 {formatEuroAmount(totalMonthly)}
               </p>
               <MonthToDateHint
@@ -185,7 +187,7 @@ export function SummaryCards({
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="card p-6 flex flex-col justify-between"
+          className="card col-span-2 flex flex-col justify-between p-6 md:col-span-1"
         >
           <div className="flex justify-between items-start">
             <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">

@@ -290,7 +290,7 @@ export default function App() {
         onSignOut={handleSignOut}
       />
 
-      <main className="max-w-2xl mx-auto px-4 py-8 space-y-8">
+      <main className="max-w-2xl mx-auto px-4 pt-4 pb-8 md:pt-8 space-y-8">
         {userId && activeTenantId && expensesLoadError ? <ExpensesLoadErrorBanner message={expensesLoadError} /> : null}
         {userId && isTenantContextLoading ? <WorkspaceLoadingState /> : null}
         {userId && !isTenantContextLoading && !activeTenantId ? <WorkspaceUnavailableState tenantError={tenantError} /> : null}

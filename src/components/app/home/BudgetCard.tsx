@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, type FormEvent } from 'react';
+import { useEffect, useId, useState, type FormEvent, type ReactNode } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { ChevronRight, Target, X } from 'lucide-react';
 
@@ -63,7 +63,7 @@ export function BudgetCard({ model, spent, monthName, onSave }: BudgetCardProps)
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.05 }}
         aria-label={`Budget ${monthName}`}
-        className="card flex h-full min-w-0 w-full flex-col p-4"
+        className="card flex h-full min-w-0 w-full flex-col p-3 md:p-4"
       >
         <BudgetCardBody model={model} spent={spent} onConfigure={() => setDialogOpen(true)} />
       </motion.section>
@@ -81,6 +81,41 @@ export function BudgetCard({ model, spent, monthName, onSave }: BudgetCardProps)
   );
 }
 
+function BudgetCardHeader({
+  tone,
+  trailing,
+}: {
+  tone: 'ok' | 'danger';
+  trailing?: ReactNode;
+}) {
+  return (
+    <>
+      <BudgetIcon tone={tone} />
+      <div className="flex min-w-0 items-start justify-between gap-1">
+        <p className="text-sm font-medium text-zinc-500">{CARD_TITLE}</p>
+        {trailing}
+      </div>
+    </>
+  );
+}
+
+function BudgetCardShell({
+  tone,
+  trailing,
+  children,
+}: {
+  tone: 'ok' | 'danger';
+  trailing?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div className="grid h-full min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2 gap-y-1 md:gap-x-3">
+      <BudgetCardHeader tone={tone} trailing={trailing} />
+      <div className="col-span-2 min-w-0 md:col-span-1">{children}</div>
+    </div>
+  );
+}
+
 function BudgetCardBody({
   model,
   spent,
@@ -92,65 +127,49 @@ function BudgetCardBody({
 }) {
   if (model.status === 'loading') {
     return (
-      <div className="flex items-start gap-3">
-        <BudgetIcon tone="ok" />
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-zinc-500">{CARD_TITLE}</p>
-          <p className="mt-1 text-sm text-zinc-500" role="status" aria-live="polite">
-            Caricamento budget…
-          </p>
-        </div>
-      </div>
+      <BudgetCardShell tone="ok">
+        <p className="text-xs leading-snug text-zinc-500 md:text-sm" role="status" aria-live="polite">
+          Caricamento budget…
+        </p>
+      </BudgetCardShell>
     );
   }
 
   if (model.status === 'error') {
     return (
-      <div className="flex items-start gap-3">
-        <BudgetIcon tone="ok" />
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-zinc-500">{CARD_TITLE}</p>
-          <p className="mt-1 text-sm text-zinc-700" role="status">
-            Budget non disponibile
-          </p>
-        </div>
-      </div>
+      <BudgetCardShell tone="ok">
+        <p className="text-xs leading-snug text-zinc-700 md:text-sm" role="status">
+          Budget non disponibile
+        </p>
+      </BudgetCardShell>
     );
   }
 
   if (model.status === 'unconfigured') {
     return (
-      <div className="flex items-start gap-3">
-        <BudgetIcon tone="ok" />
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-zinc-500">{CARD_TITLE}</p>
-          <p className="mt-1 text-sm leading-snug text-zinc-700">
-            {model.canWrite
-              ? 'Il budget non è ancora impostato per il mese corrente.'
-              : 'Il budget del mese non è ancora configurato.'}
-          </p>
-          {model.canWrite ? (
-            <button type="button" onClick={onConfigure} className="btn-primary mt-3 py-2.5 text-sm">
-              Imposta budget
-            </button>
-          ) : null}
-        </div>
-      </div>
+      <BudgetCardShell tone="ok">
+        <p className="text-xs leading-snug text-zinc-700 md:text-sm">
+          {model.canWrite
+            ? 'Il budget non è ancora impostato per il mese corrente.'
+            : 'Il budget del mese non è ancora configurato.'}
+        </p>
+        {model.canWrite ? (
+          <button type="button" onClick={onConfigure} className="btn-primary mt-2 py-2 text-xs md:mt-3 md:py-2.5 md:text-sm">
+            Imposta budget
+          </button>
+        ) : null}
+      </BudgetCardShell>
     );
   }
 
   const budgetAmount = model.amount;
   if (budgetAmount == null) {
     return (
-      <div className="flex items-start gap-3">
-        <BudgetIcon tone="ok" />
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-zinc-500">{CARD_TITLE}</p>
-          <p className="mt-1 text-sm text-zinc-700" role="status">
-            Budget non disponibile
-          </p>
-        </div>
-      </div>
+      <BudgetCardShell tone="ok">
+        <p className="text-xs leading-snug text-zinc-700 md:text-sm" role="status">
+          Budget non disponibile
+        </p>
+      </BudgetCardShell>
     );
   }
 
@@ -160,46 +179,46 @@ function BudgetCardBody({
   const amountMutedClass = metrics.exceeded ? 'text-red-600' : 'text-zinc-500';
 
   return (
-    <div className="flex items-start gap-3">
-      <BudgetIcon tone={tone} />
-      <div className="min-w-0 flex-1">
-        <div className="flex items-start justify-between gap-2">
-          <p className="text-sm font-medium text-zinc-500">{CARD_TITLE}</p>
-          {model.canWrite ? (
-            <button
-              type="button"
-              onClick={onConfigure}
-              aria-label="Modifica budget"
-              className="-mr-1 shrink-0 rounded-md p-0.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40"
-            >
-              <ChevronRight size={18} aria-hidden="true" />
-            </button>
-          ) : null}
-        </div>
-        <div className="mt-0.5 flex min-w-0 items-baseline justify-between gap-1.5 sm:gap-2">
-          <p
-            className={`min-w-0 text-sm font-bold leading-snug tabular-nums ${
-              metrics.exceeded ? 'text-red-700' : 'text-zinc-900'
-            }`}
+    <BudgetCardShell
+      tone={tone}
+      trailing={
+        model.canWrite ? (
+          <button
+            type="button"
+            onClick={onConfigure}
+            aria-label="Modifica budget"
+            className="-mr-1 shrink-0 rounded-md p-0.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40"
           >
-            <span className="break-words">{formatEuroAmount(metrics.spent)}</span>
-            <span className={`font-normal ${amountMutedClass}`}> di </span>
-            <span className={`font-semibold ${amountMutedClass}`}>{formatEuroAmount(metrics.budget)}</span>
-          </p>
-          <p
-            className={`shrink-0 text-sm font-semibold tabular-nums ${
-              metrics.exceeded ? 'text-red-600' : 'text-emerald-600'
-            }`}
-          >
-            {formatUtilizedPercent(metrics.percentage)}
-          </p>
-        </div>
-        <BudgetUtilizationBar progressWidth={metrics.progressWidth} exceeded={metrics.exceeded} />
-        <p className={`mt-1.5 text-xs font-semibold leading-snug sm:text-sm ${remainingClass}`}>
-          {remainingLabel(metrics.remaining)}
+            <ChevronRight className="size-4 text-zinc-400 md:size-[18px]" aria-hidden="true" />
+          </button>
+        ) : null
+      }
+    >
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-1.5 gap-y-0.5">
+        <p
+          className={`min-w-0 text-xs font-bold leading-snug tabular-nums md:text-sm ${
+            metrics.exceeded ? 'text-red-700' : 'text-zinc-900'
+          }`}
+        >
+          <span className="whitespace-nowrap">{formatEuroAmount(metrics.spent)}</span>
+          <span className={`font-normal ${amountMutedClass}`}> di </span>
+          <span className={`whitespace-nowrap font-semibold ${amountMutedClass}`}>
+            {formatEuroAmount(metrics.budget)}
+          </span>
+        </p>
+        <p
+          className={`shrink-0 text-xs font-semibold tabular-nums md:text-sm ${
+            metrics.exceeded ? 'text-red-600' : 'text-emerald-600'
+          }`}
+        >
+          {formatUtilizedPercent(metrics.percentage)}
         </p>
       </div>
-    </div>
+      <BudgetUtilizationBar progressWidth={metrics.progressWidth} exceeded={metrics.exceeded} />
+      <p className={`mt-1 text-xs font-semibold leading-snug md:mt-1.5 md:text-sm ${remainingClass}`}>
+        {remainingLabel(metrics.remaining)}
+      </p>
+    </BudgetCardShell>
   );
 }
 
@@ -208,7 +227,7 @@ function BudgetUtilizationBar({ progressWidth, exceeded }: { progressWidth: numb
 
   return (
     <div
-      className={`mt-1.5 h-3 w-full overflow-hidden rounded-full ${exceeded ? 'bg-red-100' : 'bg-zinc-100'}`}
+      className={`mt-1.5 h-2.5 w-full overflow-hidden rounded-full md:h-3 ${exceeded ? 'bg-red-100' : 'bg-zinc-100'}`}
       role="progressbar"
       aria-label="Utilizzo del budget"
       aria-valuemin={0}
@@ -232,8 +251,10 @@ function BudgetIcon({ tone }: { tone: 'ok' | 'danger' }) {
   const toneClass = tone === 'danger' ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600';
 
   return (
-    <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${toneClass}`}>
-      <Target size={18} aria-hidden="true" />
+    <div
+      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg md:row-span-2 md:h-9 md:w-9 ${toneClass}`}
+    >
+      <Target className="size-4 md:size-[18px]" aria-hidden="true" />
     </div>
   );
 }
