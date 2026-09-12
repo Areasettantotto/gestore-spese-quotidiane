@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { ChevronRight, Target, X } from 'lucide-react';
 
@@ -349,6 +349,7 @@ function BudgetDialog({
   onSave: (amount: number) => Promise<{ ok: true } | { ok: false; message: string }>;
 }) {
   const amountFieldId = useId();
+  const panelRef = useRef<HTMLDivElement>(null);
   const [draft, setDraft] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -359,6 +360,11 @@ function BudgetDialog({
     setSubmitting(false);
     setErrorMessage(null);
   }, [isOpen, initialAmount]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    panelRef.current?.focus();
+  }, [isOpen]);
 
   const title = mode === 'edit' ? `Modifica budget di ${monthName}` : `Imposta budget di ${monthName}`;
 
@@ -399,13 +405,15 @@ function BudgetDialog({
             className="fixed inset-0 z-40 bg-black/20 backdrop-blur-sm"
           />
           <motion.div
+            ref={panelRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby={`${amountFieldId}-title`}
+            tabIndex={-1}
             initial={{ opacity: 0, y: 100 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 100 }}
-            className="fixed bottom-0 left-0 right-0 z-50 mx-auto max-w-2xl rounded-t-4xl bg-white p-8 shadow-2xl"
+            className="fixed bottom-0 left-0 right-0 z-50 mx-auto max-w-2xl rounded-t-4xl bg-white p-8 shadow-2xl outline-none"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="mb-6 flex items-center justify-between gap-3">
@@ -434,7 +442,6 @@ function BudgetDialog({
                   step="0.01"
                   min="0.01"
                   required
-                  autoFocus
                   inputMode="decimal"
                   placeholder="0.00"
                   disabled={submitting}

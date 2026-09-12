@@ -1,4 +1,5 @@
 import type React from 'react';
+import { useEffect, useId, useRef } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { format } from 'date-fns';
 import { Tag, User, X } from 'lucide-react';
@@ -14,6 +15,14 @@ type ExpenseFormProps = {
 };
 
 export function ExpenseForm({ isOpen, editingId, newExpense, onChange, onClose, onSubmit }: ExpenseFormProps) {
+  const titleId = useId();
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    panelRef.current?.focus();
+  }, [isOpen]);
+
   const resetAndClose = () => {
     onChange({
       amount: undefined,
@@ -37,14 +46,19 @@ export function ExpenseForm({ isOpen, editingId, newExpense, onChange, onClose, 
             className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40"
           />
           <motion.div
+            ref={panelRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={titleId}
+            tabIndex={-1}
             initial={{ opacity: 0, y: 100 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 100 }}
-            className="fixed bottom-0 left-0 right-0 bg-white rounded-t-4xl p-8 z-50 shadow-2xl max-w-2xl mx-auto"
+            className="fixed bottom-0 left-0 right-0 bg-white rounded-t-4xl p-8 z-50 shadow-2xl max-w-2xl mx-auto outline-none"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-bold text-zinc-900">{editingId ? 'Modifica Spesa' : 'Nuova Spesa'}</h2>
+              <h2 id={titleId} className="text-xl font-bold text-zinc-900">{editingId ? 'Modifica Spesa' : 'Nuova Spesa'}</h2>
               <button onClick={resetAndClose} className="p-2 hover:bg-zinc-100 rounded-full transition-colors">
                 <X size={24} />
               </button>
@@ -58,7 +72,6 @@ export function ExpenseForm({ isOpen, editingId, newExpense, onChange, onClose, 
                   step="0.01"
                   min="0.01"
                   required
-                  autoFocus
                   placeholder="0.00"
                   className="input-field text-2xl font-bold py-4"
                   value={newExpense.amount ?? ''}
