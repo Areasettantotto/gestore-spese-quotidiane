@@ -24,7 +24,7 @@ export function BottomNavigation({ activeView, onHome, onExpenses, onAdd, addDis
 
   return (
     <nav
-      className="fixed inset-x-0 bottom-0 z-20 overflow-visible border-t border-zinc-200 bg-white sm:hidden"
+      className="fixed inset-x-0 bottom-0 z-20 overflow-visible border-t border-zinc-200 bg-white lg:hidden"
       style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
       aria-label="Navigazione principale"
     >

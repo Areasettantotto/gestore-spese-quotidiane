@@ -20,6 +20,7 @@ import {
 } from '@/src/features/billing/useEffectiveAccess';
 import { AppHeader } from '@/src/components/app/AppHeader';
 import { BottomNavigation } from '@/src/components/app/BottomNavigation';
+import { DesktopSidebar } from '@/src/components/app/DesktopSidebar';
 import { WorkspaceLoadingState } from '@/src/components/app/WorkspaceLoadingState';
 import { WorkspaceUnavailableState } from '@/src/components/app/WorkspaceUnavailableState';
 import { ExpensesLoadErrorBanner } from '@/src/components/app/ExpensesLoadErrorBanner';
@@ -271,71 +272,79 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen pb-28 sm:pb-20">
-      <AppHeader
-        dateLabel={format(new Date(), 'EEEE d MMMM', { locale: it })}
-        userEmail={userEmail}
-        addDisabled={!userId || !activeTenantId || isTenantContextLoading}
-        accessBadgeLabel={accessBadgeLabel}
-        accountTier={accountTier}
-        giftLabel={giftLabel}
-        onAdd={() => setIsAdding(true)}
-        onSignOut={handleSignOut}
+    <div className="min-h-screen pb-28 lg:pb-0">
+      <DesktopSidebar
+        activeView={view}
+        onHome={() => setView('home')}
+        onExpenses={() => setView('all')}
       />
 
-      <main className="max-w-2xl mx-auto px-4 pt-4 pb-8 md:pt-8 space-y-8">
-        {userId && activeTenantId && expensesLoadError ? <ExpensesLoadErrorBanner message={expensesLoadError} /> : null}
-        {userId && isTenantContextLoading ? <WorkspaceLoadingState /> : null}
-        {userId && !isTenantContextLoading && !activeTenantId ? <WorkspaceUnavailableState tenantError={tenantError} /> : null}
+      <div className="lg:pl-64">
+        <AppHeader
+          dateLabel={format(new Date(), 'EEEE d MMMM', { locale: it })}
+          userEmail={userEmail}
+          addDisabled={!userId || !activeTenantId || isTenantContextLoading}
+          accessBadgeLabel={accessBadgeLabel}
+          accountTier={accountTier}
+          giftLabel={giftLabel}
+          onAdd={() => setIsAdding(true)}
+          onSignOut={handleSignOut}
+        />
 
-        {userId && !isTenantContextLoading && activeTenantId && view === 'home' ? (
-          <>
-            <SummaryCards
-              totalMonthly={totalMonthly}
-              currentPeriodTotal={currentPeriodTotal}
-              previousComparablePeriodTotal={previousComparablePeriodTotal}
-              previousMonthName={previousMonthName}
-              currentMonthName={currentMonthName}
-              budgetStatus={currentMonthlyBudget.status}
-              budgetAmount={currentMonthlyBudget.amount}
-              budgetCanWrite={currentMonthlyBudget.canWrite}
-              currentMonthExpenses={currentMonthExpenses}
-              last7DaysTrend={last7DaysTrend}
-              onSaveBudget={currentMonthlyBudget.saveCurrentMonthlyBudget}
-              onOpenCurrentMonthExpenses={() => {
-                setFilterMonth(format(new Date(), 'yyyy-MM'));
-                setFilterCategory('Tutte');
-                setFilterAccompagnatore('Tutte');
-                setFilterSearch('');
-                setView('all');
+        <main className="max-w-2xl mx-auto px-4 pt-4 pb-8 md:pt-8 space-y-8">
+          {userId && activeTenantId && expensesLoadError ? <ExpensesLoadErrorBanner message={expensesLoadError} /> : null}
+          {userId && isTenantContextLoading ? <WorkspaceLoadingState /> : null}
+          {userId && !isTenantContextLoading && !activeTenantId ? <WorkspaceUnavailableState tenantError={tenantError} /> : null}
+
+          {userId && !isTenantContextLoading && activeTenantId && view === 'home' ? (
+            <>
+              <SummaryCards
+                totalMonthly={totalMonthly}
+                currentPeriodTotal={currentPeriodTotal}
+                previousComparablePeriodTotal={previousComparablePeriodTotal}
+                previousMonthName={previousMonthName}
+                currentMonthName={currentMonthName}
+                budgetStatus={currentMonthlyBudget.status}
+                budgetAmount={currentMonthlyBudget.amount}
+                budgetCanWrite={currentMonthlyBudget.canWrite}
+                currentMonthExpenses={currentMonthExpenses}
+                last7DaysTrend={last7DaysTrend}
+                onSaveBudget={currentMonthlyBudget.saveCurrentMonthlyBudget}
+                onOpenCurrentMonthExpenses={() => {
+                  setFilterMonth(format(new Date(), 'yyyy-MM'));
+                  setFilterCategory('Tutte');
+                  setFilterAccompagnatore('Tutte');
+                  setFilterSearch('');
+                  setView('all');
+                }}
+              />
+              <RecentExpensesList
+                expenses={recentExpenses}
+                onViewAll={() => setView('all')}
+                onEdit={handleEditClick}
+                onDelete={handleDeleteExpense}
+              />
+            </>
+          ) : null}
+
+          {userId && !isTenantContextLoading && activeTenantId && view === 'all' ? (
+            <AllExpensesView
+              filteredTotal={filteredTotal}
+              filteredExpenses={filteredExpenses}
+              filters={{ filterMonth, filterCategory, filterAccompagnatore, filterSearch }}
+              onFiltersChange={(next) => {
+                setFilterMonth(next.filterMonth);
+                setFilterCategory(next.filterCategory);
+                setFilterAccompagnatore(next.filterAccompagnatore);
+                setFilterSearch(next.filterSearch);
               }}
-            />
-            <RecentExpensesList
-              expenses={recentExpenses}
-              onViewAll={() => setView('all')}
+              onBack={() => setView('home')}
               onEdit={handleEditClick}
               onDelete={handleDeleteExpense}
             />
-          </>
-        ) : null}
-
-        {userId && !isTenantContextLoading && activeTenantId && view === 'all' ? (
-          <AllExpensesView
-            filteredTotal={filteredTotal}
-            filteredExpenses={filteredExpenses}
-            filters={{ filterMonth, filterCategory, filterAccompagnatore, filterSearch }}
-            onFiltersChange={(next) => {
-              setFilterMonth(next.filterMonth);
-              setFilterCategory(next.filterCategory);
-              setFilterAccompagnatore(next.filterAccompagnatore);
-              setFilterSearch(next.filterSearch);
-            }}
-            onBack={() => setView('home')}
-            onEdit={handleEditClick}
-            onDelete={handleDeleteExpense}
-          />
-        ) : null}
-      </main>
+          ) : null}
+        </main>
+      </div>
 
       {!isAdding ? (
         <BottomNavigation
