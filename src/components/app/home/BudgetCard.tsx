@@ -1,5 +1,5 @@
 import { useEffect, useId, useState, type FormEvent, type ReactNode } from 'react';
-import { AnimatePresence, motion } from 'motion/react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { ChevronRight, Target, X } from 'lucide-react';
 
 import { dailyRemainingAmount, deriveBudgetMetrics } from '@/src/features/budgets/monthlyBudgets';
@@ -45,6 +45,18 @@ function parseBudgetAmountInput(raw: string): { ok: true; amount: number } | { o
   return { ok: true, amount };
 }
 
+const REMAINING_FOOTER_INTERVAL_MS = 5000;
+const REMAINING_FOOTER_CROSSFADE_S = 0.2;
+
+function RemainingAmountLabel({ amount, suffix }: { amount: number; suffix: string }) {
+  return (
+    <>
+      <span className="tabular-nums">{formatEuroAmount(amount)}</span>{' '}
+      <span className="font-normal">{suffix}</span>
+    </>
+  );
+}
+
 function RemainingCaption({
   remaining,
   exceeded,
@@ -56,6 +68,23 @@ function RemainingCaption({
   daily: number | null;
   className: string;
 }) {
+  const prefersReducedMotion = useReducedMotion();
+  const canAlternate = daily != null && !exceeded && !prefersReducedMotion;
+  const [showDaily, setShowDaily] = useState(false);
+
+  useEffect(() => {
+    if (!canAlternate) {
+      setShowDaily(false);
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      setShowDaily((current) => !current);
+    }, REMAINING_FOOTER_INTERVAL_MS);
+
+    return () => window.clearInterval(intervalId);
+  }, [canAlternate]);
+
   if (exceeded) {
     return (
       <p className={className}>
@@ -64,16 +93,38 @@ function RemainingCaption({
     );
   }
 
+  const remainingLabel = <RemainingAmountLabel amount={remaining} suffix="rimanenti" />;
+
+  if (!canAlternate || daily == null) {
+    return <p className={className}>{remainingLabel}</p>;
+  }
+
   return (
-    <p className={className}>
-      <span className="tabular-nums">{formatEuroAmount(remaining)}</span>{' '}
-      <span className="font-normal">rimanenti</span>
-      {daily != null ? (
-        <span className="block font-normal">
-          (<span className="font-semibold tabular-nums">{formatEuroAmount(daily)}</span>{' '}
-          <span>al giorno</span>)
-        </span>
-      ) : null}
+    <p className={`relative ${className}`}>
+      <span className="sr-only">
+        {formatEuroAmount(remaining)} rimanenti
+      </span>
+      <span className="invisible" aria-hidden="true">
+        {remainingLabel}
+      </span>
+      <span className="absolute inset-0 overflow-hidden" aria-hidden="true">
+        <AnimatePresence initial={false}>
+          <motion.span
+            key={showDaily ? 'daily' : 'remaining'}
+            className="absolute inset-0"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: REMAINING_FOOTER_CROSSFADE_S }}
+          >
+            {showDaily ? (
+              <RemainingAmountLabel amount={daily} suffix="al giorno" />
+            ) : (
+              remainingLabel
+            )}
+          </motion.span>
+        </AnimatePresence>
+      </span>
     </p>
   );
 }
@@ -203,7 +254,9 @@ function BudgetCardBody({
   const metrics = deriveBudgetMetrics(spent, budgetAmount);
   const tone = metrics.exceeded ? 'danger' : 'ok';
   const remainingClass = metrics.exceeded ? 'text-red-600' : 'text-zinc-500';
-  const amountMutedClass = metrics.exceeded ? 'text-red-600' : 'text-zinc-500';
+  const spentLabelClass = metrics.exceeded ? 'text-red-600' : 'text-zinc-500';
+  const percentClass = metrics.exceeded ? 'text-red-600' : 'text-emerald-600';
+  const budgetAmountClass = metrics.exceeded ? 'text-red-700' : 'text-zinc-900';
 
   return (
     <BudgetCardShell
@@ -221,24 +274,15 @@ function BudgetCardBody({
         ) : null
       }
     >
-      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-1.5 gap-y-0.5">
-        <p
-          className={`min-w-0 text-xs font-bold leading-snug tabular-nums md:text-sm ${
-            metrics.exceeded ? 'text-red-700' : 'text-zinc-900'
-          }`}
-        >
-          <span className="whitespace-nowrap">{formatEuroAmount(metrics.spent)}</span>
-          <span className={`font-normal ${amountMutedClass}`}> di </span>
-          <span className={`whitespace-nowrap font-semibold ${amountMutedClass}`}>
-            {formatEuroAmount(metrics.budget)}
-          </span>
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-1.5 gap-y-0.5">
+        <p className={`min-w-0 text-xs leading-snug md:text-sm ${percentClass}`}>
+          <span className={`font-normal ${spentLabelClass}`}>speso </span>
+          <span className="font-semibold tabular-nums">{formatUtilizedPercent(metrics.percentage)}</span>
         </p>
         <p
-          className={`shrink-0 text-xs font-semibold tabular-nums md:text-sm ${
-            metrics.exceeded ? 'text-red-600' : 'text-emerald-600'
-          }`}
+          className={`shrink-0 whitespace-nowrap text-sm font-bold tabular-nums tracking-tight md:text-base ${budgetAmountClass}`}
         >
-          {formatUtilizedPercent(metrics.percentage)}
+          {formatEuroAmount(metrics.budget)}
         </p>
       </div>
       <BudgetUtilizationBar progressWidth={metrics.progressWidth} exceeded={metrics.exceeded} />
