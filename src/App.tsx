@@ -271,6 +271,10 @@ export default function App() {
     }
   };
 
+  const handleConfirmedDeleteExpense = (expense: Expense) => {
+    void deleteExpense(expense.id);
+  };
+
   return (
     <div className="min-h-screen pb-28 lg:pb-0">
       <DesktopSidebar
@@ -322,7 +326,7 @@ export default function App() {
                 expenses={recentExpenses}
                 onViewAll={() => setView('all')}
                 onEdit={handleEditClick}
-                onDelete={handleDeleteExpense}
+                onDelete={handleConfirmedDeleteExpense}
               />
             </>
           ) : null}
