@@ -21,6 +21,11 @@ import {
 } from '@/src/features/expenses/expenseDistribution';
 import type { Last7DaysTrendPoint } from '@/src/features/expenses/last7DaysTrend';
 import { CATEGORIES } from '@/src/types';
+import {
+  buildTrendYScale,
+  cleanScaleNumber,
+  decimalsForStep,
+} from '@/src/components/app/home/last7DaysTrendYScale';
 
 type Last7DaysTrendCardProps = {
   points: readonly Last7DaysTrendPoint[];
@@ -29,6 +34,15 @@ type Last7DaysTrendCardProps = {
 const EMERALD_BAR = '#10b981';
 const STACK_CATEGORY_KEYS = [...CATEGORIES, ALTRE_CATEGORIE_LABEL] as const;
 const FINE_HOVER_QUERY = '(hover: hover) and (pointer: fine)';
+
+function formatTrendYTick(value: number, step: number): string {
+  const cleaned = cleanScaleNumber(value);
+  if (cleaned === 0) return '0';
+  return cleaned.toLocaleString('it-IT', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: decimalsForStep(step),
+  });
+}
 
 type DayBarRow = Last7DaysTrendPoint & {
   baseAmount: number;
@@ -150,6 +164,11 @@ export function Last7DaysTrendCard({ points }: Last7DaysTrendCardProps) {
     [points, activeDateKey]
   );
 
+  const yScale = useMemo(
+    () => buildTrendYScale(points.map((point) => point.amount)),
+    [points]
+  );
+
   const activateIndex = (activeIndex: unknown) => {
     const index = chartIndexFromState(activeIndex);
     if (index == null || index >= points.length) return;
@@ -188,7 +207,7 @@ export function Last7DaysTrendCard({ points }: Last7DaysTrendCardProps) {
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
                 data={chartData}
-                margin={{ top: 8, right: 12, left: 4, bottom: 0 }}
+                margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
                 onMouseMove={(state) => {
                   if (!fineHover) return;
                   activateIndex(state.activeIndex);
@@ -201,7 +220,7 @@ export function Last7DaysTrendCard({ points }: Last7DaysTrendCardProps) {
                   toggleIndex(state.activeIndex);
                 }}
               >
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f4f4f5" />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e4e4e7" />
                 <XAxis
                   dataKey="label"
                   axisLine={false}
@@ -210,7 +229,18 @@ export function Last7DaysTrendCard({ points }: Last7DaysTrendCardProps) {
                   minTickGap={0}
                   tick={{ fontSize: 10, fill: '#71717a' }}
                 />
-                <YAxis hide />
+                <YAxis
+                  type="number"
+                  domain={[0, yScale.max]}
+                  ticks={yScale.ticks}
+                  interval={0}
+                  width="auto"
+                  axisLine={false}
+                  tickLine={false}
+                  tickMargin={4}
+                  tick={{ fontSize: 10, fill: '#a1a1aa' }}
+                  tickFormatter={(value: number) => formatTrendYTick(value, yScale.step)}
+                />
                 {fineHover ? (
                   <Tooltip
                     content={TrendTooltip}
