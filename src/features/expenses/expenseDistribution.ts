@@ -28,11 +28,23 @@ const ALTRE_CATEGORIE_COLOR = '#94a3b8';
 const ALTRE_SPESE_COLOR = '#a1a1aa';
 const EXPENSE_RANK_COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6'] as const;
 
-const ALTRE_CATEGORIE_LABEL = 'Altre categorie';
+export const ALTRE_CATEGORIE_LABEL = 'Altre categorie';
 const ALTRE_SPESE_LABEL = 'Altre spese';
 
 function isCanonicalCategory(value: string): value is Category {
   return CANONICAL_CATEGORY_SET.has(value);
+}
+
+/** Canonical name, or the same leftover bucket used by Distribuzione → Categorie. */
+export function segmentKeyForCategory(category: string): string {
+  if (isCanonicalCategory(category)) return category;
+  return ALTRE_CATEGORIE_LABEL;
+}
+
+/** Color for a canonical category or the leftover "Altre categorie" bucket. */
+export function colorForCategorySegment(category: string): string {
+  if (isCanonicalCategory(category)) return CANONICAL_CATEGORY_COLORS[category];
+  return ALTRE_CATEGORIE_COLOR;
 }
 
 function isPositiveAmount(value: number): boolean {

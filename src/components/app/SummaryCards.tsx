@@ -1,16 +1,12 @@
 import { motion } from 'motion/react';
 import { ArrowDownRight, ArrowUpRight, ChevronRight, Wallet } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip } from 'recharts';
 
 import { BudgetCard, type BudgetCardModel } from '@/src/components/app/home/BudgetCard';
 import { ExpenseDistributionCard } from '@/src/components/app/home/ExpenseDistributionCard';
+import { Last7DaysTrendCard } from '@/src/components/app/home/Last7DaysTrendCard';
 import type { CurrentMonthlyBudgetStatus } from '@/src/features/budgets/useCurrentMonthlyBudget';
+import type { Last7DaysTrendPoint } from '@/src/features/expenses/last7DaysTrend';
 import type { Expense } from '@/src/types';
-
-type DailyDataPoint = {
-  date: string;
-  amount: number;
-};
 
 type SummaryCardsProps = {
   totalMonthly: number;
@@ -22,7 +18,7 @@ type SummaryCardsProps = {
   budgetAmount: number | null;
   budgetCanWrite: boolean;
   currentMonthExpenses: Expense[];
-  dailyData: DailyDataPoint[];
+  last7DaysTrend: readonly Last7DaysTrendPoint[];
   onOpenCurrentMonthExpenses: () => void;
   onSaveBudget: (amount: number) => Promise<{ ok: true } | { ok: false; message: string }>;
 };
@@ -118,14 +114,14 @@ export function SummaryCards({
   budgetAmount,
   budgetCanWrite,
   currentMonthExpenses,
-  dailyData,
+  last7DaysTrend,
   onOpenCurrentMonthExpenses,
   onSaveBudget,
 }: SummaryCardsProps) {
   const budgetModel = toBudgetCardModel(budgetStatus, budgetAmount, budgetCanWrite);
 
   return (
-    <>
+    <div className="space-y-3 md:space-y-4">
       <div className="grid grid-cols-2 items-stretch gap-3 md:gap-4">
         <motion.button
           type="button"
@@ -170,26 +166,7 @@ export function SummaryCards({
         <ExpenseDistributionCard expenses={currentMonthExpenses} totalMonthly={totalMonthly} />
       </div>
 
-      <div className="grid grid-cols-1 gap-4">
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="card p-6">
-          <h3 className="text-sm font-semibold text-zinc-900 mb-4">Andamento ultimi 7 giorni</h3>
-          <div className="h-48 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={dailyData}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f4f4f5" />
-                <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#71717a' }} />
-                <YAxis hide />
-                <Tooltip
-                  cursor={{ fill: '#f8fafc' }}
-                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                  formatter={(value: number) => [`€${value.toFixed(2)}`, 'Spesa']}
-                />
-                <Bar dataKey="amount" fill="#10b981" radius={[4, 4, 0, 0]} barSize={32} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </motion.div>
-      </div>
-    </>
+      <Last7DaysTrendCard points={last7DaysTrend} />
+    </div>
   );
 }

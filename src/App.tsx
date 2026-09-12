@@ -4,11 +4,12 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { format, parseISO, startOfMonth, endOfMonth, lastDayOfMonth, setDate, subMonths } from 'date-fns';
+import { format, startOfMonth, endOfMonth, lastDayOfMonth, setDate, subMonths } from 'date-fns';
 import { it } from 'date-fns/locale';
 
 import { type Expense, type Category, type Accompagnatore } from './types';
 import { supabase } from './lib/supabaseClient';
+import { buildLast7DaysTrend } from '@/src/features/expenses/last7DaysTrend';
 import { useExpenses } from '@/src/features/expenses/useExpenses';
 import { useActiveTenant } from '@/src/features/tenancy/useActiveTenant';
 import { currentCalendarMonthStartDate } from '@/src/features/budgets/monthlyBudgets';
@@ -222,18 +223,7 @@ export default function App() {
     return filteredExpenses.reduce((acc, curr) => acc + curr.amount, 0);
   }, [filteredExpenses]);
 
-  const dailyData = useMemo(() => {
-    const last7Days = Array.from({ length: 7 }, (_, i) => {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      return format(d, 'yyyy-MM-dd');
-    }).reverse();
-
-    return last7Days.map((date) => ({
-      date: format(parseISO(date), 'dd/MM'),
-      amount: expenses.filter((e) => e.date === date).reduce((acc, curr) => acc + curr.amount, 0),
-    }));
-  }, [expenses]);
+  const last7DaysTrend = useMemo(() => buildLast7DaysTrend(expenses), [expenses]);
 
   const resetExpenseDraft = () => {
     setEditingId(null);
@@ -310,7 +300,7 @@ export default function App() {
               budgetAmount={currentMonthlyBudget.amount}
               budgetCanWrite={currentMonthlyBudget.canWrite}
               currentMonthExpenses={currentMonthExpenses}
-              dailyData={dailyData}
+              last7DaysTrend={last7DaysTrend}
               onSaveBudget={currentMonthlyBudget.saveCurrentMonthlyBudget}
               onOpenCurrentMonthExpenses={() => {
                 setFilterMonth(format(new Date(), 'yyyy-MM'));
