@@ -2,7 +2,7 @@ import { useEffect, useId, useState, type FormEvent, type ReactNode } from 'reac
 import { AnimatePresence, motion } from 'motion/react';
 import { ChevronRight, Target, X } from 'lucide-react';
 
-import { deriveBudgetMetrics } from '@/src/features/budgets/monthlyBudgets';
+import { dailyRemainingAmount, deriveBudgetMetrics } from '@/src/features/budgets/monthlyBudgets';
 import type { CurrentMonthlyBudgetStatus } from '@/src/features/budgets/useCurrentMonthlyBudget';
 
 export type BudgetCardModel = {
@@ -19,7 +19,7 @@ type BudgetCardProps = {
 };
 
 function formatEuroAmount(value: number): string {
-  return `€${value.toLocaleString('it-IT', { minimumFractionDigits: 2 })}`;
+  return `€${value.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 function formatUtilizedPercent(value: number): string {
@@ -45,10 +45,37 @@ function parseBudgetAmountInput(raw: string): { ok: true; amount: number } | { o
   return { ok: true, amount };
 }
 
-function remainingLabel(remaining: number): string {
-  if (remaining > 0) return `${formatEuroAmount(remaining)} rimanenti`;
-  if (remaining === 0) return 'Budget esaurito';
-  return `${formatEuroAmount(Math.abs(remaining))} oltre il budget`;
+function RemainingCaption({
+  remaining,
+  exceeded,
+  daily,
+  className,
+}: {
+  remaining: number;
+  exceeded: boolean;
+  daily: number | null;
+  className: string;
+}) {
+  if (exceeded) {
+    return (
+      <p className={className}>
+        {formatEuroAmount(Math.abs(remaining))} oltre il budget
+      </p>
+    );
+  }
+
+  return (
+    <p className={className}>
+      <span className="tabular-nums">{formatEuroAmount(remaining)}</span>{' '}
+      <span className="font-normal">rimanenti</span>
+      {daily != null ? (
+        <span className="block font-normal">
+          (<span className="font-semibold tabular-nums">{formatEuroAmount(daily)}</span>{' '}
+          <span>al giorno</span>)
+        </span>
+      ) : null}
+    </p>
+  );
 }
 
 const CARD_TITLE = 'Budget mese';
@@ -215,9 +242,12 @@ function BudgetCardBody({
         </p>
       </div>
       <BudgetUtilizationBar progressWidth={metrics.progressWidth} exceeded={metrics.exceeded} />
-      <p className={`mt-1 text-xs font-semibold leading-snug md:mt-1.5 md:text-sm ${remainingClass}`}>
-        {remainingLabel(metrics.remaining)}
-      </p>
+      <RemainingCaption
+        remaining={metrics.remaining}
+        exceeded={metrics.exceeded}
+        daily={dailyRemainingAmount(metrics.remaining, metrics.exceeded)}
+        className={`mt-1 min-w-0 text-xs font-semibold leading-snug md:mt-1.5 md:text-sm ${remainingClass}`}
+      />
     </BudgetCardShell>
   );
 }

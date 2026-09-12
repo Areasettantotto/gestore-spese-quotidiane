@@ -34,6 +34,30 @@ export function currentCalendarMonthStartDate(now: Date = new Date()): string {
   return `${year}-${month}-01`;
 }
 
+/**
+ * Inclusive local calendar days from `now` through the last day of that month.
+ * Today is included. Uses calendar fields, not 24h/ms arithmetic.
+ */
+export function inclusiveRemainingCalendarDaysInMonth(now: Date = new Date()): number {
+  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  return lastDay - now.getDate() + 1;
+}
+
+/**
+ * Average remaining amount per inclusive remaining calendar day.
+ * Null when the budget is exceeded or only one calendar day remains.
+ */
+export function dailyRemainingAmount(
+  remaining: number,
+  exceeded: boolean,
+  now: Date = new Date()
+): number | null {
+  if (exceeded) return null;
+  const inclusiveDays = inclusiveRemainingCalendarDaysInMonth(now);
+  if (inclusiveDays <= 1) return null;
+  return remaining / inclusiveDays;
+}
+
 export function deriveBudgetMetrics(spent: number, budget: number): BudgetMetrics {
   const spentCents = Math.round(spent * 100);
   const budgetCents = Math.round(budget * 100);
