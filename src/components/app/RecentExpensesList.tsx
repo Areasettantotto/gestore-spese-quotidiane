@@ -23,7 +23,7 @@ const ICON_COMPONENTS: Record<string, React.ComponentType<{ size?: number }>> = 
   Tag,
 };
 
-const MOBILE_SWIPE_QUERY = '(max-width: 639px)';
+const MOBILE_SWIPE_QUERY = '(max-width: 639px) and (pointer: coarse) and (hover: none)';
 const ACTION_PANEL_WIDTH = 68;
 const REVEAL_WIDTH = ACTION_PANEL_WIDTH * 2;
 const DIRECTION_LOCK_PX = 10;
@@ -219,7 +219,7 @@ function SwipeableRecentExpenseCard({
   };
 
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    if (event.pointerType !== 'touch') return;
     dragRef.current = {
       pointerId: event.pointerId,
       startX: event.clientX,
