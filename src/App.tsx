@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { format, startOfMonth, endOfMonth, lastDayOfMonth, setDate, subMonths } from 'date-fns';
 import { it } from 'date-fns/locale';
 
@@ -128,6 +128,8 @@ export default function App() {
 
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [isExpenseSubmitting, setIsExpenseSubmitting] = useState(false);
+  const expenseSubmitLockRef = useRef(false);
   const [newExpense, setNewExpense] = useState<Partial<Expense>>({
     amount: undefined,
     category: 'Alimentazione',
@@ -250,17 +252,26 @@ export default function App() {
     if (!newExpense.description || !newExpense.date || !newExpense.category) return;
     if (isNaN(amountNum) || amountNum <= 0) return;
 
-    await saveExpense({
-      amount: amountNum,
-      category: newExpense.category as Category,
-      description: newExpense.description,
-      date: newExpense.date,
-      accompagnatore: newExpense.accompagnatore,
-      editingId,
-    });
+    if (expenseSubmitLockRef.current) return;
+    expenseSubmitLockRef.current = true;
+    setIsExpenseSubmitting(true);
 
-    setIsAdding(false);
-    resetExpenseDraft();
+    try {
+      await saveExpense({
+        amount: amountNum,
+        category: newExpense.category as Category,
+        description: newExpense.description,
+        date: newExpense.date,
+        accompagnatore: newExpense.accompagnatore,
+        editingId,
+      });
+
+      setIsAdding(false);
+      resetExpenseDraft();
+    } finally {
+      expenseSubmitLockRef.current = false;
+      setIsExpenseSubmitting(false);
+    }
   };
 
   const handleEditClick = (expense: Expense) => {
@@ -375,6 +386,7 @@ export default function App() {
           resetExpenseDraft();
         }}
         onSubmit={handleAddExpense}
+        isSubmitting={isExpenseSubmitting}
       />
     </div>
   );

@@ -12,9 +12,10 @@ type ExpenseFormProps = {
   onChange: (expense: Partial<Expense>) => void;
   onClose: () => void;
   onSubmit: (e: React.FormEvent) => void;
+  isSubmitting: boolean;
 };
 
-export function ExpenseForm({ isOpen, editingId, newExpense, onChange, onClose, onSubmit }: ExpenseFormProps) {
+export function ExpenseForm({ isOpen, editingId, newExpense, onChange, onClose, onSubmit, isSubmitting }: ExpenseFormProps) {
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -64,7 +65,7 @@ export function ExpenseForm({ isOpen, editingId, newExpense, onChange, onClose, 
               </button>
             </div>
 
-            <form onSubmit={onSubmit} className="space-y-6">
+            <form onSubmit={onSubmit} className="space-y-6" aria-busy={isSubmitting}>
               <div className="space-y-2">
                 <label className="text-sm font-semibold text-zinc-700">Importo (€)</label>
                 <input
@@ -151,8 +152,14 @@ export function ExpenseForm({ isOpen, editingId, newExpense, onChange, onClose, 
                 </div>
               </div>
 
-              <button type="submit" className="btn-primary w-full py-4 text-lg mt-4">
-                {editingId ? 'Aggiorna Spesa' : 'Salva Spesa'}
+              <button type="submit" disabled={isSubmitting} className="btn-primary w-full py-4 text-lg mt-4">
+                {isSubmitting
+                  ? editingId
+                    ? 'Aggiornamento…'
+                    : 'Salvataggio…'
+                  : editingId
+                    ? 'Aggiorna Spesa'
+                    : 'Salva Spesa'}
               </button>
             </form>
           </motion.div>
