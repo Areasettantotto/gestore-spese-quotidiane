@@ -280,12 +280,6 @@ export default function App() {
     setIsAdding(true);
   };
 
-  const handleDeleteExpense = (expense: Expense) => {
-    if (confirm(`Confermi l'eliminazione di "${expense.description}"?`)) {
-      void deleteExpense(expense.id);
-    }
-  };
-
   const handleConfirmedDeleteExpense = (expense: Expense) => {
     void deleteExpense(expense.id);
   };
@@ -360,7 +354,7 @@ export default function App() {
               }}
               onBack={() => setView('home')}
               onEdit={handleEditClick}
-              onDelete={handleDeleteExpense}
+              onDelete={handleConfirmedDeleteExpense}
             />
           ) : null}
         </main>

@@ -37,7 +37,7 @@ export function AppHeader({
   const showAccessRow = Boolean(accessBadgeLabel) || Boolean(giftLabel);
 
   return (
-    <header className="bg-white border-b border-zinc-200 sticky top-0 z-10">
+    <header className="bg-white border-b border-zinc-200 sticky top-0 z-30">
       <div className="max-w-2xl mx-auto px-4 py-6 flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-zinc-900">Gestore Spese</h1>

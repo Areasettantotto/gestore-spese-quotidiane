@@ -1,25 +1,9 @@
-import type React from 'react';
+import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { format, parseISO } from 'date-fns';
-import { it } from 'date-fns/locale';
-import { clsx, type ClassValue } from 'clsx';
-import { twMerge } from 'tailwind-merge';
-import { ArrowLeft, Calendar, Coffee, Filter, Heart, Home, Music, Pencil, Search, ShoppingBag, Tag, Trash2, Truck, User } from 'lucide-react';
-import { ACCOMPAGNATORI, CATEGORIES, CATEGORY_ICONS, type Accompagnatore, type Category, type Expense } from '@/src/types';
-
-function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
-
-const ICON_COMPONENTS: Record<string, React.ComponentType<{ size?: number }>> = {
-  Coffee,
-  Truck,
-  Home,
-  Music,
-  Heart,
-  ShoppingBag,
-  Tag,
-};
+import { ArrowLeft, Calendar, Filter, Search, User } from 'lucide-react';
+import { ACCOMPAGNATORI, CATEGORIES, type Accompagnatore, type Category, type Expense } from '@/src/types';
+import { DeleteExpenseConfirmDialog } from '@/src/components/app/DeleteExpenseConfirmDialog';
+import { ExpenseListItem, useMobileSwipeViewport } from '@/src/components/app/ExpenseListItem';
 
 type FiltersState = {
   filterMonth: string;
@@ -47,6 +31,36 @@ export function AllExpensesView({
   onEdit,
   onDelete,
 }: AllExpensesViewProps) {
+  const isMobileSwipe = useMobileSwipeViewport();
+  const [openExpenseId, setOpenExpenseId] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Expense | null>(null);
+
+  useEffect(() => {
+    if (!isMobileSwipe) {
+      setOpenExpenseId(null);
+    }
+  }, [isMobileSwipe]);
+
+  useEffect(() => {
+    setOpenExpenseId(null);
+  }, [filters.filterSearch, filters.filterMonth, filters.filterCategory, filters.filterAccompagnatore]);
+
+  useEffect(() => {
+    if (openExpenseId && !filteredExpenses.some((expense) => expense.id === openExpenseId)) {
+      setOpenExpenseId(null);
+    }
+  }, [filteredExpenses, openExpenseId]);
+
+  const handleEdit = (expense: Expense) => {
+    setOpenExpenseId(null);
+    onEdit(expense);
+  };
+
+  const handleDeleteRequest = (expense: Expense) => {
+    setOpenExpenseId(null);
+    setPendingDelete(expense);
+  };
+
   return (
     <section className="space-y-6">
       <div className="flex items-center justify-between">
@@ -129,49 +143,20 @@ export function AllExpensesView({
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
-                className="card p-4 flex items-center justify-between group hover:border-emerald-200 transition-colors"
               >
-                <div className="flex items-center gap-4">
-                  <div
-                    className={cn(
-                      'w-12 h-12 rounded-xl flex items-center justify-center',
-                      'bg-zinc-50 text-zinc-500 group-hover:bg-emerald-50 group-hover:text-emerald-600 transition-colors',
-                    )}
-                  >
-                    {(() => {
-                      const key = CATEGORY_ICONS[expense.category];
-                      const Icon = ICON_COMPONENTS[key] ?? Tag;
-                      return <Icon size={20} />;
-                    })()}
-                  </div>
-                  <div>
-                    <p className="font-semibold text-zinc-900">{expense.description}</p>
-                    <div className="flex items-center gap-2 text-xs text-zinc-500">
-                      <span className="font-medium px-1.5 py-0.5 bg-zinc-100 rounded text-zinc-600">
-                        {expense.accompagnatore ? expense.accompagnatore.charAt(0) : 'S'}
-                      </span>
-                      <span>•</span>
-                      <span>{format(parseISO(expense.date), 'd MMMM yyyy', { locale: it })}</span>
-                    </div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <p className="font-bold text-zinc-900">€{expense.amount.toLocaleString('it-IT', { minimumFractionDigits: 2 })}</p>
-                  <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity action-buttons">
-                    <button
-                      onClick={() => onEdit(expense)}
-                      className="p-2 text-zinc-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
-                    >
-                      <Pencil size={18} />
-                    </button>
-                    <button
-                      onClick={() => onDelete(expense)}
-                      className="p-2 text-zinc-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                    >
-                      <Trash2 size={18} />
-                    </button>
-                  </div>
-                </div>
+                <ExpenseListItem
+                  expense={expense}
+                  dateFormat="d MMMM yyyy"
+                  isMobileSwipe={isMobileSwipe}
+                  isOpen={openExpenseId === expense.id}
+                  onOpen={() => setOpenExpenseId(expense.id)}
+                  onClose={() => setOpenExpenseId((current) => (current === expense.id ? null : current))}
+                  onExclusiveSwipe={() =>
+                    setOpenExpenseId((current) => (current && current !== expense.id ? null : current))
+                  }
+                  onEdit={() => handleEdit(expense)}
+                  onDeleteRequest={() => handleDeleteRequest(expense)}
+                />
               </motion.div>
             ))
           ) : (
@@ -187,6 +172,17 @@ export function AllExpensesView({
           )}
         </AnimatePresence>
       </div>
+
+      <DeleteExpenseConfirmDialog
+        expense={pendingDelete}
+        onCancel={() => setPendingDelete(null)}
+        onConfirm={() => {
+          if (!pendingDelete) return;
+          const expense = pendingDelete;
+          setPendingDelete(null);
+          onDelete(expense);
+        }}
+      />
     </section>
   );
 }
