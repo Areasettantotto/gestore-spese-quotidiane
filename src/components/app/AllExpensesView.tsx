@@ -1,15 +1,24 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { ArrowLeft, Calendar, Filter, Search, User } from 'lucide-react';
 import { ACCOMPAGNATORI, CATEGORIES, type Accompagnatore, type Category, type Expense } from '@/src/types';
 import { DeleteExpenseConfirmDialog } from '@/src/components/app/DeleteExpenseConfirmDialog';
 import { ExpenseListItem, useMobileSwipeViewport } from '@/src/components/app/ExpenseListItem';
 
+const INITIAL_VISIBLE_EXPENSES = 30;
+const VISIBLE_EXPENSES_STEP = 30;
+const SENTINEL_ROOT_MARGIN = '0px 0px 280px 0px';
+
 type FiltersState = {
   filterMonth: string;
   filterCategory: Category | 'Tutte';
   filterAccompagnatore: Accompagnatore | 'Tutte' | 'Senza';
   filterSearch: string;
+};
+
+type ProgressiveRenderState = {
+  filterKey: string;
+  visibleCount: number;
 };
 
 type AllExpensesViewProps = {
@@ -34,6 +43,37 @@ export function AllExpensesView({
   const isMobileSwipe = useMobileSwipeViewport();
   const [openExpenseId, setOpenExpenseId] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Expense | null>(null);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+
+  const filterKey = JSON.stringify([
+    filters.filterSearch,
+    filters.filterMonth,
+    filters.filterCategory,
+    filters.filterAccompagnatore,
+  ]);
+  const [progressive, setProgressive] = useState<ProgressiveRenderState>({
+    filterKey,
+    visibleCount: INITIAL_VISIBLE_EXPENSES,
+  });
+
+  // Budget progressivo valido solo per la combinazione di filtri corrente:
+  // al primo render di una nuova filterKey si riparte da INITIAL_VISIBLE_EXPENSES
+  // senza attendere alcun effect.
+  const visibleCount = progressive.filterKey === filterKey ? progressive.visibleCount : INITIAL_VISIBLE_EXPENSES;
+
+  const visibleExpenses = filteredExpenses.slice(0, visibleCount);
+  const shownCount = Math.min(visibleCount, filteredExpenses.length);
+  const hasMore = shownCount < filteredExpenses.length;
+
+  const loadMore = useCallback(() => {
+    setProgressive((current) => {
+      const base = current.filterKey === filterKey ? current.visibleCount : INITIAL_VISIBLE_EXPENSES;
+      if (base >= filteredExpenses.length) {
+        return current;
+      }
+      return { filterKey, visibleCount: base + VISIBLE_EXPENSES_STEP };
+    });
+  }, [filterKey, filteredExpenses.length]);
 
   useEffect(() => {
     if (!isMobileSwipe) {
@@ -43,13 +83,51 @@ export function AllExpensesView({
 
   useEffect(() => {
     setOpenExpenseId(null);
-  }, [filters.filterSearch, filters.filterMonth, filters.filterCategory, filters.filterAccompagnatore]);
+    // Normalizza lo state al filtro corrente: il limite del primo render è già
+    // garantito dalla derivazione sincrona di visibleCount; qui si scarta il budget
+    // accumulato dal filtro precedente così che un ritorno a quella combinazione
+    // riparta comunque da INITIAL_VISIBLE_EXPENSES.
+    setProgressive((current) =>
+      current.filterKey === filterKey && current.visibleCount === INITIAL_VISIBLE_EXPENSES
+        ? current
+        : { filterKey, visibleCount: INITIAL_VISIBLE_EXPENSES },
+    );
+  }, [filterKey]);
 
   useEffect(() => {
     if (openExpenseId && !filteredExpenses.some((expense) => expense.id === openExpenseId)) {
       setOpenExpenseId(null);
     }
   }, [filteredExpenses, openExpenseId]);
+
+  useEffect(() => {
+    if (!hasMore) {
+      return;
+    }
+
+    const sentinel = sentinelRef.current;
+    if (!sentinel || typeof IntersectionObserver === 'undefined') {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          loadMore();
+        }
+      },
+      {
+        root: null,
+        rootMargin: SENTINEL_ROOT_MARGIN,
+        threshold: 0,
+      },
+    );
+
+    observer.observe(sentinel);
+    return () => {
+      observer.disconnect();
+    };
+  }, [hasMore, loadMore, visibleCount]);
 
   const handleEdit = (expense: Expense) => {
     setOpenExpenseId(null);
@@ -136,7 +214,7 @@ export function AllExpensesView({
       <div className="space-y-3">
         <AnimatePresence mode="popLayout">
           {filteredExpenses.length > 0 ? (
-            filteredExpenses.map((expense) => (
+            visibleExpenses.map((expense) => (
               <motion.div
                 key={expense.id}
                 layout
@@ -171,6 +249,23 @@ export function AllExpensesView({
             </div>
           )}
         </AnimatePresence>
+        {filteredExpenses.length > 0 ? (
+          <p className="sr-only" aria-live="polite">
+            Mostrate {shownCount} di {filteredExpenses.length} spese
+          </p>
+        ) : null}
+        {hasMore ? (
+          <>
+            <div ref={sentinelRef} aria-hidden="true" className="h-px w-full" />
+            <button
+              type="button"
+              onClick={loadMore}
+              className="w-full rounded-xl py-2 text-sm font-medium text-zinc-600 transition-colors hover:bg-zinc-100"
+            >
+              Carica altre
+            </button>
+          </>
+        ) : null}
       </div>
 
       <DeleteExpenseConfirmDialog
