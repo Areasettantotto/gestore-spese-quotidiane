@@ -19,6 +19,7 @@ type SummaryCardsProps = {
   budgetCanWrite: boolean;
   currentMonthExpenses: Expense[];
   last7DaysTrend: readonly Last7DaysTrendPoint[];
+  last7DaysExpenses: readonly Expense[];
   onOpenCurrentMonthExpenses: () => void;
   onSaveBudget: (amount: number) => Promise<{ ok: true } | { ok: false; message: string }>;
 };
@@ -115,6 +116,7 @@ export function SummaryCards({
   budgetCanWrite,
   currentMonthExpenses,
   last7DaysTrend,
+  last7DaysExpenses,
   onOpenCurrentMonthExpenses,
   onSaveBudget,
 }: SummaryCardsProps) {
@@ -166,7 +168,7 @@ export function SummaryCards({
         <ExpenseDistributionCard expenses={currentMonthExpenses} totalMonthly={totalMonthly} />
       </div>
 
-      <Last7DaysTrendCard points={last7DaysTrend} />
+      <Last7DaysTrendCard points={last7DaysTrend} expenses={last7DaysExpenses} />
     </div>
   );
 }

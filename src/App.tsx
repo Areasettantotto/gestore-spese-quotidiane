@@ -225,6 +225,10 @@ export default function App() {
   }, [filteredExpenses]);
 
   const last7DaysTrend = useMemo(() => buildLast7DaysTrend(expenses), [expenses]);
+  const last7DaysExpenses = useMemo(() => {
+    const dateKeys = new Set(last7DaysTrend.map((point) => point.dateKey));
+    return expenses.filter((expense) => dateKeys.has(expense.date));
+  }, [expenses, last7DaysTrend]);
 
   const resetExpenseDraft = () => {
     setEditingId(null);
@@ -313,6 +317,7 @@ export default function App() {
                 budgetCanWrite={currentMonthlyBudget.canWrite}
                 currentMonthExpenses={currentMonthExpenses}
                 last7DaysTrend={last7DaysTrend}
+                last7DaysExpenses={last7DaysExpenses}
                 onSaveBudget={currentMonthlyBudget.saveCurrentMonthlyBudget}
                 onOpenCurrentMonthExpenses={() => {
                   setFilterMonth(format(new Date(), 'yyyy-MM'));

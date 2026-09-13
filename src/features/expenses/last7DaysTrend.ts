@@ -69,3 +69,21 @@ export function buildLast7DaysTrend(
   }
   return points;
 }
+
+function compareTrendDayExpenses(a: Expense, b: Expense): number {
+  if (b.amount !== a.amount) return b.amount - a.amount;
+  if (a.date !== b.date) return b.date.localeCompare(a.date);
+  return a.id.localeCompare(b.id);
+}
+
+/**
+ * Real expenses for one chart day. Date-key match is the same as
+ * `buildLast7DaysTrend`: `expense.date === dateKey` (`yyyy-MM-dd`).
+ * Order: amount DESC, date DESC, id ASC.
+ */
+export function listTrendDayExpenses(
+  expenses: readonly Expense[],
+  dateKey: string
+): Expense[] {
+  return expenses.filter((expense) => expense.date === dateKey).sort(compareTrendDayExpenses);
+}
