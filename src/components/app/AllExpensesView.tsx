@@ -143,21 +143,21 @@ export function AllExpensesView({
     <section className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <button onClick={onBack} className="p-2 hover:bg-zinc-100 rounded-full transition-colors text-zinc-600">
+          <button onClick={onBack} className="p-2 hover:bg-surface-muted rounded-full transition-colors text-text-secondary">
             <ArrowLeft size={24} />
           </button>
-          <h2 className="text-xl font-bold text-zinc-900">Tutte le Spese</h2>
+          <h2 className="text-xl font-bold text-text-primary">Tutte le Spese</h2>
         </div>
         <div className="text-right">
-          <p className="text-xs text-zinc-500 font-medium uppercase tracking-wider">Totale filtrato</p>
-          <p className="text-lg font-bold text-emerald-600">€{filteredTotal.toLocaleString('it-IT', { minimumFractionDigits: 2 })}</p>
+          <p className="text-xs text-text-muted font-medium uppercase tracking-wider">Totale filtrato</p>
+          <p className="text-lg font-bold text-primary">€{filteredTotal.toLocaleString('it-IT', { minimumFractionDigits: 2 })}</p>
         </div>
       </div>
 
       <div className="card p-4 overflow-hidden min-w-0">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:grid-rows-2 md:items-center min-w-0">
           <div className="relative w-full min-w-0 flex items-center">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 shrink-0" size={18} />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text-faint shrink-0" size={18} />
             <input
               type="text"
               placeholder="Cerca descrizione..."
@@ -167,7 +167,7 @@ export function AllExpensesView({
             />
           </div>
           <div className="relative w-full min-w-0 md:min-w-30 flex items-center">
-            <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 shrink-0" size={18} />
+            <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-text-faint shrink-0" size={18} />
             <input
               type="month"
               className="input-field pl-10! flex-1 w-full min-w-0 max-w-full box-border"
@@ -176,7 +176,7 @@ export function AllExpensesView({
             />
           </div>
           <div className="relative w-full min-w-0 md:min-w-30 flex items-center">
-            <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 shrink-0 pointer-events-none" size={18} />
+            <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-text-faint shrink-0 pointer-events-none" size={18} />
             <select
               className="input-field pl-10! flex-1 w-full min-w-0 max-w-full appearance-none leading-normal box-border"
               value={filters.filterCategory}
@@ -191,7 +191,7 @@ export function AllExpensesView({
             </select>
           </div>
           <div className="relative w-full min-w-0 md:min-w-30 flex items-center">
-            <User className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 shrink-0 pointer-events-none" size={18} />
+            <User className="absolute left-3 top-1/2 -translate-y-1/2 text-text-faint shrink-0 pointer-events-none" size={18} />
             <select
               className="input-field pl-10! flex-1 w-full min-w-0 max-w-full appearance-none leading-normal box-border"
               value={filters.filterAccompagnatore}
@@ -239,12 +239,12 @@ export function AllExpensesView({
             ))
           ) : (
             <div className="card p-12 flex flex-col items-center justify-center text-center space-y-4 border-dashed">
-              <div className="w-16 h-16 bg-zinc-50 rounded-full flex items-center justify-center text-zinc-300">
+              <div className="w-16 h-16 bg-surface-muted rounded-full flex items-center justify-center text-text-faint">
                 <Search size={32} />
               </div>
               <div>
-                <p className="text-zinc-900 font-medium">Nessun risultato trovato</p>
-                <p className="text-zinc-500 text-sm">Prova a modificare i filtri di ricerca.</p>
+                <p className="text-text-primary font-medium">Nessun risultato trovato</p>
+                <p className="text-text-muted text-sm">Prova a modificare i filtri di ricerca.</p>
               </div>
             </div>
           )}
@@ -260,7 +260,7 @@ export function AllExpensesView({
             <button
               type="button"
               onClick={loadMore}
-              className="w-full rounded-xl py-2 text-sm font-medium text-zinc-600 transition-colors hover:bg-zinc-100"
+              className="w-full rounded-xl py-2 text-sm font-medium text-text-secondary transition-colors hover:bg-surface-muted"
             >
               Carica altre
             </button>

@@ -1,7 +1,7 @@
 export function WorkspaceLoadingState() {
   return (
     <div
-      className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-6 text-sm text-zinc-700"
+      className="rounded-xl border border-border bg-surface-muted px-4 py-6 text-sm text-text-secondary"
       role="status"
       aria-live="polite"
     >

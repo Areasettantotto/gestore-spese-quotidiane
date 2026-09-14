@@ -402,7 +402,7 @@ function BudgetDialog({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={handleClose}
-            className="fixed inset-0 z-40 bg-black/20 backdrop-blur-sm"
+            className="fixed inset-0 z-40 bg-overlay backdrop-blur-sm"
           />
           <motion.div
             ref={panelRef}
@@ -413,11 +413,11 @@ function BudgetDialog({
             initial={{ opacity: 0, y: 100 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 100 }}
-            className="fixed bottom-0 left-0 right-0 z-50 mx-auto max-w-2xl rounded-t-4xl bg-white p-8 shadow-2xl outline-none"
+            className="surface-elevated fixed bottom-0 left-0 right-0 z-50 mx-auto max-w-2xl rounded-t-4xl p-8 outline-none"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="mb-6 flex items-center justify-between gap-3">
-              <h2 id={`${amountFieldId}-title`} className="text-xl font-bold text-zinc-900">
+              <h2 id={`${amountFieldId}-title`} className="text-xl font-bold text-text-primary">
                 {title}
               </h2>
               <button
@@ -425,7 +425,7 @@ function BudgetDialog({
                 onClick={handleClose}
                 disabled={submitting}
                 aria-label="Chiudi"
-                className="rounded-full p-2 transition-colors hover:bg-zinc-100 disabled:opacity-50"
+                className="rounded-full p-2 text-text-muted transition-colors hover:bg-surface-muted disabled:opacity-50"
               >
                 <X size={24} aria-hidden="true" />
               </button>
@@ -433,7 +433,7 @@ function BudgetDialog({
 
             <form onSubmit={(event) => void handleSubmit(event)} className="space-y-6">
               <div className="space-y-2">
-                <label htmlFor={amountFieldId} className="text-sm font-semibold text-zinc-700">
+                <label htmlFor={amountFieldId} className="text-sm font-semibold text-text-secondary">
                   Importo (€)
                 </label>
                 <input
@@ -455,7 +455,7 @@ function BudgetDialog({
               </div>
 
               {errorMessage ? (
-                <p className="text-sm text-red-600" role="alert">
+                <p className="text-sm text-danger" role="alert">
                   {errorMessage}
                 </p>
               ) : null}
@@ -465,7 +465,7 @@ function BudgetDialog({
                   type="button"
                   onClick={handleClose}
                   disabled={submitting}
-                  className="rounded-xl px-6 py-3 text-sm font-medium text-zinc-700 hover:bg-zinc-100 disabled:opacity-50"
+                  className="rounded-xl px-6 py-3 text-sm font-medium text-text-secondary hover:bg-surface-muted disabled:opacity-50"
                 >
                   Annulla
                 </button>

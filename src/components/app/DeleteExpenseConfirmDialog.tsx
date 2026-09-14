@@ -52,7 +52,7 @@ export function DeleteExpenseConfirmDialog({ expense, onCancel, onConfirm }: Del
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onCancel}
-            className="fixed inset-0 z-40 bg-black/20 backdrop-blur-sm"
+            className="fixed inset-0 z-40 bg-overlay backdrop-blur-sm"
           />
           <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center p-4">
             <motion.div
@@ -65,21 +65,21 @@ export function DeleteExpenseConfirmDialog({ expense, onCancel, onConfirm }: Del
               initial={{ opacity: 0, scale: 0.96, y: 12 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.96, y: 12 }}
-              className="pointer-events-auto w-full max-w-sm rounded-2xl border border-zinc-200 bg-white p-5 shadow-2xl outline-none"
+              className="surface-elevated pointer-events-auto w-full max-w-sm rounded-2xl p-5 outline-none"
               onClick={(event) => event.stopPropagation()}
             >
               <div className="flex items-start gap-3">
                 <div
-                  className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-rose-50 text-rose-700"
+                  className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-danger-soft text-danger"
                   aria-hidden="true"
                 >
                   <Trash2 size={20} />
                 </div>
                 <div className="min-w-0 space-y-1">
-                  <h2 id={titleId} className="text-base font-semibold text-zinc-900">
+                  <h2 id={titleId} className="text-base font-semibold text-text-primary">
                     Eliminare questa spesa?
                   </h2>
-                  <p id={descriptionId} className="text-sm text-zinc-500">
+                  <p id={descriptionId} className="text-sm text-text-muted">
                     {formatExpenseSummary(expense)}
                   </p>
                 </div>
@@ -89,14 +89,14 @@ export function DeleteExpenseConfirmDialog({ expense, onCancel, onConfirm }: Del
                 <button
                   type="button"
                   onClick={onConfirm}
-                  className="flex-1 rounded-xl bg-rose-600 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-rose-700 active:scale-95"
+                  className="btn-danger flex-1"
                 >
                   Elimina
                 </button>
                 <button
                   type="button"
                   onClick={onCancel}
-                  className="flex-1 rounded-xl px-4 py-3 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100"
+                  className="flex-1 rounded-xl px-4 py-3 text-sm font-medium text-text-secondary transition-colors hover:bg-surface-muted"
                 >
                   Annulla
                 </button>

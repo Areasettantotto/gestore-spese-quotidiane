@@ -87,7 +87,7 @@ export function ExpenseListItem({
   }
 
   return (
-    <div className="card p-4 flex items-center justify-between group hover:border-emerald-200 transition-colors">
+    <div className="card card-interactive p-4 flex items-center justify-between group">
       <ExpenseCardBody
         expense={expense}
         dateFormat={dateFormat}
@@ -231,7 +231,7 @@ function SwipeableExpenseCard({
           tabIndex={actionsRevealed ? 0 : -1}
           onClick={onEdit}
           aria-label="Modifica spesa"
-          className="flex items-center justify-center bg-sky-100 text-sky-700 transition-colors hover:bg-sky-200"
+          className="swipe-action-edit"
           style={{ width: ACTION_PANEL_WIDTH }}
         >
           <Pencil size={20} aria-hidden="true" />
@@ -241,7 +241,7 @@ function SwipeableExpenseCard({
           tabIndex={actionsRevealed ? 0 : -1}
           onClick={onDelete}
           aria-label="Elimina spesa"
-          className="flex items-center justify-center bg-rose-100 text-rose-700 transition-colors hover:bg-rose-200"
+          className="swipe-action-delete"
           style={{ width: ACTION_PANEL_WIDTH }}
         >
           <Trash2 size={20} aria-hidden="true" />
@@ -254,7 +254,7 @@ function SwipeableExpenseCard({
         onPointerMove={handlePointerMove}
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
-        className="relative z-10 flex items-center justify-between bg-white p-4 touch-pan-y select-none"
+        className="relative z-10 flex items-center justify-between bg-surface p-4 touch-pan-y select-none"
         style={{
           transform: `translate3d(${offset}px, 0, 0)`,
           transition: isDragging ? 'none' : 'transform 200ms ease-out',
@@ -293,15 +293,15 @@ function ExpenseCardBody({
         <div
           className={cn(
             'w-12 h-12 rounded-xl flex items-center justify-center',
-            'bg-zinc-50 text-zinc-500 group-hover:bg-emerald-50 group-hover:text-emerald-600 transition-colors',
+            'bg-surface-muted text-text-muted group-hover:bg-primary-soft group-hover:text-primary transition-colors',
           )}
         >
           <Icon size={20} />
         </div>
         <div>
-          <p className="font-semibold text-zinc-900">{expense.description}</p>
-          <div className="flex items-center gap-2 text-xs text-zinc-500">
-            <span className="font-medium px-1.5 py-0.5 bg-zinc-100 rounded text-zinc-600">
+          <p className="font-semibold text-text-primary">{expense.description}</p>
+          <div className="flex items-center gap-2 text-xs text-text-muted">
+            <span className="font-medium px-1.5 py-0.5 bg-surface-muted rounded text-text-secondary">
               {expense.accompagnatore ? expense.accompagnatore.charAt(0) : 'S'}
             </span>
             <span>•</span>
@@ -310,7 +310,7 @@ function ExpenseCardBody({
         </div>
       </div>
       <div className="flex items-center gap-2">
-        <p className="font-bold text-zinc-900">
+        <p className="font-bold text-text-primary">
           €{expense.amount.toLocaleString('it-IT', { minimumFractionDigits: 2 })}
         </p>
         {showDesktopActions ? (
@@ -319,7 +319,7 @@ function ExpenseCardBody({
               type="button"
               onClick={onEdit}
               aria-label="Modifica spesa"
-              className="p-2 text-zinc-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+              className="p-2 text-text-faint hover:text-primary hover:bg-primary-soft rounded-lg transition-colors"
             >
               <Pencil size={18} aria-hidden="true" />
             </button>
@@ -327,7 +327,7 @@ function ExpenseCardBody({
               type="button"
               onClick={onDelete}
               aria-label="Elimina spesa"
-              className="p-2 text-zinc-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+              className="p-2 text-text-faint hover:text-danger hover:bg-danger-soft rounded-lg transition-colors"
             >
               <Trash2 size={18} aria-hidden="true" />
             </button>

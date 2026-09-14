@@ -42,8 +42,8 @@ export function RecentExpensesList({ expenses, onViewAll, onEdit, onDelete }: Re
   return (
     <section className="space-y-4">
       <div className="flex justify-between items-end">
-        <h2 className="text-lg font-semibold text-zinc-900">Attività Recente</h2>
-        <button onClick={onViewAll} className="text-sm text-emerald-600 font-medium hover:underline">
+        <h2 className="text-lg font-semibold text-text-primary">Attività Recente</h2>
+        <button onClick={onViewAll} className="text-sm text-primary font-medium hover:underline">
           Vedi tutto
         </button>
       </div>
@@ -76,12 +76,12 @@ export function RecentExpensesList({ expenses, onViewAll, onEdit, onDelete }: Re
             ))
           ) : (
             <div className="card p-12 flex flex-col items-center justify-center text-center space-y-4 border-dashed">
-              <div className="w-16 h-16 bg-zinc-50 rounded-full flex items-center justify-center text-zinc-300">
+              <div className="w-16 h-16 bg-surface-muted rounded-full flex items-center justify-center text-text-faint">
                 <Wallet size={32} />
               </div>
               <div>
-                <p className="text-zinc-900 font-medium">Nessuna spesa registrata</p>
-                <p className="text-zinc-500 text-sm">Inizia aggiungendo la tua prima spesa quotidiana.</p>
+                <p className="text-text-primary font-medium">Nessuna spesa registrata</p>
+                <p className="text-text-muted text-sm">Inizia aggiungendo la tua prima spesa quotidiana.</p>
               </div>
             </div>
           )}

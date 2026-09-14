@@ -44,7 +44,7 @@ export function ExpenseForm({ isOpen, editingId, newExpense, onChange, onClose, 
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={resetAndClose}
-            className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40"
+            className="fixed inset-0 bg-overlay backdrop-blur-sm z-40"
           />
           <motion.div
             ref={panelRef}
@@ -55,19 +55,19 @@ export function ExpenseForm({ isOpen, editingId, newExpense, onChange, onClose, 
             initial={{ opacity: 0, y: 100 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 100 }}
-            className="fixed bottom-0 left-0 right-0 bg-white rounded-t-4xl p-8 z-50 shadow-2xl max-w-2xl mx-auto outline-none"
+            className="surface-elevated fixed bottom-0 left-0 right-0 rounded-t-4xl p-8 z-50 max-w-2xl mx-auto outline-none"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex justify-between items-center mb-6">
-              <h2 id={titleId} className="text-xl font-bold text-zinc-900">{editingId ? 'Modifica Spesa' : 'Nuova Spesa'}</h2>
-              <button onClick={resetAndClose} className="p-2 hover:bg-zinc-100 rounded-full transition-colors">
+              <h2 id={titleId} className="text-xl font-bold text-text-primary">{editingId ? 'Modifica Spesa' : 'Nuova Spesa'}</h2>
+              <button onClick={resetAndClose} className="p-2 hover:bg-surface-muted rounded-full transition-colors text-text-muted">
                 <X size={24} />
               </button>
             </div>
 
             <form onSubmit={onSubmit} className="space-y-6" aria-busy={isSubmitting}>
               <div className="space-y-2">
-                <label className="text-sm font-semibold text-zinc-700">Importo (€)</label>
+                <label className="text-sm font-semibold text-text-secondary">Importo (€)</label>
                 <input
                   type="number"
                   step="0.01"
@@ -85,7 +85,7 @@ export function ExpenseForm({ isOpen, editingId, newExpense, onChange, onClose, 
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-semibold text-zinc-700">Descrizione</label>
+                <label className="text-sm font-semibold text-text-secondary">Descrizione</label>
                 <input
                   type="text"
                   required
@@ -98,9 +98,9 @@ export function ExpenseForm({ isOpen, editingId, newExpense, onChange, onClose, 
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-sm font-semibold text-zinc-700">Categoria</label>
+                  <label className="text-sm font-semibold text-text-secondary">Categoria</label>
                   <div className="relative w-full min-w-0 flex items-center">
-                    <Tag className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 shrink-0 pointer-events-none" size={18} />
+                    <Tag className="absolute left-3 top-1/2 -translate-y-1/2 text-text-faint shrink-0 pointer-events-none" size={18} />
                     <select
                       className="input-field pl-10! flex-1 w-full min-w-0 max-w-full appearance-none leading-normal box-border"
                       value={newExpense.category}
@@ -115,7 +115,7 @@ export function ExpenseForm({ isOpen, editingId, newExpense, onChange, onClose, 
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-semibold text-zinc-700">Data</label>
+                  <label className="text-sm font-semibold text-text-secondary">Data</label>
                   <div className="relative w-full min-w-0 flex items-center">
                     <input
                       type="date"
@@ -129,9 +129,9 @@ export function ExpenseForm({ isOpen, editingId, newExpense, onChange, onClose, 
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-semibold text-zinc-700">Accompagnatore</label>
+                <label className="text-sm font-semibold text-text-secondary">Accompagnatore</label>
                 <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 shrink-0 pointer-events-none" size={18} />
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 text-text-faint shrink-0 pointer-events-none" size={18} />
                   <select
                     className="input-field pl-10! w-full appearance-none leading-normal"
                     value={newExpense.accompagnatore ?? ''}

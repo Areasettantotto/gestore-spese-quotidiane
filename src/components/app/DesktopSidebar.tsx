@@ -14,10 +14,10 @@ const itemClassName = (isActive: boolean) =>
   [
     'flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm',
     'transition-colors',
-    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40 focus-visible:ring-offset-2',
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring-focus/40 focus-visible:ring-offset-2 focus-visible:ring-offset-surface',
     isActive
-      ? 'bg-emerald-50 font-semibold text-emerald-800'
-      : 'font-medium text-zinc-600 hover:bg-zinc-50 hover:text-zinc-800',
+      ? 'shell-nav-active'
+      : 'font-medium text-text-secondary hover:bg-surface-muted hover:text-text-primary',
   ].join(' ');
 
 export function DesktopSidebar({ activeView, onHome, onExpenses, bottomSlot }: DesktopSidebarProps) {
@@ -25,9 +25,9 @@ export function DesktopSidebar({ activeView, onHome, onExpenses, bottomSlot }: D
   const expensesActive = activeView === 'all';
 
   return (
-    <aside className="fixed inset-y-0 left-0 z-10 hidden h-screen w-64 flex-col border-r border-zinc-200 bg-white lg:flex">
+    <aside className="app-shell-sidebar fixed inset-y-0 left-0 z-10 hidden h-screen w-64 flex-col lg:flex">
       <div className="px-5 py-6">
-        <p className="text-lg font-semibold text-zinc-950">Gestore Spese</p>
+        <p className="text-lg font-semibold text-text-primary">Gestore Spese</p>
       </div>
 
       <nav className="flex flex-col gap-1 px-3" aria-label="Navigazione principale">
@@ -37,7 +37,7 @@ export function DesktopSidebar({ activeView, onHome, onExpenses, bottomSlot }: D
           onClick={onHome}
           aria-current={homeActive ? 'page' : undefined}
         >
-          <Home size={20} className={homeActive ? 'text-emerald-600' : 'text-zinc-500'} aria-hidden="true" />
+          <Home size={20} className={homeActive ? 'text-primary' : 'text-text-muted'} aria-hidden="true" />
           <span>Home</span>
         </button>
 
@@ -47,12 +47,12 @@ export function DesktopSidebar({ activeView, onHome, onExpenses, bottomSlot }: D
           onClick={onExpenses}
           aria-current={expensesActive ? 'page' : undefined}
         >
-          <ReceiptText size={20} className={expensesActive ? 'text-emerald-600' : 'text-zinc-500'} aria-hidden="true" />
+          <ReceiptText size={20} className={expensesActive ? 'text-primary' : 'text-text-muted'} aria-hidden="true" />
           <span>Spese</span>
         </button>
       </nav>
 
-      <div className="mt-auto min-h-16 border-t border-zinc-100 px-3 py-4">{bottomSlot}</div>
+      <div className="mt-auto min-h-16 border-t border-border-subtle px-3 py-4">{bottomSlot}</div>
     </aside>
   );
 }

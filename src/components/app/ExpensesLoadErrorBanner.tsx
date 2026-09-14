@@ -4,7 +4,7 @@ type ExpensesLoadErrorBannerProps = {
 
 export function ExpensesLoadErrorBanner({ message }: ExpensesLoadErrorBannerProps) {
   return (
-    <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950" role="alert">
+    <div className="rounded-xl border border-warning/30 bg-warning-soft px-4 py-3 text-sm text-text-primary" role="alert">
       <p>{message}</p>
     </div>
   );
