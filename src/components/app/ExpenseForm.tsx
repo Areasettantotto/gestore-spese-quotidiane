@@ -99,7 +99,7 @@ export function ExpenseForm({ isOpen, editingId, newExpense, onChange, onClose, 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <label className="text-sm font-semibold text-zinc-700">Categoria</label>
-                  <div className="relative w-full min-w-0 overflow-hidden flex items-center">
+                  <div className="relative w-full min-w-0 flex items-center">
                     <Tag className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 shrink-0 pointer-events-none" size={18} />
                     <select
                       className="input-field pl-10! flex-1 w-full min-w-0 max-w-full appearance-none leading-normal box-border"
@@ -116,7 +116,7 @@ export function ExpenseForm({ isOpen, editingId, newExpense, onChange, onClose, 
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-semibold text-zinc-700">Data</label>
-                  <div className="relative w-full min-w-0 overflow-hidden flex items-center">
+                  <div className="relative w-full min-w-0 flex items-center">
                     <input
                       type="date"
                       required

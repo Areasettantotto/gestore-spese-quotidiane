@@ -156,7 +156,7 @@ export function AllExpensesView({
 
       <div className="card p-4 overflow-hidden min-w-0">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:grid-rows-2 md:items-center min-w-0">
-          <div className="relative w-full min-w-0 overflow-hidden flex items-center">
+          <div className="relative w-full min-w-0 flex items-center">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 shrink-0" size={18} />
             <input
               type="text"
@@ -166,7 +166,7 @@ export function AllExpensesView({
               onChange={(e) => onFiltersChange({ ...filters, filterSearch: e.target.value })}
             />
           </div>
-          <div className="relative w-full min-w-0 md:min-w-30 overflow-hidden flex items-center">
+          <div className="relative w-full min-w-0 md:min-w-30 flex items-center">
             <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 shrink-0" size={18} />
             <input
               type="month"
@@ -175,7 +175,7 @@ export function AllExpensesView({
               onChange={(e) => onFiltersChange({ ...filters, filterMonth: e.target.value })}
             />
           </div>
-          <div className="relative w-full min-w-0 md:min-w-30 overflow-hidden flex items-center">
+          <div className="relative w-full min-w-0 md:min-w-30 flex items-center">
             <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 shrink-0 pointer-events-none" size={18} />
             <select
               className="input-field pl-10! flex-1 w-full min-w-0 max-w-full appearance-none leading-normal box-border"
@@ -190,7 +190,7 @@ export function AllExpensesView({
               ))}
             </select>
           </div>
-          <div className="relative w-full min-w-0 md:min-w-30 overflow-hidden flex items-center">
+          <div className="relative w-full min-w-0 md:min-w-30 flex items-center">
             <User className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 shrink-0 pointer-events-none" size={18} />
             <select
               className="input-field pl-10! flex-1 w-full min-w-0 max-w-full appearance-none leading-normal box-border"
