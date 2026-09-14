@@ -1,5 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { LogOut } from 'lucide-react';
+import { useTheme } from '@/src/theme/ThemeProvider';
+import type { ThemePreference } from '@/src/theme/theme';
 
 type AccountTier = 'base' | 'pro';
 
@@ -10,9 +12,15 @@ type AccountMenuProps = {
 };
 
 const ACCOUNT_TIER_BORDER: Record<AccountTier, string> = {
-  base: 'border-zinc-300',
-  pro: 'border-emerald-500',
+  base: 'border-border',
+  pro: 'border-primary',
 };
+
+const THEME_APPEARANCE_OPTIONS: { value: ThemePreference; label: string }[] = [
+  { value: 'system', label: 'Sistema' },
+  { value: 'light', label: 'Chiaro' },
+  { value: 'dark', label: 'Scuro' },
+];
 
 type ResolvedAvatar = {
   email: string;
@@ -79,12 +87,14 @@ function initialsFromEmail(email: string | null): string {
 }
 
 export function AccountMenu({ userEmail, accountTier, onSignOut }: AccountMenuProps) {
+  const { preference, setPreference } = useTheme();
   const [isOpen, setIsOpen] = useState(false);
   const [resolvedAvatar, setResolvedAvatar] = useState<ResolvedAvatar | null>(null);
   const [avatarFailed, setAvatarFailed] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuId = useId();
+  const appearanceGroupName = useId();
   const initials = initialsFromEmail(userEmail);
   const normalizedEmail = normalizeEmail(userEmail);
   const showAvatar =
@@ -154,7 +164,7 @@ export function AccountMenu({ userEmail, accountTier, onSignOut }: AccountMenuPr
         aria-expanded={isOpen}
         aria-controls={menuId}
         onClick={() => setIsOpen((current) => !current)}
-        className={`flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border-2 bg-zinc-100 text-sm font-semibold text-zinc-700 transition-colors hover:bg-zinc-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:ring-offset-2 ${
+        className={`flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border-2 bg-surface-muted text-sm font-semibold text-text-secondary transition-colors hover:bg-border focus:outline-none focus:ring-2 focus:ring-ring-focus/20 focus:ring-offset-2 focus:ring-offset-surface ${
           accountTier ? ACCOUNT_TIER_BORDER[accountTier] : 'border-transparent'
         }`}
       >
@@ -175,18 +185,40 @@ export function AccountMenu({ userEmail, accountTier, onSignOut }: AccountMenuPr
       {isOpen ? (
         <div
           id={menuId}
-          className="absolute right-0 z-20 mt-2 w-56 rounded-xl border border-zinc-200 bg-white py-2 shadow-lg"
+          className="absolute right-0 z-20 mt-2 w-56 rounded-xl border border-border bg-surface py-2 shadow-lg"
         >
           <div className="px-3 py-2">
-            <p className="truncate text-sm text-zinc-600" title={userEmail ?? undefined}>
+            <p className="truncate text-sm text-text-secondary" title={userEmail ?? undefined}>
               {userEmail ?? 'Account'}
             </p>
           </div>
-          <div className="my-1 border-t border-zinc-100" />
+          <div className="my-1 border-t border-border-subtle" />
+          <fieldset className="m-0 min-w-0 border-0 px-3 py-2">
+            <legend className="px-0 text-xs font-medium text-text-muted">Aspetto</legend>
+            <div className="mt-2 space-y-0.5">
+              {THEME_APPEARANCE_OPTIONS.map((option) => (
+                <label
+                  key={option.value}
+                  className="flex cursor-pointer items-center gap-2 rounded-lg px-1 py-1.5 text-sm text-text-secondary hover:bg-surface-muted"
+                >
+                  <input
+                    type="radio"
+                    name={appearanceGroupName}
+                    value={option.value}
+                    checked={preference === option.value}
+                    onChange={() => setPreference(option.value)}
+                    className="accent-primary"
+                  />
+                  {option.label}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <div className="my-1 border-t border-border-subtle" />
           <button
             type="button"
             onClick={handleSignOut}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-zinc-700 transition-colors hover:bg-zinc-50"
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-text-secondary transition-colors hover:bg-surface-muted"
           >
             <LogOut size={16} aria-hidden="true" />
             Esci

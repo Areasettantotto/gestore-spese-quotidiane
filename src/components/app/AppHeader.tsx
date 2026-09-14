@@ -37,21 +37,21 @@ export function AppHeader({
   const showAccessRow = Boolean(accessBadgeLabel) || Boolean(giftLabel);
 
   return (
-    <header className="bg-white border-b border-zinc-200 sticky top-0 z-30">
+    <header className="bg-surface border-b border-border sticky top-0 z-30">
       <div className="max-w-2xl mx-auto px-4 py-6 flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold text-zinc-900">Gestore Spese</h1>
-          <p className="text-sm text-zinc-500">{dateLabel}</p>
+          <h1 className="text-2xl font-bold text-text-primary">Gestore Spese</h1>
+          <p className="text-sm text-text-muted">{dateLabel}</p>
           {showAccessRow ? (
             <div className="mt-2 flex flex-wrap items-center gap-2">
               {accessBadgeLabel ? (
-                <span className="inline-flex items-center gap-1 rounded-full border border-zinc-200 bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700">
+                <span className="inline-flex items-center gap-1 rounded-full border border-border bg-surface-muted px-2 py-0.5 text-xs font-medium text-text-secondary">
                   <PlanTierIcon accountTier={accountTier} />
                   {accessBadgeLabel}
                 </span>
               ) : null}
               {giftLabel ? (
-                <span className="inline-flex items-center gap-1 rounded-full border border-zinc-200 bg-white px-2 py-0.5 text-xs font-medium text-zinc-500">
+                <span className="inline-flex items-center gap-1 rounded-full border border-border bg-surface px-2 py-0.5 text-xs font-medium text-text-muted">
                   <Gift size={12} className="shrink-0" aria-hidden="true" />
                   {giftLabel}
                 </span>

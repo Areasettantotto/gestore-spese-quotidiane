@@ -3,6 +3,42 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      // Keep in sync with src/theme/theme.ts (storage key, allowed values, system resolver).
+      (function () {
+        var key = 'gsq.theme-preference';
+        var preference = 'system';
+        try {
+          var stored = localStorage.getItem(key);
+          if (stored === 'system' || stored === 'light' || stored === 'dark') {
+            preference = stored;
+          }
+        } catch (e) {}
+        var effective =
+          preference === 'light' || preference === 'dark'
+            ? preference
+            : window.matchMedia('(prefers-color-scheme: dark)').matches
+              ? 'dark'
+              : 'light';
+        var root = document.documentElement;
+        root.classList.remove('light', 'dark');
+        root.classList.add(effective);
+        root.style.colorScheme = effective;
+      })();
+    </script>
+    <style>
+      /* Critical first-paint only: zinc-50 / zinc-950. Full tokens live in src/index.css. */
+      html,
+      body {
+        background-color: #fafafa;
+        color: #18181b;
+      }
+      html.dark,
+      html.dark body {
+        background-color: #09090b;
+        color: #fafafa;
+      }
+    </style>
     <title>Gestore Spese Quotidiane</title>
   </head>
   <body>
@@ -10,4 +46,3 @@
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-
