@@ -170,7 +170,7 @@ function BudgetCardHeader({
     <>
       <BudgetIcon tone={tone} />
       <div className="flex min-w-0 items-start justify-between gap-1">
-        <p className="text-sm font-medium text-zinc-500">{CARD_TITLE}</p>
+        <p className="text-sm font-medium text-text-muted">{CARD_TITLE}</p>
         {trailing}
       </div>
     </>
@@ -206,7 +206,7 @@ function BudgetCardBody({
   if (model.status === 'loading') {
     return (
       <BudgetCardShell tone="ok">
-        <p className="text-xs leading-snug text-zinc-500 md:text-sm" role="status" aria-live="polite">
+        <p className="text-xs leading-snug text-text-muted md:text-sm" role="status" aria-live="polite">
           Caricamento budget…
         </p>
       </BudgetCardShell>
@@ -216,7 +216,7 @@ function BudgetCardBody({
   if (model.status === 'error') {
     return (
       <BudgetCardShell tone="ok">
-        <p className="text-xs leading-snug text-zinc-700 md:text-sm" role="status">
+        <p className="text-xs leading-snug text-text-secondary md:text-sm" role="status">
           Budget non disponibile
         </p>
       </BudgetCardShell>
@@ -226,7 +226,7 @@ function BudgetCardBody({
   if (model.status === 'unconfigured') {
     return (
       <BudgetCardShell tone="ok">
-        <p className="text-xs leading-snug text-zinc-700 md:text-sm">
+        <p className="text-xs leading-snug text-text-secondary md:text-sm">
           {model.canWrite
             ? 'Il budget non è ancora impostato per il mese corrente.'
             : 'Il budget del mese non è ancora configurato.'}
@@ -244,7 +244,7 @@ function BudgetCardBody({
   if (budgetAmount == null) {
     return (
       <BudgetCardShell tone="ok">
-        <p className="text-xs leading-snug text-zinc-700 md:text-sm" role="status">
+        <p className="text-xs leading-snug text-text-secondary md:text-sm" role="status">
           Budget non disponibile
         </p>
       </BudgetCardShell>
@@ -253,10 +253,10 @@ function BudgetCardBody({
 
   const metrics = deriveBudgetMetrics(spent, budgetAmount);
   const tone = metrics.exceeded ? 'danger' : 'ok';
-  const remainingClass = metrics.exceeded ? 'text-red-600' : 'text-zinc-500';
-  const spentLabelClass = metrics.exceeded ? 'text-red-600' : 'text-zinc-500';
-  const percentClass = metrics.exceeded ? 'text-red-600' : 'text-emerald-600';
-  const budgetAmountClass = metrics.exceeded ? 'text-red-700' : 'text-zinc-900';
+  const remainingClass = metrics.exceeded ? 'text-danger' : 'text-text-muted';
+  const spentLabelClass = metrics.exceeded ? 'text-danger' : 'text-text-muted';
+  const percentClass = metrics.exceeded ? 'text-danger' : 'text-primary';
+  const budgetAmountClass = metrics.exceeded ? 'text-danger' : 'text-text-primary';
 
   return (
     <BudgetCardShell
@@ -267,9 +267,9 @@ function BudgetCardBody({
             type="button"
             onClick={onConfigure}
             aria-label="Modifica budget"
-            className="-mr-1 shrink-0 rounded-md p-0.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40"
+            className="-mr-1 shrink-0 rounded-md p-0.5 text-text-faint hover:bg-surface-muted hover:text-text-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40"
           >
-            <ChevronRight className="size-4 text-zinc-400 md:size-[18px]" aria-hidden="true" />
+            <ChevronRight className="size-4 text-text-faint md:size-[18px]" aria-hidden="true" />
           </button>
         ) : null
       }

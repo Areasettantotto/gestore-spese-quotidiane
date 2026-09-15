@@ -45,12 +45,12 @@ function MonthToDateHint({
   previousMonthName: string;
 }) {
   if (currentPeriodTotal === 0 && previousComparablePeriodTotal === 0) {
-    return <p className="mt-1 text-xs leading-snug text-zinc-500 md:text-sm">Nessuna spesa questo mese</p>;
+    return <p className="mt-1 text-xs leading-snug text-text-muted md:text-sm">Nessuna spesa questo mese</p>;
   }
 
   if (!(previousComparablePeriodTotal > 0)) {
     return (
-      <p className="mt-1 text-xs leading-snug text-zinc-500 md:text-sm">
+      <p className="mt-1 text-xs leading-snug text-text-muted md:text-sm">
         Nessuna spesa nello stesso periodo di {previousMonthName}
       </p>
     );
@@ -64,15 +64,15 @@ function MonthToDateHint({
   if (roundedChange === 0) {
     return (
       <p className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs leading-snug md:text-sm">
-        <span className="font-semibold text-zinc-500">0%</span>
-        <span className="font-normal text-zinc-500">{periodLabel}</span>
+        <span className="font-semibold text-text-muted">0%</span>
+        <span className="font-normal text-text-muted">{periodLabel}</span>
       </p>
     );
   }
 
   const isDown = roundedChange < 0;
   const percentLabel = formatSignedPercent(roundedChange);
-  const toneClass = isDown ? 'text-emerald-600' : 'text-amber-600';
+  const toneClass = isDown ? 'text-primary' : 'text-warning';
 
   return (
     <p
@@ -91,7 +91,7 @@ function MonthToDateHint({
         )}
         {percentLabel}
       </span>
-      <span className="font-normal text-zinc-500">{periodLabel}</span>
+      <span className="font-normal text-text-muted">{periodLabel}</span>
     </p>
   );
 }
@@ -140,11 +140,11 @@ export function SummaryCards({
               <Wallet className="size-4 md:size-[18px]" aria-hidden="true" />
             </div>
             <div className="flex min-w-0 items-start justify-between gap-1">
-              <p className="text-sm font-medium text-zinc-500">Totale spese</p>
-              <ChevronRight className="mt-0.5 size-4 shrink-0 text-zinc-400 md:size-[18px]" aria-hidden="true" />
+              <p className="text-sm font-medium text-text-muted">Totale spese</p>
+              <ChevronRight className="mt-0.5 size-4 shrink-0 text-text-faint md:size-[18px]" aria-hidden="true" />
             </div>
             <div className="col-span-2 min-w-0 md:col-span-1">
-              <p className="break-words text-xl font-bold tabular-nums tracking-tight text-zinc-900 md:text-3xl">
+              <p className="break-words text-xl font-bold tabular-nums tracking-tight text-text-primary md:text-3xl">
                 {formatEuroAmount(totalMonthly)}
               </p>
               <MonthToDateHint
