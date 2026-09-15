@@ -229,6 +229,71 @@ html.dark .home-card-icon--danger {
     0 5px 10px -6px rgb(248 113 113 / 0.16);
 }
 
+.home-view-toggle {
+  @apply inline-flex shrink-0 items-center rounded-lg bg-zinc-100 p-0.5;
+}
+
+.home-view-toggle-option {
+  @apply rounded-md bg-transparent px-2.5 py-1 text-xs font-semibold whitespace-nowrap text-zinc-500 transition-colors;
+  border: 0;
+  box-shadow: none;
+}
+
+.home-view-toggle-option:hover {
+  @apply text-zinc-700;
+}
+
+.home-view-toggle-option--active {
+  @apply bg-white text-emerald-700 shadow-sm;
+}
+
+.home-view-toggle-option--active:hover {
+  @apply bg-white text-emerald-700;
+}
+
+.home-view-toggle-option:focus {
+  outline: none;
+}
+
+html.dark .home-view-toggle {
+  background-color: var(--color-surface-muted);
+  box-shadow:
+    inset 0 1px 2px rgb(0 0 0 / 0.48),
+    inset 0 1px 0 rgb(255 255 255 / 0.035);
+}
+
+html.dark .home-view-toggle-option {
+  color: var(--color-text-muted);
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+}
+
+html.dark .home-view-toggle-option:hover {
+  color: var(--color-text-secondary);
+  background-color: transparent;
+}
+
+html.dark .home-view-toggle-option--active,
+html.dark .home-view-toggle-option--active:hover {
+  background-color: color-mix(in oklab, var(--color-emerald-950) 52%, var(--color-zinc-800));
+  background-image: linear-gradient(
+    180deg,
+    rgb(255 255 255 / 0.05) 0%,
+    transparent 50%
+  );
+  color: var(--color-emerald-400);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.05),
+    inset 0 0 0 1px color-mix(in oklab, var(--color-emerald-400) 12%, transparent),
+    0 1px 2px rgb(0 0 0 / 0.38);
+}
+
+.home-view-toggle-option:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--color-ring-focus) 40%, transparent);
+  outline-offset: 1px;
+}
+
 .budget-progress-track {
   @apply mt-1.5 h-2.5 w-full overflow-hidden rounded-full bg-zinc-100 md:h-3;
 }

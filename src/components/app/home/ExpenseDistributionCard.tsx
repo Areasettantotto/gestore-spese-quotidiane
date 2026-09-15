@@ -29,11 +29,11 @@ function DistributionTooltip({
   if (!active || !payload?.[0]) return null;
   const slice = payload[0].payload;
   return (
-    <div className="rounded-xl border-none bg-white px-3 py-2 text-sm shadow-[0_4px_12px_rgba(0,0,0,0.1)]">
-      <p className="font-medium text-zinc-900">{slice.label}</p>
-      <p className="tabular-nums text-zinc-600">
+    <div className="rounded-xl border border-border bg-surface px-3 py-2 text-sm shadow-sm">
+      <p className="font-medium text-text-primary">{slice.label}</p>
+      <p className="tabular-nums text-text-secondary">
         {formatEuroAmount(slice.amount)}
-        <span className="text-zinc-400"> · {slice.percent}%</span>
+        <span className="text-text-muted"> · {slice.percent}%</span>
       </p>
     </div>
   );
@@ -47,18 +47,12 @@ function ModeToggle({
   onChange: (next: DistributionMode) => void;
 }) {
   return (
-    <div
-      role="group"
-      aria-label="Modalità distribuzione"
-      className="inline-flex shrink-0 rounded-lg bg-zinc-100 p-0.5"
-    >
+    <div role="group" aria-label="Modalità distribuzione" className="home-view-toggle">
       <button
         type="button"
         aria-pressed={mode === 'categories'}
         onClick={() => onChange('categories')}
-        className={`rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${
-          mode === 'categories' ? 'bg-white text-emerald-700 shadow-sm' : 'text-zinc-500 hover:text-zinc-700'
-        }`}
+        className={`home-view-toggle-option${mode === 'categories' ? ' home-view-toggle-option--active' : ''}`}
       >
         Categorie
       </button>
@@ -66,9 +60,7 @@ function ModeToggle({
         type="button"
         aria-pressed={mode === 'expenses'}
         onClick={() => onChange('expenses')}
-        className={`rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${
-          mode === 'expenses' ? 'bg-white text-emerald-700 shadow-sm' : 'text-zinc-500 hover:text-zinc-700'
-        }`}
+        className={`home-view-toggle-option${mode === 'expenses' ? ' home-view-toggle-option--active' : ''}`}
       >
         Spese
       </button>
@@ -90,13 +82,13 @@ function DistributionLegend({ slices }: { slices: DistributionSlice[] }) {
             style={{ backgroundColor: slice.color }}
             aria-hidden="true"
           />
-          <span className="min-w-0 truncate text-sm text-zinc-700" title={slice.label}>
+          <span className="min-w-0 truncate text-sm text-text-secondary" title={slice.label}>
             {slice.label}
           </span>
-          <span className="whitespace-nowrap text-left text-sm font-medium tabular-nums text-zinc-900">
+          <span className="whitespace-nowrap text-left text-sm font-medium tabular-nums text-text-primary">
             {formatEuroAmount(slice.amount)}
           </span>
-          <span className="whitespace-nowrap pl-3 text-left text-xs tabular-nums text-zinc-500">
+          <span className="whitespace-nowrap pl-3 text-left text-xs tabular-nums text-text-muted">
             {slice.percent}%
           </span>
         </li>
@@ -126,23 +118,23 @@ export function ExpenseDistributionCard({ expenses, totalMonthly }: ExpenseDistr
           <div className="home-card-icon">
             <PieChartIcon className="size-4 md:size-[18px]" aria-hidden="true" />
           </div>
-          <h2 className="min-w-0 truncate text-sm font-medium text-zinc-500">Distribuzione spese</h2>
+          <h2 className="min-w-0 truncate text-sm font-medium text-text-muted">Distribuzione spese</h2>
         </div>
         <ModeToggle mode={mode} onChange={setMode} />
       </div>
 
       {isEmpty ? (
-        <p className="flex min-h-[8.75rem] items-center justify-center text-sm text-zinc-500">
+        <p className="flex min-h-[8.75rem] items-center justify-center text-sm text-text-muted">
           Nessuna spesa questo mese
         </p>
       ) : (
         <div className="mt-3 flex min-w-0 items-center gap-3 md:gap-5">
           <div className="relative isolate h-[132px] w-[132px] shrink-0 sm:h-[148px] sm:w-[148px]">
             <div className="pointer-events-none absolute inset-0 z-0 flex flex-col items-center justify-center">
-              <p className="text-sm font-bold tabular-nums tracking-tight text-zinc-900 sm:text-base">
+              <p className="text-sm font-bold tabular-nums tracking-tight text-text-primary sm:text-base">
                 {formatEuroAmount(totalMonthly)}
               </p>
-              <p className="text-[10px] font-medium text-zinc-500 sm:text-xs">Totale</p>
+              <p className="text-[10px] font-medium text-text-muted sm:text-xs">Totale</p>
             </div>
             <div className="relative z-10 h-full w-full">
               <ResponsiveContainer width="100%" height="100%">
