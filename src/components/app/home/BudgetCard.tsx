@@ -301,7 +301,7 @@ function BudgetUtilizationBar({ progressWidth, exceeded }: { progressWidth: numb
 
   return (
     <div
-      className={`mt-1.5 h-2.5 w-full overflow-hidden rounded-full md:h-3 ${exceeded ? 'bg-red-100' : 'bg-zinc-100'}`}
+      className={`budget-progress-track${exceeded ? ' budget-progress-track--danger' : ''}`}
       role="progressbar"
       aria-label="Utilizzo del budget"
       aria-valuemin={0}
@@ -322,12 +322,8 @@ function BudgetUtilizationBar({ progressWidth, exceeded }: { progressWidth: numb
 }
 
 function BudgetIcon({ tone }: { tone: 'ok' | 'danger' }) {
-  const toneClass = tone === 'danger' ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600';
-
   return (
-    <div
-      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg md:row-span-2 md:h-9 md:w-9 ${toneClass}`}
-    >
+    <div className={`home-card-icon md:row-span-2${tone === 'danger' ? ' home-card-icon--danger' : ''}`}>
       <Target className="size-4 md:size-[18px]" aria-hidden="true" />
     </div>
   );

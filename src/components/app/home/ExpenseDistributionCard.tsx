@@ -123,7 +123,7 @@ export function ExpenseDistributionCard({ expenses, totalMonthly }: ExpenseDistr
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2 md:gap-3">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 md:h-9 md:w-9">
+          <div className="home-card-icon">
             <PieChartIcon className="size-4 md:size-[18px]" aria-hidden="true" />
           </div>
           <h2 className="min-w-0 truncate text-sm font-medium text-zinc-500">Distribuzione spese</h2>

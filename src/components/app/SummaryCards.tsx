@@ -136,7 +136,7 @@ export function SummaryCards({
           }`}
         >
           <div className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2 gap-y-1 md:gap-x-3">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 md:row-span-2 md:h-9 md:w-9">
+            <div className="home-card-icon md:row-span-2">
               <Wallet className="size-4 md:size-[18px]" aria-hidden="true" />
             </div>
             <div className="flex min-w-0 items-start justify-between gap-1">
