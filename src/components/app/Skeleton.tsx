@@ -15,7 +15,7 @@ export function Skeleton({ className }: SkeletonProps): ReactElement {
   return (
     <div
       aria-hidden="true"
-      className={cn('rounded-md bg-surface-muted motion-safe:animate-pulse', className)}
+      className={cn('rounded-md bg-border motion-safe:animate-pulse', className)}
     />
   );
 }
