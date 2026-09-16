@@ -1,5 +1,6 @@
 import { Badge, Crown, Gift, Plus } from 'lucide-react';
 import { AccountMenu } from '@/src/components/app/AccountMenu';
+import { Skeleton } from '@/src/components/app/Skeleton';
 
 type AccountTier = 'base' | 'pro';
 
@@ -7,6 +8,7 @@ type AppHeaderProps = {
   dateLabel: string;
   userEmail: string | null;
   addDisabled: boolean;
+  isAccessLoading: boolean;
   accessBadgeLabel: string | null;
   accountTier: AccountTier | null;
   giftLabel: 'Gift' | null;
@@ -28,6 +30,7 @@ export function AppHeader({
   dateLabel,
   userEmail,
   addDisabled,
+  isAccessLoading,
   accessBadgeLabel,
   accountTier,
   giftLabel,
@@ -42,7 +45,11 @@ export function AppHeader({
         <div>
           <h1 className="text-2xl font-bold text-text-primary">Gestore Spese</h1>
           <p className="text-sm text-text-muted">{dateLabel}</p>
-          {showAccessRow ? (
+          {isAccessLoading ? (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <Skeleton className="h-5 w-16 rounded-full" />
+            </div>
+          ) : showAccessRow ? (
             <div className="mt-2 flex flex-wrap items-center gap-2">
               {accessBadgeLabel ? (
                 <span className="inline-flex items-center gap-1 rounded-full border border-border bg-surface-muted px-2 py-0.5 text-xs font-medium text-text-secondary">

@@ -103,6 +103,7 @@ export default function App() {
     isTenantContextLoading,
   });
   const { badgeLabel: accessBadgeLabel, accountTier, giftLabel } = accessPresentationFromEffectiveAccess(effectiveAccess);
+  const isAccessLoading = effectiveAccess.status === 'loading';
 
   const { expenses, expensesLoadError, isInitialLoading, initialLoadStatus, saveExpense, deleteExpense } = useExpenses({
     userId,
@@ -298,6 +299,7 @@ export default function App() {
           dateLabel={format(new Date(), 'EEEE d MMMM', { locale: it })}
           userEmail={userEmail}
           addDisabled={!userId || !activeTenantId || isTenantContextLoading}
+          isAccessLoading={isAccessLoading}
           accessBadgeLabel={accessBadgeLabel}
           accountTier={accountTier}
           giftLabel={giftLabel}
