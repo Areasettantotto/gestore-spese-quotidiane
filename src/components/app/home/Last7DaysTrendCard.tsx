@@ -132,11 +132,11 @@ function CategoryBreakdownList({ point }: { point: Last7DaysTrendPoint }) {
             style={{ backgroundColor: colorForCategorySegment(item.category) }}
             aria-hidden="true"
           />
-          <span className="min-w-0 flex-1 truncate text-zinc-700">{item.category}</span>
-          <span className="whitespace-nowrap tabular-nums text-zinc-600">
+          <span className="min-w-0 flex-1 truncate text-text-secondary">{item.category}</span>
+          <span className="whitespace-nowrap tabular-nums text-zinc-600 dark:text-text-secondary">
             {formatEuroAmount(item.amount)}
             {percents[index] != null ? (
-              <span className="text-zinc-400"> · {percents[index]}%</span>
+              <span className="text-text-faint"> · {percents[index]}%</span>
             ) : null}
           </span>
         </li>
@@ -158,10 +158,10 @@ function DayExpenseList({ expenses }: { expenses: readonly Expense[] }) {
             aria-hidden="true"
           />
           <span className="min-w-0 flex-1">
-            <span className="block break-words text-zinc-700">{expenseRowLabel(expense)}</span>
-            <span className="block text-xs text-zinc-500">{expense.category}</span>
+            <span className="block break-words text-text-secondary">{expenseRowLabel(expense)}</span>
+            <span className="block text-xs text-text-muted">{expense.category}</span>
           </span>
-          <span className="whitespace-nowrap tabular-nums text-zinc-600">
+          <span className="whitespace-nowrap tabular-nums text-zinc-600 dark:text-text-secondary">
             {formatEuroAmount(expense.amount)}
           </span>
         </li>
@@ -178,18 +178,12 @@ function DayDetailModeToggle({
   onChange: (next: DayDetailMode) => void;
 }) {
   return (
-    <div
-      role="group"
-      aria-label="Dettaglio giornaliero"
-      className="inline-flex shrink-0 rounded-lg bg-zinc-100 p-0.5"
-    >
+    <div role="group" aria-label="Dettaglio giornaliero" className="home-view-toggle">
       <button
         type="button"
         aria-pressed={mode === 'categories'}
         onClick={() => onChange('categories')}
-        className={`rounded-md px-2.5 py-1 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40 ${
-          mode === 'categories' ? 'bg-white text-emerald-700 shadow-sm' : 'text-zinc-500 hover:text-zinc-700'
-        }`}
+        className={`home-view-toggle-option${mode === 'categories' ? ' home-view-toggle-option--active' : ''}`}
       >
         Categorie
       </button>
@@ -197,9 +191,7 @@ function DayDetailModeToggle({
         type="button"
         aria-pressed={mode === 'expenses'}
         onClick={() => onChange('expenses')}
-        className={`rounded-md px-2.5 py-1 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40 ${
-          mode === 'expenses' ? 'bg-white text-emerald-700 shadow-sm' : 'text-zinc-500 hover:text-zinc-700'
-        }`}
+        className={`home-view-toggle-option${mode === 'expenses' ? ' home-view-toggle-option--active' : ''}`}
       >
         Spese
       </button>
@@ -209,9 +201,9 @@ function DayDetailModeToggle({
 
 function TrendDetail({ point }: { point: Last7DaysTrendPoint }) {
   return (
-    <div className="rounded-xl border-none bg-white px-3 py-2 text-sm shadow-[0_4px_12px_rgba(0,0,0,0.1)]">
-      <p className="font-medium text-zinc-900">{formatTooltipDate(point.dateKey)}</p>
-      <p className="tabular-nums text-zinc-600">{formatEuroAmount(point.amount)}</p>
+    <div className="rounded-xl border border-border bg-surface px-3 py-2 text-sm shadow-sm">
+      <p className="font-medium text-text-primary">{formatTooltipDate(point.dateKey)}</p>
+      <p className="tabular-nums text-text-secondary">{formatEuroAmount(point.amount)}</p>
       {point.categories.length > 0 ? (
         <div className="mt-1.5">
           <CategoryBreakdownList point={point} />
@@ -234,10 +226,12 @@ function MobileDayDetail({
   onDetailModeChange: (next: DayDetailMode) => void;
 }) {
   return (
-    <div className="mt-2 rounded-xl border-none bg-white px-3 py-2 text-sm shadow-[0_4px_12px_rgba(0,0,0,0.1)]">
-      <p className="font-medium text-zinc-900">{formatTooltipDate(point.dateKey)}</p>
-      <p className="tabular-nums text-zinc-600">{formatEuroAmount(point.amount)}</p>
-      <div className="mt-2">
+    <div className="home-trend-day-detail mt-2 px-3 py-2">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="font-medium text-text-primary">{formatTooltipDate(point.dateKey)}</p>
+          <p className="tabular-nums text-text-secondary">{formatEuroAmount(point.amount)}</p>
+        </div>
         <DayDetailModeToggle mode={detailMode} onChange={onDetailModeChange} />
       </div>
       <div className="mt-2">
@@ -251,8 +245,8 @@ function MobileDayDetail({
   );
 }
 
-const INSPECTOR_SECTION_TITLE = 'text-[11px] font-semibold uppercase tracking-wider text-zinc-400';
-const INSPECTOR_EMPTY = 'mt-2 text-xs text-zinc-400';
+const INSPECTOR_SECTION_TITLE = 'text-[11px] font-semibold uppercase tracking-wider text-text-faint';
+const INSPECTOR_EMPTY = 'mt-2 text-xs text-text-faint';
 
 function InspectorCategoryList({ point }: { point: Last7DaysTrendPoint }) {
   if (point.categories.length === 0) {
@@ -280,18 +274,18 @@ function InspectorCategoryList({ point }: { point: Last7DaysTrendPoint }) {
           >
             <div className="flex min-w-0 items-center gap-2">
               <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: color }} aria-hidden="true" />
-              <span className="min-w-0 flex-1 truncate text-zinc-700" title={item.category}>
+              <span className="min-w-0 flex-1 truncate text-text-secondary" title={item.category}>
                 {item.category}
               </span>
-              <span className="whitespace-nowrap font-medium tabular-nums text-zinc-900">
+              <span className="whitespace-nowrap font-medium tabular-nums text-text-primary">
                 {formatEuroAmount(item.amount)}
               </span>
             </div>
             <div className="mt-1 flex items-center gap-2 pl-4" aria-hidden="true">
-              <span className="h-1 min-w-0 flex-1 overflow-hidden rounded-full bg-zinc-200/70">
+              <span className="home-trend-progress-track">
                 <span className="block h-full rounded-full" style={{ width: `${percent}%`, backgroundColor: color }} />
               </span>
-              <span className="w-8 shrink-0 text-right text-[11px] tabular-nums text-zinc-400">{percent}%</span>
+              <span className="w-8 shrink-0 text-right text-[11px] tabular-nums text-text-faint">{percent}%</span>
             </div>
           </li>
         );
@@ -317,12 +311,12 @@ function InspectorExpenseList({ expenses }: { expenses: readonly Expense[] }) {
               aria-hidden="true"
             />
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-zinc-800" title={label}>
+              <span className="block truncate text-zinc-800 dark:text-text-primary" title={label}>
                 {label}
               </span>
-              <span className="block text-xs text-zinc-500">{expense.category}</span>
+              <span className="block text-xs text-text-muted">{expense.category}</span>
             </span>
-            <span className="whitespace-nowrap font-medium tabular-nums text-zinc-900">
+            <span className="whitespace-nowrap font-medium tabular-nums text-text-primary">
               {formatEuroAmount(expense.amount)}
             </span>
           </li>
@@ -350,32 +344,32 @@ function DesktopDayInspector({
   return (
     <aside
       aria-label={`Dettaglio giorno ${point.label}`}
-      className="flex min-w-0 flex-col rounded-xl border border-zinc-100 bg-zinc-50/70 p-3 text-sm md:absolute md:inset-0 md:overflow-hidden"
+      className="home-trend-inspector flex min-w-0 flex-col p-3 text-sm md:absolute md:inset-0 md:overflow-hidden"
     >
       <div className="flex shrink-0 items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-zinc-800">{point.label}</p>
-          <p className="mt-0.5 text-lg font-bold tabular-nums tracking-tight text-zinc-900">
+          <p className="truncate text-sm font-semibold text-zinc-800 dark:text-text-primary">{point.label}</p>
+          <p className="mt-0.5 text-lg font-bold tabular-nums tracking-tight text-text-primary">
             {formatEuroAmount(point.amount)}
           </p>
-          <p className="text-[11px] text-zinc-500">Totale giorno</p>
+          <p className="text-[11px] text-text-muted">Totale giorno</p>
         </div>
         <button
           type="button"
           onClick={onClose}
           aria-label="Chiudi dettaglio giorno"
-          className="-mr-1 -mt-1 shrink-0 rounded-full p-1.5 text-zinc-400 transition-colors hover:bg-zinc-200/60 hover:text-zinc-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40"
+          className="-mr-1 -mt-1 shrink-0 rounded-full p-1.5 text-text-faint transition-colors hover:bg-zinc-200/60 hover:text-text-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring-focus/40 dark:hover:bg-zinc-800"
         >
           <X size={16} aria-hidden="true" />
         </button>
       </div>
 
-      <section className="mt-3 shrink-0 border-t border-zinc-200/70 pt-3">
+      <section className="mt-3 shrink-0 border-t border-zinc-200/70 pt-3 dark:border-border">
         <h3 className={INSPECTOR_SECTION_TITLE}>Categorie</h3>
         <InspectorCategoryList point={point} />
       </section>
 
-      <section className="mt-3 flex min-h-0 flex-1 flex-col border-t border-zinc-200/70 pt-3">
+      <section className="mt-3 flex min-h-0 flex-1 flex-col border-t border-zinc-200/70 pt-3 dark:border-border">
         <h3 className={`${INSPECTOR_SECTION_TITLE} shrink-0`}>Spese</h3>
         <InspectorExpenseList expenses={dayExpenses} />
       </section>
@@ -441,18 +435,18 @@ function SummaryStatTile({
   value: string;
 }) {
   return (
-    <div className="flex min-w-0 flex-col rounded-xl border border-zinc-200/70 bg-zinc-50/70 p-3.5">
-      <dt className="truncate text-[11px] font-medium text-zinc-500">
+    <div className="home-trend-stat-tile">
+      <dt className="truncate text-[11px] font-medium text-text-muted">
         {labelHighlight ? (
           <>
-            {label}: <span className="font-semibold text-zinc-700">{labelHighlight}</span>
+            {label}: <span className="font-semibold text-text-secondary">{labelHighlight}</span>
           </>
         ) : (
           label
         )}
       </dt>
       <dd className="mt-2 min-w-0">
-        <span className="block truncate text-xl font-semibold tabular-nums tracking-tight text-zinc-900">
+        <span className="block truncate text-xl font-semibold tabular-nums tracking-tight text-text-primary">
           {value}
         </span>
       </dd>
@@ -462,7 +456,7 @@ function SummaryStatTile({
 
 function TrendWindowSummaryPanel({ summary }: { summary: TrendWindowSummary }) {
   return (
-    <section aria-label="Riepilogo 7 giorni" className="mt-3 border-t border-zinc-100 pt-3">
+    <section aria-label="Riepilogo 7 giorni" className="mt-3 border-t border-border-subtle pt-3">
       <h3 className={INSPECTOR_SECTION_TITLE}>Riepilogo 7 giorni</h3>
       <dl className="mt-3 grid grid-cols-2 gap-3">
         <SummaryStatTile label="Totale 7 giorni" value={formatEuroAmount(summary.total)} />
@@ -541,11 +535,11 @@ export function Last7DaysTrendCard({ points, expenses }: Last7DaysTrendCardProps
         <div className="home-card-icon">
           <TrendingUp className="size-4 md:size-[18px]" aria-hidden="true" />
         </div>
-        <h2 className="min-w-0 truncate text-sm font-medium text-zinc-500">Ultimi 7 giorni</h2>
+        <h2 className="min-w-0 truncate text-sm font-medium text-text-muted">Ultimi 7 giorni</h2>
       </div>
 
       {isEmpty ? (
-        <p className="mt-3 flex min-h-[12rem] items-center justify-center text-sm text-zinc-500">
+        <p className="mt-3 flex min-h-[12rem] items-center justify-center text-sm text-text-muted">
           Nessuna spesa negli ultimi 7 giorni
         </p>
       ) : (
@@ -574,14 +568,18 @@ export function Last7DaysTrendCard({ points, expenses }: Last7DaysTrendCardProps
                       toggleIndex(state.activeIndex);
                     }}
                   >
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e4e4e7" />
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      vertical={false}
+                      stroke="var(--home-trend-grid-stroke, #e4e4e7)"
+                    />
                     <XAxis
                       dataKey="label"
                       axisLine={false}
                       tickLine={false}
                       interval={0}
                       minTickGap={0}
-                      tick={{ fontSize: 10, fill: '#71717a' }}
+                      tick={{ fontSize: 10, fill: 'var(--color-text-muted)' }}
                     />
                     <YAxis
                       type="number"
@@ -592,19 +590,23 @@ export function Last7DaysTrendCard({ points, expenses }: Last7DaysTrendCardProps
                       axisLine={false}
                       tickLine={false}
                       tickMargin={4}
-                      tick={{ fontSize: 10, fill: '#a1a1aa' }}
+                      tick={{ fontSize: 10, fill: 'var(--color-text-faint)' }}
                       tickFormatter={(value: number) => formatTrendYTick(value, yScale.step)}
                     />
                     {fineHover ? (
                       <Tooltip
                         content={(props) => <TrendTooltip {...props} hiddenDateKey={selectedDateKey} />}
-                        cursor={{ fill: '#f4f4f5' }}
+                        cursor={{ fill: 'var(--home-trend-cursor-fill, #f4f4f5)' }}
                         wrapperStyle={{ zIndex: 20, pointerEvents: 'none' }}
                         isAnimationActive={false}
                         allowEscapeViewBox={{ x: true, y: true }}
                       />
                     ) : (
-                      <Tooltip content={() => null} cursor={{ fill: '#f4f4f5' }} isAnimationActive={false} />
+                      <Tooltip
+                        content={() => null}
+                        cursor={{ fill: 'var(--home-trend-cursor-fill, #f4f4f5)' }}
+                        isAnimationActive={false}
+                      />
                     )}
                     <BarStack radius={[4, 4, 0, 0]}>
                       <Bar
