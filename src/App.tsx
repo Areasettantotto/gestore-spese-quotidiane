@@ -26,6 +26,7 @@ import { WorkspaceUnavailableState } from '@/src/components/app/WorkspaceUnavail
 import { ExpensesLoadErrorBanner } from '@/src/components/app/ExpensesLoadErrorBanner';
 import { SummaryCards } from '@/src/components/app/SummaryCards';
 import { RecentExpensesList } from '@/src/components/app/RecentExpensesList';
+import { DashboardHomeSkeleton } from '@/src/components/app/home/DashboardHomeSkeleton';
 import { ExpenseForm } from '@/src/components/app/ExpenseForm';
 import { AllExpensesView } from '@/src/components/app/AllExpensesView';
 
@@ -103,7 +104,7 @@ export default function App() {
   });
   const { badgeLabel: accessBadgeLabel, accountTier, giftLabel } = accessPresentationFromEffectiveAccess(effectiveAccess);
 
-  const { expenses, expensesLoadError, saveExpense, deleteExpense } = useExpenses({
+  const { expenses, expensesLoadError, isInitialLoading, initialLoadStatus, saveExpense, deleteExpense } = useExpenses({
     userId,
     activeTenantId,
     isTenantContextLoading,
@@ -310,35 +311,39 @@ export default function App() {
           {userId && !isTenantContextLoading && !activeTenantId ? <WorkspaceUnavailableState tenantError={tenantError} /> : null}
 
           {userId && !isTenantContextLoading && activeTenantId && view === 'home' ? (
-            <>
-              <SummaryCards
-                totalMonthly={totalMonthly}
-                currentPeriodTotal={currentPeriodTotal}
-                previousComparablePeriodTotal={previousComparablePeriodTotal}
-                previousMonthName={previousMonthName}
-                currentMonthName={currentMonthName}
-                budgetStatus={currentMonthlyBudget.status}
-                budgetAmount={currentMonthlyBudget.amount}
-                budgetCanWrite={currentMonthlyBudget.canWrite}
-                currentMonthExpenses={currentMonthExpenses}
-                last7DaysTrend={last7DaysTrend}
-                last7DaysExpenses={last7DaysExpenses}
-                onSaveBudget={currentMonthlyBudget.saveCurrentMonthlyBudget}
-                onOpenCurrentMonthExpenses={() => {
-                  setFilterMonth(format(new Date(), 'yyyy-MM'));
-                  setFilterCategory('Tutte');
-                  setFilterAccompagnatore('Tutte');
-                  setFilterSearch('');
-                  setView('all');
-                }}
-              />
-              <RecentExpensesList
-                expenses={recentExpenses}
-                onViewAll={() => setView('all')}
-                onEdit={handleEditClick}
-                onDelete={handleConfirmedDeleteExpense}
-              />
-            </>
+            isInitialLoading ? (
+              <DashboardHomeSkeleton showBudget={currentMonthlyBudget.status !== 'hidden'} />
+            ) : initialLoadStatus === 'success' ? (
+              <>
+                <SummaryCards
+                  totalMonthly={totalMonthly}
+                  currentPeriodTotal={currentPeriodTotal}
+                  previousComparablePeriodTotal={previousComparablePeriodTotal}
+                  previousMonthName={previousMonthName}
+                  currentMonthName={currentMonthName}
+                  budgetStatus={currentMonthlyBudget.status}
+                  budgetAmount={currentMonthlyBudget.amount}
+                  budgetCanWrite={currentMonthlyBudget.canWrite}
+                  currentMonthExpenses={currentMonthExpenses}
+                  last7DaysTrend={last7DaysTrend}
+                  last7DaysExpenses={last7DaysExpenses}
+                  onSaveBudget={currentMonthlyBudget.saveCurrentMonthlyBudget}
+                  onOpenCurrentMonthExpenses={() => {
+                    setFilterMonth(format(new Date(), 'yyyy-MM'));
+                    setFilterCategory('Tutte');
+                    setFilterAccompagnatore('Tutte');
+                    setFilterSearch('');
+                    setView('all');
+                  }}
+                />
+                <RecentExpensesList
+                  expenses={recentExpenses}
+                  onViewAll={() => setView('all')}
+                  onEdit={handleEditClick}
+                  onDelete={handleConfirmedDeleteExpense}
+                />
+              </>
+            ) : null
           ) : null}
 
           {userId && !isTenantContextLoading && activeTenantId && view === 'all' ? (

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { supabase } from '@/src/lib/supabaseClient';
 import type { Expense } from '@/src/types';
@@ -14,6 +14,10 @@ import type { ExpenseDbRow, SaveExpenseFormInput } from './expenses.types';
 import { useExpensesRealtime } from './useExpensesRealtime';
 
 export type { SaveExpenseFormInput } from './expenses.types';
+
+export type ExpensesInitialLoadStatus = 'loading' | 'success' | 'error';
+
+type LoadExpensesResult = 'ok' | 'error' | 'stale';
 
 const makeId = (): string => {
   const cryptoApi = globalThis.crypto;
@@ -49,37 +53,66 @@ export function useExpenses(options: {
 
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [expensesLoadError, setExpensesLoadError] = useState<string | null>(null);
+  const [initialLoadStatus, setInitialLoadStatus] = useState<ExpensesInitialLoadStatus>('loading');
+  const loadScopeTenantIdRef = useRef<string | null>(null);
+  const loadGenerationRef = useRef(0);
+
+  const resetExpenseLoadState = useCallback(() => {
+    loadGenerationRef.current += 1;
+    loadScopeTenantIdRef.current = null;
+    setExpenses([]);
+    setExpensesLoadError(null);
+    setInitialLoadStatus('loading');
+  }, []);
 
   useEffect(() => {
     if (!userId) {
+      resetExpenseLoadState();
+    }
+  }, [userId, resetExpenseLoadState]);
+
+  const loadExpenses = useCallback(async (tenantId: string | null): Promise<LoadExpensesResult> => {
+    if (loadScopeTenantIdRef.current !== tenantId) {
+      return 'stale';
+    }
+    const generation = ++loadGenerationRef.current;
+
+    if (!tenantId) {
+      if (generation !== loadGenerationRef.current) return 'stale';
       setExpenses([]);
       setExpensesLoadError(null);
+      setInitialLoadStatus((current) => (current === 'loading' ? 'success' : current));
+      return 'ok';
     }
-  }, [userId]);
 
-  const loadExpenses = useCallback(async (tenantId: string | null) => {
     setExpensesLoadError(null);
-    if (!tenantId) {
-      setExpenses([]);
-      return;
-    }
     const { expenses: list, errorMessage } = await loadExpensesForTenant(tenantId);
+    if (generation !== loadGenerationRef.current || loadScopeTenantIdRef.current !== tenantId) {
+      return 'stale';
+    }
     if (errorMessage) {
       setExpensesLoadError(errorMessage);
-      return;
+      setInitialLoadStatus((current) => (current === 'loading' ? 'error' : current));
+      return 'error';
     }
     setExpenses(list);
+    setInitialLoadStatus((current) => (current === 'loading' ? 'success' : current));
+    return 'ok';
   }, []);
 
   useEffect(() => {
     if (!userId) return;
     if (isTenantContextLoading) {
-      setExpenses([]);
-      setExpensesLoadError(null);
+      resetExpenseLoadState();
       return;
     }
+
+    loadScopeTenantIdRef.current = activeTenantId;
+    setInitialLoadStatus('loading');
+    setExpenses([]);
+    setExpensesLoadError(null);
     void loadExpenses(activeTenantId);
-  }, [userId, activeTenantId, isTenantContextLoading, loadExpenses]);
+  }, [userId, activeTenantId, isTenantContextLoading, loadExpenses, resetExpenseLoadState]);
 
   const realtimeHandlers = useMemo(
     () => ({
@@ -212,9 +245,14 @@ export function useExpenses(options: {
     [loadExpenses, resolveTenantForMutation]
   );
 
+  const isInitialLoading =
+    Boolean(userId) && !isTenantContextLoading && Boolean(activeTenantId) && initialLoadStatus === 'loading';
+
   return {
     expenses,
     expensesLoadError,
+    isInitialLoading,
+    initialLoadStatus,
     loadExpenses,
     saveExpense,
     deleteExpense,

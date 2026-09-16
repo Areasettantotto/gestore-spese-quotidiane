@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } fr
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { ChevronRight, Target, X } from 'lucide-react';
 
+import { Skeleton } from '@/src/components/app/Skeleton';
 import { dailyRemainingAmount, deriveBudgetMetrics } from '@/src/features/budgets/monthlyBudgets';
 import type { CurrentMonthlyBudgetStatus } from '@/src/features/budgets/useCurrentMonthlyBudget';
 
@@ -206,9 +207,15 @@ function BudgetCardBody({
   if (model.status === 'loading') {
     return (
       <BudgetCardShell tone="ok">
-        <p className="text-xs leading-snug text-text-muted md:text-sm" role="status" aria-live="polite">
-          Caricamento budget…
-        </p>
+        <div role="status" aria-live="polite">
+          <span className="sr-only">Caricamento budget</span>
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-1.5 gap-y-0.5">
+            <Skeleton className="h-4 w-20 md:h-[1.125rem]" />
+            <Skeleton className="h-5 w-16 md:h-6" />
+          </div>
+          <Skeleton className="mt-1.5 h-2.5 w-full rounded-full md:h-3" />
+          <Skeleton className="mt-1 h-3 w-28 md:mt-1.5 md:h-3.5" />
+        </div>
       </BudgetCardShell>
     );
   }
