@@ -84,7 +84,7 @@ begin
     (gen_random_uuid(), 9.50, 'Trasporti', 'Biglietti trasporto locale (demo)', '2026-05-02', null, v_owner_user_id, v_owner_user_id, v_demo_tenant_id),
     (gen_random_uuid(), 15.00, 'Svago', 'Pranzo fuori (demo)', '2026-05-03', null, v_owner_user_id, v_owner_user_id, v_demo_tenant_id),
     (gen_random_uuid(), 850.00, 'Casa', 'Affitto mensile appartamento demo (fittizio)', '2026-05-01', null, v_owner_user_id, v_owner_user_id, v_demo_tenant_id),
-    (gen_random_uuid(), 28.00, 'Shopping', 'Accessori casa (demo)', '2026-05-04', null, v_owner_user_id, v_owner_user_id, v_demo_tenant_id);
+    (gen_random_uuid(), 28.00, 'Casa', 'Accessori casa (demo)', '2026-05-04', null, v_owner_user_id, v_owner_user_id, v_demo_tenant_id);
 end $$;
 
 commit;

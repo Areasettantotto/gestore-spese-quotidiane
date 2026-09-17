@@ -1,4 +1,14 @@
-export type Category = 'Alimentazione' | 'Trasporti' | 'Casa' | 'Svago' | 'Salute' | 'Shopping' | 'Altro';
+export const CATEGORIES = [
+  'Alimentazione',
+  'Trasporti',
+  'Casa',
+  'Svago',
+  'Salute',
+  'Shopping',
+  'Altro',
+] as const;
+
+export type Category = (typeof CATEGORIES)[number];
 
 export type Accompagnatore = 'Marco' | 'Veronica' | 'Angela';
 
@@ -10,16 +20,6 @@ export interface Expense {
   date: string;
   accompagnatore?: Accompagnatore;
 }
-
-export const CATEGORIES: Category[] = [
-  'Alimentazione',
-  'Trasporti',
-  'Casa',
-  'Svago',
-  'Salute',
-  'Shopping',
-  'Altro'
-];
 
 export const ACCOMPAGNATORI: Accompagnatore[] = ['Marco', 'Veronica', 'Angela'];
 
