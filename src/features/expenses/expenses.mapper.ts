@@ -1,12 +1,31 @@
 import type { Accompagnatore, Category, Expense } from '@/src/types';
 
+import {
+  categoryCodeFromLegacyLabel,
+  expenseCategoryByCode,
+  findExpenseCategoryByCode,
+} from './expenseCategoryCatalog';
 import type { ExpenseDbRow } from './expenses.types';
+
+function resolveCategoryFromDbRow(row: ExpenseDbRow): Category {
+  const code =
+    findExpenseCategoryByCode(row.category_code)?.code ??
+    categoryCodeFromLegacyLabel(row.category);
+
+  if (!code) {
+    throw new Error(
+      `Unable to map expense category: unknown category_code and unknown legacy category (expense id: ${row.id})`,
+    );
+  }
+
+  return expenseCategoryByCode(code).presentationLabel as Category;
+}
 
 export function mapDbRowToExpense(row: ExpenseDbRow): Expense {
   return {
     id: row.id,
     amount: row.amount,
-    category: row.category as Category,
+    category: resolveCategoryFromDbRow(row),
     description: row.description,
     date: row.date,
     accompagnatore: (row.accompagnatore ?? undefined) as Accompagnatore | undefined,

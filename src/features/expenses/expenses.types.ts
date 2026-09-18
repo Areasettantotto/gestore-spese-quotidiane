@@ -26,6 +26,7 @@ export type ExpenseDbRow = {
   id: string;
   amount: number;
   category: string;
+  category_code?: string | null;
   description: string;
   date: string;
   tenant_id?: string;
