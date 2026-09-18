@@ -5,6 +5,7 @@ import { BudgetCard, type BudgetCardModel } from '@/src/components/app/home/Budg
 import { ExpenseDistributionCard } from '@/src/components/app/home/ExpenseDistributionCard';
 import { Last7DaysTrendCard } from '@/src/components/app/home/Last7DaysTrendCard';
 import type { CurrentMonthlyBudgetStatus } from '@/src/features/budgets/useCurrentMonthlyBudget';
+import type { ExpenseWithCategoryCode } from '@/src/features/expenses/expenses.types';
 import type { Last7DaysTrendPoint } from '@/src/features/expenses/last7DaysTrend';
 import type { Expense } from '@/src/types';
 
@@ -17,7 +18,7 @@ type SummaryCardsProps = {
   budgetStatus: CurrentMonthlyBudgetStatus;
   budgetAmount: number | null;
   budgetCanWrite: boolean;
-  currentMonthExpenses: Expense[];
+  currentMonthExpenses: readonly ExpenseWithCategoryCode[];
   last7DaysTrend: readonly Last7DaysTrendPoint[];
   last7DaysExpenses: readonly Expense[];
   onOpenCurrentMonthExpenses: () => void;

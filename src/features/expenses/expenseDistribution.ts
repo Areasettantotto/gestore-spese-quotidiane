@@ -1,3 +1,10 @@
+import {
+  CATEGORY_CODES,
+  categoryCodeFromLegacyLabel,
+  expenseCategoryByCode,
+  type CategoryCode,
+} from '@/src/features/expenses/expenseCategoryCatalog';
+import type { ExpenseWithCategoryCode } from '@/src/features/expenses/expenses.types';
 import { CATEGORIES, type Category, type Expense } from '@/src/types';
 
 export type DistributionMode = 'categories' | 'expenses';
@@ -13,16 +20,6 @@ export type DistributionSlice = {
 const TOP_N = 4;
 
 const CANONICAL_CATEGORY_SET = new Set<string>(CATEGORIES);
-
-const CANONICAL_CATEGORY_COLORS: Record<Category, string> = {
-  Alimentazione: '#10b981',
-  Trasporti: '#3b82f6',
-  Casa: '#f59e0b',
-  Svago: '#ef4444',
-  Salute: '#8b5cf6',
-  Shopping: '#ec4899',
-  Altro: '#64748b',
-};
 
 const ALTRE_CATEGORIE_COLOR = '#94a3b8';
 const ALTRE_SPESE_COLOR = '#a1a1aa';
@@ -41,9 +38,14 @@ export function segmentKeyForCategory(category: string): string {
   return ALTRE_CATEGORIE_LABEL;
 }
 
-/** Color for a canonical category or the leftover "Altre categorie" bucket. */
+/**
+ * Temporary legacy adapter for Last 7 Days: exact presentation label → catalog color.
+ * Do not use for Distribuzione Categorie grouping.
+ */
 export function colorForCategorySegment(category: string): string {
-  if (isCanonicalCategory(category)) return CANONICAL_CATEGORY_COLORS[category];
+  if (category === ALTRE_CATEGORIE_LABEL) return ALTRE_CATEGORIE_COLOR;
+  const code = categoryCodeFromLegacyLabel(category);
+  if (code) return expenseCategoryByCode(code).color;
   return ALTRE_CATEGORIE_COLOR;
 }
 
@@ -51,9 +53,9 @@ function isPositiveAmount(value: number): boolean {
   return Number.isFinite(value) && value > 0;
 }
 
-function canonicalCategoryIndex(category: Category): number {
-  const index = CATEGORIES.indexOf(category);
-  return index === -1 ? CATEGORIES.length : index;
+function canonicalCategoryCodeIndex(code: CategoryCode): number {
+  const index = CATEGORY_CODES.indexOf(code);
+  return index === -1 ? CATEGORY_CODES.length : index;
 }
 
 /**
@@ -112,15 +114,18 @@ function compareExpensesForDistribution(a: Expense, b: Expense): number {
   return 0;
 }
 
-function buildCategorySlices(expenses: readonly Expense[], totalMonthly: number): DistributionSlice[] {
-  const canonicalTotals = new Map<Category, number>();
+function buildCategorySlices(
+  expenses: readonly ExpenseWithCategoryCode[],
+  totalMonthly: number
+): DistributionSlice[] {
+  const canonicalTotals = new Map<CategoryCode, number>();
   let uncategorizedRemainder = 0;
 
   for (const expense of expenses) {
     if (!isPositiveAmount(expense.amount)) continue;
-    const rawCategory = String(expense.category ?? '');
-    if (isCanonicalCategory(rawCategory)) {
-      canonicalTotals.set(rawCategory, (canonicalTotals.get(rawCategory) ?? 0) + expense.amount);
+    const code = expense.categoryCode;
+    if (CATEGORY_CODES.includes(code)) {
+      canonicalTotals.set(code, (canonicalTotals.get(code) ?? 0) + expense.amount);
     } else {
       uncategorizedRemainder += expense.amount;
     }
@@ -130,19 +135,22 @@ function buildCategorySlices(expenses: readonly Expense[], totalMonthly: number)
     .filter(([, amount]) => isPositiveAmount(amount))
     .sort((a, b) => {
       if (b[1] !== a[1]) return b[1] - a[1];
-      return canonicalCategoryIndex(a[0]) - canonicalCategoryIndex(b[0]);
+      return canonicalCategoryCodeIndex(a[0]) - canonicalCategoryCodeIndex(b[0]);
     });
 
   const top = ranked.slice(0, TOP_N);
   const leftoverCanonical = ranked.slice(TOP_N).reduce((sum, [, amount]) => sum + amount, 0);
   const altreAmount = leftoverCanonical + uncategorizedRemainder;
 
-  const slices: Omit<DistributionSlice, 'percent'>[] = top.map(([category, amount]) => ({
-    key: category,
-    label: category,
-    amount,
-    color: CANONICAL_CATEGORY_COLORS[category],
-  }));
+  const slices: Omit<DistributionSlice, 'percent'>[] = top.map(([code, amount]) => {
+    const catalog = expenseCategoryByCode(code);
+    return {
+      key: code,
+      label: catalog.presentationLabel,
+      amount,
+      color: catalog.color,
+    };
+  });
 
   if (isPositiveAmount(altreAmount)) {
     slices.push({
@@ -202,7 +210,7 @@ function buildExpenseSlices(expenses: readonly Expense[], totalMonthly: number):
 
 export function buildExpenseDistribution(params: {
   mode: DistributionMode;
-  expenses: readonly Expense[];
+  expenses: readonly ExpenseWithCategoryCode[];
   totalMonthly: number;
 }): DistributionSlice[] {
   const { mode, expenses, totalMonthly } = params;

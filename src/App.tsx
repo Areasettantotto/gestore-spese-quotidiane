@@ -48,7 +48,11 @@ function comparablePreviousPeriodEnd(today: Date): Date {
   return setDate(previousMonthStart, today.getDate());
 }
 
-function expensesBetween(expenses: Expense[], fromDate: string, toDate: string): Expense[] {
+function expensesBetween<T extends Expense>(
+  expenses: readonly T[],
+  fromDate: string,
+  toDate: string
+): T[] {
   return expenses.filter((expense) => expense.date >= fromDate && expense.date <= toDate);
 }
 

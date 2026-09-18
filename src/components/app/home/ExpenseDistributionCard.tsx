@@ -8,10 +8,10 @@ import {
   type DistributionMode,
   type DistributionSlice,
 } from '@/src/features/expenses/expenseDistribution';
-import type { Expense } from '@/src/types';
+import type { ExpenseWithCategoryCode } from '@/src/features/expenses/expenses.types';
 
 type ExpenseDistributionCardProps = {
-  expenses: readonly Expense[];
+  expenses: readonly ExpenseWithCategoryCode[];
   totalMonthly: number;
 };
 
