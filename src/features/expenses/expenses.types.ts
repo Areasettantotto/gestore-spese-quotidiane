@@ -4,7 +4,19 @@
  */
 import type { Accompagnatore, Category, Expense } from '@/src/types';
 
+import type { CategoryCode } from './expenseCategoryCatalog';
+
 export type { Accompagnatore, Category, Expense } from '@/src/types';
+export type { CategoryCode } from './expenseCategoryCatalog';
+
+/**
+ * Operational expense domain for this feature: shared Expense fields plus a
+ * required machine code. Extra field is structurally compatible with Expense
+ * consumers (form, filters, charts) that still read the legacy label.
+ */
+export type ExpenseWithCategoryCode = Expense & {
+  categoryCode: CategoryCode;
+};
 
 /** Form / modal state aligned with App expense fields */
 export type ExpenseFormData = Partial<Expense>;

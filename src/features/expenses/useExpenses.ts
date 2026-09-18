@@ -1,16 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { supabase } from '@/src/lib/supabaseClient';
-import type { Expense } from '@/src/types';
 
-import { expenseFromUpdatePayload, mapDbRowToExpense } from './expenses.mapper';
+import { expenseFromUpdatePayload, expenseWithCategoryCode, mapDbRowToExpense } from './expenses.mapper';
 import {
   createExpenseInTenant,
   deleteExpenseInTenant,
   loadExpensesForTenant,
   updateExpenseInTenant,
 } from './expenses.service';
-import type { ExpenseDbRow, SaveExpenseFormInput } from './expenses.types';
+import type { ExpenseDbRow, ExpenseWithCategoryCode, SaveExpenseFormInput } from './expenses.types';
 import { useExpensesRealtime } from './useExpensesRealtime';
 
 export type { SaveExpenseFormInput } from './expenses.types';
@@ -51,7 +50,7 @@ export function useExpenses(options: {
 }) {
   const { userId, activeTenantId, isTenantContextLoading, resolveTenantForMutation } = options;
 
-  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [expenses, setExpenses] = useState<ExpenseWithCategoryCode[]>([]);
   const [expensesLoadError, setExpensesLoadError] = useState<string | null>(null);
   const [initialLoadStatus, setInitialLoadStatus] = useState<ExpensesInitialLoadStatus>('loading');
   const loadScopeTenantIdRef = useRef<string | null>(null);
@@ -95,7 +94,7 @@ export function useExpenses(options: {
       setInitialLoadStatus((current) => (current === 'loading' ? 'error' : current));
       return 'error';
     }
-    setExpenses(list);
+    setExpenses(list.map(expenseWithCategoryCode));
     setInitialLoadStatus((current) => (current === 'loading' ? 'success' : current));
     return 'ok';
   }, []);
@@ -185,14 +184,14 @@ export function useExpenses(options: {
           setExpenses((prev) => prev.map((exp) => (exp.id === input.editingId ? local : exp)));
         }
       } else {
-        const expense: Expense = {
+        const expense = expenseWithCategoryCode({
           id: makeId(),
           amount: input.amount,
           category: input.category,
           description: input.description,
           date: input.date,
           accompagnatore: input.accompagnatore || undefined,
-        };
+        });
 
         const { error } = await createExpenseInTenant({
           expense,

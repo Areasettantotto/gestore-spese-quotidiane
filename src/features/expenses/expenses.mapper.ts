@@ -4,28 +4,54 @@ import {
   categoryCodeFromLegacyLabel,
   expenseCategoryByCode,
   findExpenseCategoryByCode,
+  type CategoryCode,
 } from './expenseCategoryCatalog';
-import type { ExpenseDbRow } from './expenses.types';
+import type { ExpenseDbRow, ExpenseWithCategoryCode } from './expenses.types';
 
-function resolveCategoryFromDbRow(row: ExpenseDbRow): Category {
-  const code =
+function resolveCategoryIdentityFromDbRow(row: ExpenseDbRow): {
+  categoryCode: CategoryCode;
+  category: Category;
+} {
+  const categoryCode =
     findExpenseCategoryByCode(row.category_code)?.code ??
     categoryCodeFromLegacyLabel(row.category);
 
-  if (!code) {
+  if (!categoryCode) {
     throw new Error(
       `Unable to map expense category: unknown category_code and unknown legacy category (expense id: ${row.id})`,
     );
   }
 
-  return expenseCategoryByCode(code).presentationLabel as Category;
+  return {
+    categoryCode,
+    category: expenseCategoryByCode(categoryCode).presentationLabel as Category,
+  };
 }
 
-export function mapDbRowToExpense(row: ExpenseDbRow): Expense {
+/** Fail-closed: a typed Category must resolve to a catalog code. */
+export function categoryCodeFromCategory(category: Category): CategoryCode {
+  const categoryCode = categoryCodeFromLegacyLabel(category);
+  if (!categoryCode) {
+    throw new Error(`Invariant violation: unknown legacy category (${String(category)})`);
+  }
+  return categoryCode;
+}
+
+/** Hydrate a legacy-shaped Expense into the feature domain (code + presentation). */
+export function expenseWithCategoryCode(expense: Expense): ExpenseWithCategoryCode {
+  return {
+    ...expense,
+    categoryCode: categoryCodeFromCategory(expense.category),
+  };
+}
+
+export function mapDbRowToExpense(row: ExpenseDbRow): ExpenseWithCategoryCode {
+  const { categoryCode, category } = resolveCategoryIdentityFromDbRow(row);
   return {
     id: row.id,
     amount: row.amount,
-    category: resolveCategoryFromDbRow(row),
+    category,
+    categoryCode,
     description: row.description,
     date: row.date,
     accompagnatore: (row.accompagnatore ?? undefined) as Accompagnatore | undefined,
@@ -94,17 +120,17 @@ export function buildUpdatePayload(params: {
   };
 }
 
-/** Fields safe to merge onto an Expense in local state after update. */
+/** Fields safe to merge onto local state after update. Write payload is unchanged. */
 export function expenseFromUpdatePayload(
   expenseId: string,
   payload: Omit<ExpenseUpdatePayload, 'owner_id' | 'tenant_id'>
-): Expense {
-  return {
+): ExpenseWithCategoryCode {
+  return expenseWithCategoryCode({
     id: expenseId,
     amount: payload.amount,
     category: payload.category,
     description: payload.description,
     date: payload.date,
     accompagnatore: (payload.accompagnatore ?? undefined) as Accompagnatore | undefined,
-  };
+  });
 }
