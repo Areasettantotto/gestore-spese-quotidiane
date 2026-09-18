@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { ArrowLeft, Calendar, Filter, Search, User } from 'lucide-react';
-import { ACCOMPAGNATORI, CATEGORIES, type Accompagnatore, type Category, type Expense } from '@/src/types';
+import { ACCOMPAGNATORI, type Accompagnatore, type Expense } from '@/src/types';
+import {
+  CATEGORY_CODES,
+  expenseCategoryByCode,
+  type CategoryCode,
+} from '@/src/features/expenses/expenseCategoryCatalog';
 import type { ExpenseWithCategoryCode } from '@/src/features/expenses/expenses.types';
 import { DeleteExpenseConfirmDialog } from '@/src/components/app/DeleteExpenseConfirmDialog';
 import { ExpenseListItem, useMobileSwipeViewport } from '@/src/components/app/ExpenseListItem';
@@ -12,7 +17,7 @@ const SENTINEL_ROOT_MARGIN = '0px 0px 280px 0px';
 
 type FiltersState = {
   filterMonth: string;
-  filterCategory: Category | 'Tutte';
+  filterCategory: CategoryCode | 'all';
   filterAccompagnatore: Accompagnatore | 'Tutte' | 'Senza';
   filterSearch: string;
 };
@@ -181,14 +186,19 @@ export function AllExpensesView({
             <select
               className="input-field pl-10! flex-1 w-full min-w-0 max-w-full appearance-none leading-normal box-border"
               value={filters.filterCategory}
-              onChange={(e) => onFiltersChange({ ...filters, filterCategory: e.target.value as Category | 'Tutte' })}
+              onChange={(e) =>
+                onFiltersChange({ ...filters, filterCategory: e.target.value as CategoryCode | 'all' })
+              }
             >
-              <option value="Tutte">Tutte</option>
-              {CATEGORIES.map((cat) => (
-                <option key={cat} value={cat}>
-                  {cat}
-                </option>
-              ))}
+              <option value="all">Tutte</option>
+              {CATEGORY_CODES.map((code) => {
+                const category = expenseCategoryByCode(code);
+                return (
+                  <option key={code} value={code}>
+                    {category.presentationLabel}
+                  </option>
+                );
+              })}
             </select>
           </div>
           <div className="relative w-full min-w-0 md:min-w-30 flex items-center">

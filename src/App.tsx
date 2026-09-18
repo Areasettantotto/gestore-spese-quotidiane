@@ -10,6 +10,7 @@ import { it } from 'date-fns/locale';
 import { type Expense, type Category, type Accompagnatore } from './types';
 import { supabase } from './lib/supabaseClient';
 import { buildLast7DaysTrend } from '@/src/features/expenses/last7DaysTrend';
+import type { CategoryCode } from '@/src/features/expenses/expenseCategoryCatalog';
 import { useExpenses } from '@/src/features/expenses/useExpenses';
 import { useActiveTenant } from '@/src/features/tenancy/useActiveTenant';
 import { currentCalendarMonthStartDate } from '@/src/features/budgets/monthlyBudgets';
@@ -124,7 +125,7 @@ export default function App() {
   });
 
   const [filterMonth, setFilterMonth] = useState(format(new Date(), 'yyyy-MM'));
-  const [filterCategory, setFilterCategory] = useState<Category | 'Tutte'>('Tutte');
+  const [filterCategory, setFilterCategory] = useState<CategoryCode | 'all'>('all');
   const [filterAccompagnatore, setFilterAccompagnatore] = useState<Accompagnatore | 'Tutte' | 'Senza'>('Tutte');
   const [filterSearch, setFilterSearch] = useState('');
 
@@ -210,7 +211,7 @@ export default function App() {
     return expenses
       .filter((e) => {
         const matchesMonth = e.date.startsWith(filterMonth);
-        const matchesCategory = filterCategory === 'Tutte' || e.category === filterCategory;
+        const matchesCategory = filterCategory === 'all' || e.categoryCode === filterCategory;
         const matchesSearch = e.description.toLowerCase().includes(filterSearch.toLowerCase());
         const matchesAccompagnatore =
           filterAccompagnatore === 'Tutte' ||
@@ -359,7 +360,7 @@ export default function App() {
                       onSaveBudget={currentMonthlyBudget.saveCurrentMonthlyBudget}
                       onOpenCurrentMonthExpenses={() => {
                         setFilterMonth(format(new Date(), 'yyyy-MM'));
-                        setFilterCategory('Tutte');
+                        setFilterCategory('all');
                         setFilterAccompagnatore('Tutte');
                         setFilterSearch('');
                         expensesScrollYRef.current = 0;
