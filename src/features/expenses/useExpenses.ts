@@ -94,7 +94,7 @@ export function useExpenses(options: {
       setInitialLoadStatus((current) => (current === 'loading' ? 'error' : current));
       return 'error';
     }
-    setExpenses(list.map(expenseWithCategoryCode));
+    setExpenses(list);
     setInitialLoadStatus((current) => (current === 'loading' ? 'success' : current));
     return 'ok';
   }, []);

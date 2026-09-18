@@ -11,10 +11,10 @@ import {
   listExpensesByTenant,
   updateExpense,
 } from './expenses.repository';
-import type { ExpenseDbRow } from './expenses.types';
+import type { ExpenseDbRow, ExpenseWithCategoryCode } from './expenses.types';
 
 export async function loadExpensesForTenant(tenantId: string): Promise<{
-  expenses: Expense[];
+  expenses: ExpenseWithCategoryCode[];
   errorMessage: string | null;
 }> {
   const { data, error } = await listExpensesByTenant(tenantId);
