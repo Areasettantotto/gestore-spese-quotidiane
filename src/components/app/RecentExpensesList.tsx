@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Wallet } from 'lucide-react';
 import { type Expense } from '@/src/types';
+import type { ExpenseWithCategoryCode } from '@/src/features/expenses/expenses.types';
 import { DeleteExpenseConfirmDialog } from '@/src/components/app/DeleteExpenseConfirmDialog';
 import { ExpenseListItem, useMobileSwipeViewport } from '@/src/components/app/ExpenseListItem';
 
 type RecentExpensesListProps = {
-  expenses: Expense[];
+  expenses: ExpenseWithCategoryCode[];
   onViewAll: () => void;
   onEdit: (expense: Expense) => void;
   onDelete: (expense: Expense) => void;

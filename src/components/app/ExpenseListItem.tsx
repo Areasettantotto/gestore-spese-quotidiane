@@ -5,7 +5,8 @@ import { it } from 'date-fns/locale';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { Coffee, Heart, Home, Music, Pencil, ShoppingBag, Tag, Trash2, Truck } from 'lucide-react';
-import { CATEGORY_ICONS, type Expense } from '@/src/types';
+import { expenseCategoryByCode } from '@/src/features/expenses/expenseCategoryCatalog';
+import type { ExpenseWithCategoryCode } from '@/src/features/expenses/expenses.types';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -30,7 +31,7 @@ const OPEN_RATIO = 0.35;
 export type ExpenseDateFormat = 'd MMM' | 'd MMMM yyyy';
 
 export type ExpenseListItemProps = {
-  expense: Expense;
+  expense: ExpenseWithCategoryCode;
   dateFormat: ExpenseDateFormat;
   isMobileSwipe: boolean;
   isOpen: boolean;
@@ -100,7 +101,7 @@ export function ExpenseListItem({
 }
 
 type SwipeableExpenseCardProps = {
-  expense: Expense;
+  expense: ExpenseWithCategoryCode;
   dateFormat: ExpenseDateFormat;
   isOpen: boolean;
   onOpen: () => void;
@@ -279,13 +280,13 @@ function ExpenseCardBody({
   onEdit,
   onDelete,
 }: {
-  expense: Expense;
+  expense: ExpenseWithCategoryCode;
   dateFormat: ExpenseDateFormat;
   showDesktopActions: boolean;
   onEdit: () => void;
   onDelete: () => void;
 }) {
-  const Icon = ICON_COMPONENTS[CATEGORY_ICONS[expense.category]] ?? Tag;
+  const Icon = ICON_COMPONENTS[expenseCategoryByCode(expense.categoryCode).iconKey] ?? Tag;
 
   return (
     <>

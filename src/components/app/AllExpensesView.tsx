@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { ArrowLeft, Calendar, Filter, Search, User } from 'lucide-react';
 import { ACCOMPAGNATORI, CATEGORIES, type Accompagnatore, type Category, type Expense } from '@/src/types';
+import type { ExpenseWithCategoryCode } from '@/src/features/expenses/expenses.types';
 import { DeleteExpenseConfirmDialog } from '@/src/components/app/DeleteExpenseConfirmDialog';
 import { ExpenseListItem, useMobileSwipeViewport } from '@/src/components/app/ExpenseListItem';
 
@@ -23,7 +24,7 @@ type ProgressiveRenderState = {
 
 type AllExpensesViewProps = {
   filteredTotal: number;
-  filteredExpenses: Expense[];
+  filteredExpenses: ExpenseWithCategoryCode[];
   filters: FiltersState;
   onFiltersChange: (next: FiltersState) => void;
   onBack: () => void;
