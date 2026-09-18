@@ -15,12 +15,18 @@ import {
 } from 'recharts';
 
 import {
-  allocateIntegerPercents,
-  ALTRE_CATEGORIE_LABEL,
-  colorForCategorySegment,
-} from '@/src/features/expenses/expenseDistribution';
-import { listTrendDayExpenses, type Last7DaysTrendPoint } from '@/src/features/expenses/last7DaysTrend';
-import { CATEGORIES, type Expense } from '@/src/types';
+  CATEGORY_CODES,
+  expenseCategoryByCode,
+  isCategoryCode,
+} from '@/src/features/expenses/expenseCategoryCatalog';
+import { allocateIntegerPercents, ALTRE_CATEGORIE_LABEL } from '@/src/features/expenses/expenseDistribution';
+import type { ExpenseWithCategoryCode } from '@/src/features/expenses/expenses.types';
+import {
+  ALTRE_CATEGORIE_KEY,
+  listTrendDayExpenses,
+  type Last7DaysCategoryKey,
+  type Last7DaysTrendPoint,
+} from '@/src/features/expenses/last7DaysTrend';
 import {
   buildTrendYScale,
   cleanScaleNumber,
@@ -29,14 +35,25 @@ import {
 
 type Last7DaysTrendCardProps = {
   points: readonly Last7DaysTrendPoint[];
-  expenses: readonly Expense[];
+  expenses: readonly ExpenseWithCategoryCode[];
 };
 
 type DayDetailMode = 'categories' | 'expenses';
 
 const EMERALD_BAR = '#10b981';
-const STACK_CATEGORY_KEYS = [...CATEGORIES, ALTRE_CATEGORIE_LABEL] as const;
+const ALTRE_CATEGORIE_COLOR = '#94a3b8';
+const STACK_CATEGORY_KEYS = [...CATEGORY_CODES, ALTRE_CATEGORIE_KEY] as const;
 const FINE_HOVER_QUERY = '(hover: hover) and (pointer: fine)';
+
+function presentationLabelForCategoryKey(key: Last7DaysCategoryKey): string {
+  if (key === ALTRE_CATEGORIE_KEY || !isCategoryCode(key)) return ALTRE_CATEGORIE_LABEL;
+  return expenseCategoryByCode(key).presentationLabel;
+}
+
+function colorForCategoryKey(key: Last7DaysCategoryKey): string {
+  if (key === ALTRE_CATEGORIE_KEY || !isCategoryCode(key)) return ALTRE_CATEGORIE_COLOR;
+  return expenseCategoryByCode(key).color;
+}
 
 function formatTrendYTick(value: number, step: number): string {
   const cleaned = cleanScaleNumber(value);
@@ -92,10 +109,10 @@ function toBarRow(point: Last7DaysTrendPoint, isActive: boolean): DayBarRow {
 
   if (isActive) {
     for (const item of point.categories) {
-      if (item.category in segments) {
-        segments[item.category as (typeof STACK_CATEGORY_KEYS)[number]] += item.amount;
+      if (item.key in segments) {
+        segments[item.key] += item.amount;
       } else {
-        segments[ALTRE_CATEGORIE_LABEL] += item.amount;
+        segments[ALTRE_CATEGORIE_KEY] += item.amount;
       }
     }
   }
@@ -107,7 +124,7 @@ function toBarRow(point: Last7DaysTrendPoint, isActive: boolean): DayBarRow {
   };
 }
 
-function expenseRowLabel(expense: Expense): string {
+function expenseRowLabel(expense: ExpenseWithCategoryCode): string {
   const trimmed = expense.description.trim();
   return trimmed.length > 0 ? trimmed : expense.category;
 }
@@ -125,47 +142,53 @@ function CategoryBreakdownList({ point }: { point: Last7DaysTrendPoint }) {
 
   return (
     <ul className="space-y-1">
-      {point.categories.map((item, index) => (
-        <li key={item.category} className="flex min-w-0 items-center gap-2">
-          <span
-            className="size-2 shrink-0 rounded-full"
-            style={{ backgroundColor: colorForCategorySegment(item.category) }}
-            aria-hidden="true"
-          />
-          <span className="min-w-0 flex-1 truncate text-text-secondary">{item.category}</span>
-          <span className="whitespace-nowrap tabular-nums text-zinc-600 dark:text-text-secondary">
-            {formatEuroAmount(item.amount)}
-            {percents[index] != null ? (
-              <span className="text-text-faint"> · {percents[index]}%</span>
-            ) : null}
-          </span>
-        </li>
-      ))}
+      {point.categories.map((item, index) => {
+        const label = presentationLabelForCategoryKey(item.key);
+        return (
+          <li key={item.key} className="flex min-w-0 items-center gap-2">
+            <span
+              className="size-2 shrink-0 rounded-full"
+              style={{ backgroundColor: colorForCategoryKey(item.key) }}
+              aria-hidden="true"
+            />
+            <span className="min-w-0 flex-1 truncate text-text-secondary">{label}</span>
+            <span className="whitespace-nowrap tabular-nums text-zinc-600 dark:text-text-secondary">
+              {formatEuroAmount(item.amount)}
+              {percents[index] != null ? (
+                <span className="text-text-faint"> · {percents[index]}%</span>
+              ) : null}
+            </span>
+          </li>
+        );
+      })}
     </ul>
   );
 }
 
-function DayExpenseList({ expenses }: { expenses: readonly Expense[] }) {
+function DayExpenseList({ expenses }: { expenses: readonly ExpenseWithCategoryCode[] }) {
   if (expenses.length === 0) return null;
 
   return (
     <ul className="space-y-1.5">
-      {expenses.map((expense) => (
-        <li key={expense.id} className="flex min-w-0 items-start gap-2">
-          <span
-            className="mt-1.5 size-2 shrink-0 rounded-full"
-            style={{ backgroundColor: colorForCategorySegment(expense.category) }}
-            aria-hidden="true"
-          />
-          <span className="min-w-0 flex-1">
-            <span className="block break-words text-text-secondary">{expenseRowLabel(expense)}</span>
-            <span className="block text-xs text-text-muted">{expense.category}</span>
-          </span>
-          <span className="whitespace-nowrap tabular-nums text-zinc-600 dark:text-text-secondary">
-            {formatEuroAmount(expense.amount)}
-          </span>
-        </li>
-      ))}
+      {expenses.map((expense) => {
+        const catalog = expenseCategoryByCode(expense.categoryCode);
+        return (
+          <li key={expense.id} className="flex min-w-0 items-start gap-2">
+            <span
+              className="mt-1.5 size-2 shrink-0 rounded-full"
+              style={{ backgroundColor: catalog.color }}
+              aria-hidden="true"
+            />
+            <span className="min-w-0 flex-1">
+              <span className="block break-words text-text-secondary">{expenseRowLabel(expense)}</span>
+              <span className="block text-xs text-text-muted">{catalog.presentationLabel}</span>
+            </span>
+            <span className="whitespace-nowrap tabular-nums text-zinc-600 dark:text-text-secondary">
+              {formatEuroAmount(expense.amount)}
+            </span>
+          </li>
+        );
+      })}
     </ul>
   );
 }
@@ -221,7 +244,7 @@ function MobileDayDetail({
   onDetailModeChange,
 }: {
   point: Last7DaysTrendPoint;
-  dayExpenses: readonly Expense[];
+  dayExpenses: readonly ExpenseWithCategoryCode[];
   detailMode: DayDetailMode;
   onDetailModeChange: (next: DayDetailMode) => void;
 }) {
@@ -264,18 +287,19 @@ function InspectorCategoryList({ point }: { point: Last7DaysTrendPoint }) {
   return (
     <ul className="mt-2 space-y-2">
       {point.categories.map((item, index) => {
-        const color = colorForCategorySegment(item.category);
+        const color = colorForCategoryKey(item.key);
+        const label = presentationLabelForCategoryKey(item.key);
         const percent = percents[index] ?? 0;
         return (
           <li
-            key={item.category}
+            key={item.key}
             className="min-w-0"
-            aria-label={`${item.category}: ${formatEuroAmount(item.amount)}, ${percent}%`}
+            aria-label={`${label}: ${formatEuroAmount(item.amount)}, ${percent}%`}
           >
             <div className="flex min-w-0 items-center gap-2">
               <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: color }} aria-hidden="true" />
-              <span className="min-w-0 flex-1 truncate text-text-secondary" title={item.category}>
-                {item.category}
+              <span className="min-w-0 flex-1 truncate text-text-secondary" title={label}>
+                {label}
               </span>
               <span className="whitespace-nowrap font-medium tabular-nums text-text-primary">
                 {formatEuroAmount(item.amount)}
@@ -294,7 +318,7 @@ function InspectorCategoryList({ point }: { point: Last7DaysTrendPoint }) {
   );
 }
 
-function InspectorExpenseList({ expenses }: { expenses: readonly Expense[] }) {
+function InspectorExpenseList({ expenses }: { expenses: readonly ExpenseWithCategoryCode[] }) {
   if (expenses.length === 0) {
     return <p className={INSPECTOR_EMPTY}>Nessuna spesa</p>;
   }
@@ -303,18 +327,19 @@ function InspectorExpenseList({ expenses }: { expenses: readonly Expense[] }) {
     <ul className="-mr-1 mt-2 max-h-56 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1 md:max-h-none">
       {expenses.map((expense) => {
         const label = expenseRowLabel(expense);
+        const catalog = expenseCategoryByCode(expense.categoryCode);
         return (
           <li key={expense.id} className="flex min-w-0 items-start gap-2">
             <span
               className="mt-1.5 size-2 shrink-0 rounded-full"
-              style={{ backgroundColor: colorForCategorySegment(expense.category) }}
+              style={{ backgroundColor: catalog.color }}
               aria-hidden="true"
             />
             <span className="min-w-0 flex-1">
               <span className="block truncate text-zinc-800 dark:text-text-primary" title={label}>
                 {label}
               </span>
-              <span className="block text-xs text-text-muted">{expense.category}</span>
+              <span className="block text-xs text-text-muted">{catalog.presentationLabel}</span>
             </span>
             <span className="whitespace-nowrap font-medium tabular-nums text-text-primary">
               {formatEuroAmount(expense.amount)}
@@ -338,7 +363,7 @@ function DesktopDayInspector({
   onClose,
 }: {
   point: Last7DaysTrendPoint;
-  dayExpenses: readonly Expense[];
+  dayExpenses: readonly ExpenseWithCategoryCode[];
   onClose: () => void;
 }) {
   return (
@@ -406,7 +431,7 @@ type TrendWindowSummary = {
  */
 function buildTrendWindowSummary(
   points: readonly Last7DaysTrendPoint[],
-  expenses: readonly Expense[]
+  expenses: readonly ExpenseWithCategoryCode[]
 ): TrendWindowSummary {
   const total = points.reduce((sum, point) => sum + point.amount, 0);
   let peak: Last7DaysTrendPoint | null = null;
@@ -620,7 +645,7 @@ export function Last7DaysTrendCard({ points, expenses }: Last7DaysTrendCardProps
                         <Bar
                           key={key}
                           dataKey={key}
-                          fill={colorForCategorySegment(key)}
+                          fill={colorForCategoryKey(key)}
                           maxBarSize={36}
                           isAnimationActive={false}
                           legendType="none"

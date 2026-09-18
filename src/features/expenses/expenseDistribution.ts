@@ -1,11 +1,10 @@
 import {
   CATEGORY_CODES,
-  categoryCodeFromLegacyLabel,
   expenseCategoryByCode,
   type CategoryCode,
 } from '@/src/features/expenses/expenseCategoryCatalog';
 import type { ExpenseWithCategoryCode } from '@/src/features/expenses/expenses.types';
-import { CATEGORIES, type Category, type Expense } from '@/src/types';
+import type { Expense } from '@/src/types';
 
 export type DistributionMode = 'categories' | 'expenses';
 
@@ -19,35 +18,12 @@ export type DistributionSlice = {
 
 const TOP_N = 4;
 
-const CANONICAL_CATEGORY_SET = new Set<string>(CATEGORIES);
-
 const ALTRE_CATEGORIE_COLOR = '#94a3b8';
 const ALTRE_SPESE_COLOR = '#a1a1aa';
 const EXPENSE_RANK_COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6'] as const;
 
 export const ALTRE_CATEGORIE_LABEL = 'Altre categorie';
 const ALTRE_SPESE_LABEL = 'Altre spese';
-
-function isCanonicalCategory(value: string): value is Category {
-  return CANONICAL_CATEGORY_SET.has(value);
-}
-
-/** Canonical name, or the same leftover bucket used by Distribuzione → Categorie. */
-export function segmentKeyForCategory(category: string): string {
-  if (isCanonicalCategory(category)) return category;
-  return ALTRE_CATEGORIE_LABEL;
-}
-
-/**
- * Temporary legacy adapter for Last 7 Days: exact presentation label → catalog color.
- * Do not use for Distribuzione Categorie grouping.
- */
-export function colorForCategorySegment(category: string): string {
-  if (category === ALTRE_CATEGORIE_LABEL) return ALTRE_CATEGORIE_COLOR;
-  const code = categoryCodeFromLegacyLabel(category);
-  if (code) return expenseCategoryByCode(code).color;
-  return ALTRE_CATEGORIE_COLOR;
-}
 
 function isPositiveAmount(value: number): boolean {
   return Number.isFinite(value) && value > 0;

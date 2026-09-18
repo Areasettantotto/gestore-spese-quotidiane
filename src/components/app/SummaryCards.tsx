@@ -7,7 +7,6 @@ import { Last7DaysTrendCard } from '@/src/components/app/home/Last7DaysTrendCard
 import type { CurrentMonthlyBudgetStatus } from '@/src/features/budgets/useCurrentMonthlyBudget';
 import type { ExpenseWithCategoryCode } from '@/src/features/expenses/expenses.types';
 import type { Last7DaysTrendPoint } from '@/src/features/expenses/last7DaysTrend';
-import type { Expense } from '@/src/types';
 
 type SummaryCardsProps = {
   totalMonthly: number;
@@ -20,7 +19,7 @@ type SummaryCardsProps = {
   budgetCanWrite: boolean;
   currentMonthExpenses: readonly ExpenseWithCategoryCode[];
   last7DaysTrend: readonly Last7DaysTrendPoint[];
-  last7DaysExpenses: readonly Expense[];
+  last7DaysExpenses: readonly ExpenseWithCategoryCode[];
   onOpenCurrentMonthExpenses: () => void;
   onSaveBudget: (amount: number) => Promise<{ ok: true } | { ok: false; message: string }>;
 };

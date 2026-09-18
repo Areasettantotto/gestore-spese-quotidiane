@@ -1,11 +1,15 @@
 import { format, subDays } from 'date-fns';
 import { it } from 'date-fns/locale';
 
-import { ALTRE_CATEGORIE_LABEL, segmentKeyForCategory } from '@/src/features/expenses/expenseDistribution';
-import { CATEGORIES, type Expense } from '@/src/types';
+import { CATEGORY_CODES, isCategoryCode, type CategoryCode } from '@/src/features/expenses/expenseCategoryCatalog';
+import type { ExpenseWithCategoryCode } from '@/src/features/expenses/expenses.types';
+
+export const ALTRE_CATEGORIE_KEY = 'altre-categorie' as const;
+
+export type Last7DaysCategoryKey = CategoryCode | typeof ALTRE_CATEGORIE_KEY;
 
 export type Last7DaysCategoryAmount = {
-  category: string;
+  key: Last7DaysCategoryKey;
   amount: number;
 };
 
@@ -16,17 +20,21 @@ export type Last7DaysTrendPoint = {
   categories: Last7DaysCategoryAmount[];
 };
 
+function stackKeyForExpense(expense: ExpenseWithCategoryCode): Last7DaysCategoryKey {
+  return isCategoryCode(expense.categoryCode) ? expense.categoryCode : ALTRE_CATEGORIE_KEY;
+}
+
 function buildDayCategories(totals: Map<string, number>): Last7DaysCategoryAmount[] {
   const categories: Last7DaysCategoryAmount[] = [];
-  for (const category of CATEGORIES) {
-    const amount = totals.get(category);
+  for (const code of CATEGORY_CODES) {
+    const amount = totals.get(code);
     if (amount != null && amount !== 0) {
-      categories.push({ category, amount });
+      categories.push({ key: code, amount });
     }
   }
-  const altreAmount = totals.get(ALTRE_CATEGORIE_LABEL);
+  const altreAmount = totals.get(ALTRE_CATEGORIE_KEY);
   if (altreAmount != null && altreAmount !== 0) {
-    categories.push({ category: ALTRE_CATEGORIE_LABEL, amount: altreAmount });
+    categories.push({ key: ALTRE_CATEGORIE_KEY, amount: altreAmount });
   }
   return categories;
 }
@@ -38,7 +46,7 @@ function buildDayCategories(totals: Map<string, number>): Last7DaysCategoryAmoun
  * are outside the window and therefore excluded.
  */
 export function buildLast7DaysTrend(
-  expenses: readonly Expense[],
+  expenses: readonly ExpenseWithCategoryCode[],
   today: Date = new Date()
 ): Last7DaysTrendPoint[] {
   const totalsByDate = new Map<string, number>();
@@ -47,7 +55,7 @@ export function buildLast7DaysTrend(
   for (const expense of expenses) {
     totalsByDate.set(expense.date, (totalsByDate.get(expense.date) ?? 0) + expense.amount);
 
-    const categoryKey = segmentKeyForCategory(String(expense.category ?? ''));
+    const categoryKey = stackKeyForExpense(expense);
     let dayCategories = categoriesByDate.get(expense.date);
     if (!dayCategories) {
       dayCategories = new Map<string, number>();
@@ -70,7 +78,7 @@ export function buildLast7DaysTrend(
   return points;
 }
 
-function compareTrendDayExpenses(a: Expense, b: Expense): number {
+function compareTrendDayExpenses(a: ExpenseWithCategoryCode, b: ExpenseWithCategoryCode): number {
   if (b.amount !== a.amount) return b.amount - a.amount;
   if (a.date !== b.date) return b.date.localeCompare(a.date);
   return a.id.localeCompare(b.id);
@@ -82,8 +90,8 @@ function compareTrendDayExpenses(a: Expense, b: Expense): number {
  * Order: amount DESC, date DESC, id ASC.
  */
 export function listTrendDayExpenses(
-  expenses: readonly Expense[],
+  expenses: readonly ExpenseWithCategoryCode[],
   dateKey: string
-): Expense[] {
+): ExpenseWithCategoryCode[] {
   return expenses.filter((expense) => expense.date === dateKey).sort(compareTrendDayExpenses);
 }
