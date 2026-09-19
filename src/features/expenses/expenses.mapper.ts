@@ -1,4 +1,4 @@
-import type { Accompagnatore, Category, Expense } from '@/src/types';
+import type { Accompagnatore, Expense } from '@/src/types';
 
 import {
   categoryCodeFromLegacyLabel,
@@ -29,20 +29,14 @@ function resolveCategoryIdentityFromDbRow(row: ExpenseDbRow): {
   };
 }
 
-/** Fail-closed: a typed Category must resolve to a catalog code. */
-export function categoryCodeFromCategory(category: Category): CategoryCode {
-  const categoryCode = categoryCodeFromLegacyLabel(category);
-  if (!categoryCode) {
-    throw new Error(`Invariant violation: unknown legacy category (${String(category)})`);
-  }
-  return categoryCode;
-}
-
-/** Hydrate a legacy-shaped Expense into the feature domain (code + presentation). */
-export function expenseWithCategoryCode(expense: Expense): ExpenseWithCategoryCode {
+/** Attach an already-known machine identity; does not derive code from Expense.category. */
+export function expenseWithCategoryCode(
+  expense: Expense,
+  categoryCode: CategoryCode,
+): ExpenseWithCategoryCode {
   return {
     ...expense,
-    categoryCode: categoryCodeFromCategory(expense.category),
+    categoryCode,
   };
 }
 
@@ -124,14 +118,18 @@ export function buildUpdatePayload(params: {
 /** Fields safe to merge onto local state after update. Write payload is unchanged. */
 export function expenseFromUpdatePayload(
   expenseId: string,
-  payload: Omit<ExpenseUpdatePayload, 'owner_id' | 'tenant_id'>
+  payload: Omit<ExpenseUpdatePayload, 'owner_id' | 'tenant_id'>,
+  categoryCode: CategoryCode,
 ): ExpenseWithCategoryCode {
-  return expenseWithCategoryCode({
-    id: expenseId,
-    amount: payload.amount,
-    category: payload.category,
-    description: payload.description,
-    date: payload.date,
-    accompagnatore: (payload.accompagnatore ?? undefined) as Accompagnatore | undefined,
-  });
+  return expenseWithCategoryCode(
+    {
+      id: expenseId,
+      amount: payload.amount,
+      category: payload.category,
+      description: payload.description,
+      date: payload.date,
+      accompagnatore: (payload.accompagnatore ?? undefined) as Accompagnatore | undefined,
+    },
+    categoryCode,
+  );
 }

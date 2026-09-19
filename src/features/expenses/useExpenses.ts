@@ -183,18 +183,21 @@ export function useExpenses(options: {
         if (error) {
           alert('Impossibile aggiornare la spesa: ' + (error.message || JSON.stringify(error)));
         } else {
-          const local = expenseFromUpdatePayload(input.editingId, payloadCore);
+          const local = expenseFromUpdatePayload(input.editingId, payloadCore, input.categoryCode);
           setExpenses((prev) => prev.map((exp) => (exp.id === input.editingId ? local : exp)));
         }
       } else {
-        const expense = expenseWithCategoryCode({
-          id: makeId(),
-          amount: input.amount,
-          category: legacyCategory,
-          description: input.description,
-          date: input.date,
-          accompagnatore: input.accompagnatore || undefined,
-        });
+        const expense = expenseWithCategoryCode(
+          {
+            id: makeId(),
+            amount: input.amount,
+            category: legacyCategory,
+            description: input.description,
+            date: input.date,
+            accompagnatore: input.accompagnatore || undefined,
+          },
+          input.categoryCode,
+        );
 
         const { error } = await createExpenseInTenant({
           expense,
