@@ -160,9 +160,8 @@ export function useExpenses(options: {
         return;
       }
 
-      const legacyCategory = legacyLabelForCategoryCode(input.categoryCode);
-
       if (input.editingId) {
+        const legacyCategory = legacyLabelForCategoryCode(input.categoryCode);
         const payloadCore = {
           amount: input.amount,
           category: legacyCategory,
@@ -191,7 +190,6 @@ export function useExpenses(options: {
           {
             id: makeId(),
             amount: input.amount,
-            category: legacyCategory,
             description: input.description,
             date: input.date,
             accompagnatore: input.accompagnatore || undefined,

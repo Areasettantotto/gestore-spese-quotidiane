@@ -1,5 +1,3 @@
-import type { Expense } from '@/src/types';
-
 import type { LegacyExpenseCategoryLabel } from './expenseCategoryCatalog';
 import {
   buildInsertPayload,
@@ -31,7 +29,7 @@ export async function loadExpensesForTenant(tenantId: string): Promise<{
 }
 
 export async function createExpenseInTenant(params: {
-  expense: Expense;
+  expense: ExpenseWithCategoryCode;
   userId: string;
   tenantId: string;
 }): Promise<{ error: Error | null }> {

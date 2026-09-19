@@ -12,8 +12,8 @@ export type { CategoryCode } from './expenseCategoryCatalog';
 
 /**
  * Operational expense domain for this feature: shared Expense fields plus a
- * required machine code. Extra field is structurally compatible with Expense
- * consumers (form, filters, charts) that still read the legacy label.
+ * required machine identity (`categoryCode`). Legacy persistence labels stay
+ * outside this type.
  */
 export type ExpenseWithCategoryCode = Expense & {
   categoryCode: CategoryCode;

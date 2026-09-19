@@ -9,10 +9,7 @@ import {
 } from './expenseCategoryCatalog';
 import type { ExpenseDbRow, ExpenseWithCategoryCode } from './expenses.types';
 
-function resolveCategoryIdentityFromDbRow(row: ExpenseDbRow): {
-  categoryCode: CategoryCode;
-  category: LegacyExpenseCategoryLabel;
-} {
+function resolveCategoryIdentityFromDbRow(row: ExpenseDbRow): CategoryCode {
   const categoryCode =
     findExpenseCategoryByCode(row.category_code)?.code ??
     categoryCodeFromLegacyLabel(row.category);
@@ -23,13 +20,10 @@ function resolveCategoryIdentityFromDbRow(row: ExpenseDbRow): {
     );
   }
 
-  return {
-    categoryCode,
-    category: legacyLabelForCategoryCode(categoryCode),
-  };
+  return categoryCode;
 }
 
-/** Attach an already-known machine identity; does not derive code from Expense.category. */
+/** Attach an already-known machine identity. */
 export function expenseWithCategoryCode(
   expense: Expense,
   categoryCode: CategoryCode,
@@ -41,11 +35,10 @@ export function expenseWithCategoryCode(
 }
 
 export function mapDbRowToExpense(row: ExpenseDbRow): ExpenseWithCategoryCode {
-  const { categoryCode, category } = resolveCategoryIdentityFromDbRow(row);
+  const categoryCode = resolveCategoryIdentityFromDbRow(row);
   return {
     id: row.id,
     amount: row.amount,
-    category,
     categoryCode,
     description: row.description,
     date: row.date,
@@ -66,7 +59,7 @@ export type ExpenseInsertPayload = {
 };
 
 export function buildInsertPayload(params: {
-  expense: Expense;
+  expense: ExpenseWithCategoryCode;
   userId: string;
   tenantId: string;
 }): ExpenseInsertPayload {
@@ -74,7 +67,7 @@ export function buildInsertPayload(params: {
   return {
     id: expense.id,
     amount: expense.amount,
-    category: expense.category,
+    category: legacyLabelForCategoryCode(expense.categoryCode),
     description: expense.description,
     date: expense.date,
     accompagnatore: expense.accompagnatore ?? null,
@@ -125,7 +118,6 @@ export function expenseFromUpdatePayload(
     {
       id: expenseId,
       amount: payload.amount,
-      category: payload.category,
       description: payload.description,
       date: payload.date,
       accompagnatore: (payload.accompagnatore ?? undefined) as Accompagnatore | undefined,

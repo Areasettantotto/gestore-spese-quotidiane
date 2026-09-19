@@ -15,7 +15,6 @@ export type Accompagnatore = 'Marco' | 'Veronica' | 'Angela';
 export interface Expense {
   id: string;
   amount: number;
-  category: Category;
   description: string;
   date: string;
   accompagnatore?: Accompagnatore;
