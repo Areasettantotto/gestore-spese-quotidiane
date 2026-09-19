@@ -1,5 +1,6 @@
 import type { Expense } from '@/src/types';
 
+import type { LegacyExpenseCategoryLabel } from './expenseCategoryCatalog';
 import {
   buildInsertPayload,
   buildUpdatePayload,
@@ -48,7 +49,7 @@ export async function updateExpenseInTenant(params: {
   userId: string;
   tenantId: string;
   amount: number;
-  category: Expense['category'];
+  category: LegacyExpenseCategoryLabel;
   description: string;
   date: string;
   accompagnatore: string | null | undefined;

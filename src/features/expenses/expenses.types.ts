@@ -1,12 +1,13 @@
 /**
  * Feature-local types + DB shapes for expenses.
  * UI-wide Category / Expense remain in @/src/types for compatibility.
+ * Persistence labels: LegacyExpenseCategoryLabel from the catalog.
  */
 import type { Accompagnatore, Expense } from '@/src/types';
 
 import type { CategoryCode } from './expenseCategoryCatalog';
 
-export type { Accompagnatore, Category, Expense } from '@/src/types';
+export type { Accompagnatore, Expense } from '@/src/types';
 export type { CategoryCode } from './expenseCategoryCatalog';
 
 /**

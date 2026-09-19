@@ -5,12 +5,13 @@ import {
   findExpenseCategoryByCode,
   legacyLabelForCategoryCode,
   type CategoryCode,
+  type LegacyExpenseCategoryLabel,
 } from './expenseCategoryCatalog';
 import type { ExpenseDbRow, ExpenseWithCategoryCode } from './expenses.types';
 
 function resolveCategoryIdentityFromDbRow(row: ExpenseDbRow): {
   categoryCode: CategoryCode;
-  category: Category;
+  category: LegacyExpenseCategoryLabel;
 } {
   const categoryCode =
     findExpenseCategoryByCode(row.category_code)?.code ??
@@ -61,7 +62,7 @@ export function mapDbRowToExpense(row: ExpenseDbRow): ExpenseWithCategoryCode {
 export type ExpenseInsertPayload = {
   id: string;
   amount: number;
-  category: Category;
+  category: LegacyExpenseCategoryLabel;
   description: string;
   date: string;
   accompagnatore: string | null;
@@ -91,7 +92,7 @@ export function buildInsertPayload(params: {
 
 export type ExpenseUpdatePayload = {
   amount: number;
-  category: Category;
+  category: LegacyExpenseCategoryLabel;
   description: string;
   date: string;
   accompagnatore: string | null;
@@ -101,7 +102,7 @@ export type ExpenseUpdatePayload = {
 
 export function buildUpdatePayload(params: {
   amount: number;
-  category: Category;
+  category: LegacyExpenseCategoryLabel;
   description: string;
   date: string;
   accompagnatore: string | null | undefined;

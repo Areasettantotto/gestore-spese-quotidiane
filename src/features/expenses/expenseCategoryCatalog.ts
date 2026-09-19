@@ -70,6 +70,8 @@ export const EXPENSE_CATEGORY_CATALOG = [
 
 export type ExpenseCategoryCatalogEntry = (typeof EXPENSE_CATEGORY_CATALOG)[number];
 export type CategoryCode = ExpenseCategoryCatalogEntry['code'];
+/** Compatibility / persistence label written to expenses.category (not presentation, not machine identity). */
+export type LegacyExpenseCategoryLabel = ExpenseCategoryCatalogEntry['legacyLabel'];
 
 export const CATEGORY_CODES: readonly CategoryCode[] = EXPENSE_CATEGORY_CATALOG.map(
   (entry) => entry.code,
@@ -94,7 +96,7 @@ export function categoryCodeFromLegacyLabel(legacyLabel: unknown): CategoryCode 
   return CATEGORY_CODE_BY_LEGACY_LABEL.get(legacyLabel) ?? null;
 }
 
-export function legacyLabelForCategoryCode(code: CategoryCode): ExpenseCategoryCatalogEntry['legacyLabel'] {
+export function legacyLabelForCategoryCode(code: CategoryCode): LegacyExpenseCategoryLabel {
   return EXPENSE_CATEGORY_BY_CODE[code].legacyLabel;
 }
 
