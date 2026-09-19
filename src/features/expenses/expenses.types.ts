@@ -2,7 +2,7 @@
  * Feature-local types + DB shapes for expenses.
  * UI-wide Category / Expense remain in @/src/types for compatibility.
  */
-import type { Accompagnatore, Category, Expense } from '@/src/types';
+import type { Accompagnatore, Expense } from '@/src/types';
 
 import type { CategoryCode } from './expenseCategoryCatalog';
 
@@ -18,13 +18,19 @@ export type ExpenseWithCategoryCode = Expense & {
   categoryCode: CategoryCode;
 };
 
-/** Form / modal state aligned with App expense fields */
-export type ExpenseFormData = Partial<Expense>;
+/** Form / modal draft: CategoryCode identity, no DB/legacy category fields. */
+export type ExpenseFormData = {
+  amount?: number;
+  categoryCode: CategoryCode;
+  description: string;
+  date: string;
+  accompagnatore?: Accompagnatore;
+};
 
 /** Payload from the add/edit form into mutations */
 export type SaveExpenseFormInput = {
   amount: number;
-  category: Category;
+  categoryCode: CategoryCode;
   description: string;
   date: string;
   accompagnatore?: Accompagnatore;

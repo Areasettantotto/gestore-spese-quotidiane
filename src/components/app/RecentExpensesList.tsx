@@ -9,7 +9,7 @@ import { ExpenseListItem, useMobileSwipeViewport } from '@/src/components/app/Ex
 type RecentExpensesListProps = {
   expenses: ExpenseWithCategoryCode[];
   onViewAll: () => void;
-  onEdit: (expense: Expense) => void;
+  onEdit: (expense: ExpenseWithCategoryCode) => void;
   onDelete: (expense: Expense) => void;
 };
 
@@ -30,7 +30,7 @@ export function RecentExpensesList({ expenses, onViewAll, onEdit, onDelete }: Re
     }
   }, [expenses, openExpenseId]);
 
-  const handleEdit = (expense: Expense) => {
+  const handleEdit = (expense: ExpenseWithCategoryCode) => {
     setOpenExpenseId(null);
     onEdit(expense);
   };

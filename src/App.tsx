@@ -7,10 +7,11 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 're
 import { format, startOfMonth, endOfMonth, lastDayOfMonth, setDate, subMonths } from 'date-fns';
 import { it } from 'date-fns/locale';
 
-import { type Expense, type Category, type Accompagnatore } from './types';
+import { type Expense, type Accompagnatore } from './types';
 import { supabase } from './lib/supabaseClient';
 import { buildLast7DaysTrend } from '@/src/features/expenses/last7DaysTrend';
 import type { CategoryCode } from '@/src/features/expenses/expenseCategoryCatalog';
+import type { ExpenseFormData, ExpenseWithCategoryCode } from '@/src/features/expenses/expenses.types';
 import { useExpenses } from '@/src/features/expenses/useExpenses';
 import { useActiveTenant } from '@/src/features/tenancy/useActiveTenant';
 import { currentCalendarMonthStartDate } from '@/src/features/budgets/monthlyBudgets';
@@ -138,9 +139,9 @@ export default function App() {
   const [isExpenseSubmitting, setIsExpenseSubmitting] = useState(false);
   const expenseSubmitLockRef = useRef(false);
   const expensesScrollYRef = useRef(0);
-  const [newExpense, setNewExpense] = useState<Partial<Expense>>({
+  const [newExpense, setNewExpense] = useState<ExpenseFormData>({
     amount: undefined,
-    category: 'Alimentazione',
+    categoryCode: 'food',
     description: '',
     date: format(new Date(), 'yyyy-MM-dd'),
     accompagnatore: undefined,
@@ -244,7 +245,7 @@ export default function App() {
     setEditingId(null);
     setNewExpense({
       amount: undefined,
-      category: 'Alimentazione',
+      categoryCode: 'food',
       description: '',
       date: format(new Date(), 'yyyy-MM-dd'),
       accompagnatore: undefined,
@@ -257,7 +258,7 @@ export default function App() {
     const rawAmount = newExpense.amount;
     const amountNum = typeof rawAmount === 'number' ? rawAmount : Number(String(rawAmount ?? '').replace(',', '.'));
 
-    if (!newExpense.description || !newExpense.date || !newExpense.category) return;
+    if (!newExpense.description || !newExpense.date || !newExpense.categoryCode) return;
     if (isNaN(amountNum) || amountNum <= 0) return;
 
     if (expenseSubmitLockRef.current) return;
@@ -267,7 +268,7 @@ export default function App() {
     try {
       await saveExpense({
         amount: amountNum,
-        category: newExpense.category as Category,
+        categoryCode: newExpense.categoryCode,
         description: newExpense.description,
         date: newExpense.date,
         accompagnatore: newExpense.accompagnatore,
@@ -282,8 +283,14 @@ export default function App() {
     }
   };
 
-  const handleEditClick = (expense: Expense) => {
-    setNewExpense(expense);
+  const handleEditClick = (expense: ExpenseWithCategoryCode) => {
+    setNewExpense({
+      amount: expense.amount,
+      categoryCode: expense.categoryCode,
+      description: expense.description,
+      date: expense.date,
+      accompagnatore: expense.accompagnatore,
+    });
     setEditingId(expense.id);
     setIsAdding(true);
   };

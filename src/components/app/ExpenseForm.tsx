@@ -3,13 +3,19 @@ import { useEffect, useId, useRef } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { format } from 'date-fns';
 import { Tag, User, X } from 'lucide-react';
-import { ACCOMPAGNATORI, CATEGORIES, type Accompagnatore, type Category, type Expense } from '@/src/types';
+import { ACCOMPAGNATORI, type Accompagnatore } from '@/src/types';
+import {
+  CATEGORY_CODES,
+  expenseCategoryByCode,
+  isCategoryCode,
+} from '@/src/features/expenses/expenseCategoryCatalog';
+import type { ExpenseFormData } from '@/src/features/expenses/expenses.types';
 
 type ExpenseFormProps = {
   isOpen: boolean;
   editingId: string | null;
-  newExpense: Partial<Expense>;
-  onChange: (expense: Partial<Expense>) => void;
+  newExpense: ExpenseFormData;
+  onChange: (expense: ExpenseFormData) => void;
   onClose: () => void;
   onSubmit: (e: React.FormEvent) => void;
   isSubmitting: boolean;
@@ -27,7 +33,7 @@ export function ExpenseForm({ isOpen, editingId, newExpense, onChange, onClose, 
   const resetAndClose = () => {
     onChange({
       amount: undefined,
-      category: 'Alimentazione',
+      categoryCode: 'food',
       description: '',
       date: format(new Date(), 'yyyy-MM-dd'),
       accompagnatore: undefined,
@@ -103,12 +109,15 @@ export function ExpenseForm({ isOpen, editingId, newExpense, onChange, onClose, 
                     <Tag className="absolute left-3 top-1/2 -translate-y-1/2 text-text-faint shrink-0 pointer-events-none" size={18} />
                     <select
                       className="input-field pl-10! flex-1 w-full min-w-0 max-w-full appearance-none leading-normal box-border"
-                      value={newExpense.category}
-                      onChange={(e) => onChange({ ...newExpense, category: e.target.value as Category })}
+                      value={newExpense.categoryCode}
+                      onChange={(e) => {
+                        if (!isCategoryCode(e.target.value)) return;
+                        onChange({ ...newExpense, categoryCode: e.target.value });
+                      }}
                     >
-                      {CATEGORIES.map((cat) => (
-                        <option key={cat} value={cat}>
-                          {cat}
+                      {CATEGORY_CODES.map((code) => (
+                        <option key={code} value={code}>
+                          {expenseCategoryByCode(code).presentationLabel}
                         </option>
                       ))}
                     </select>

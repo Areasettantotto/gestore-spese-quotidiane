@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { supabase } from '@/src/lib/supabaseClient';
 
+import { legacyLabelForCategoryCode } from './expenseCategoryCatalog';
 import { expenseFromUpdatePayload, expenseWithCategoryCode, mapDbRowToExpense } from './expenses.mapper';
 import {
   createExpenseInTenant,
@@ -159,10 +160,12 @@ export function useExpenses(options: {
         return;
       }
 
+      const legacyCategory = legacyLabelForCategoryCode(input.categoryCode);
+
       if (input.editingId) {
         const payloadCore = {
           amount: input.amount,
-          category: input.category,
+          category: legacyCategory,
           description: input.description,
           date: input.date,
           accompagnatore: input.accompagnatore || null,
@@ -187,7 +190,7 @@ export function useExpenses(options: {
         const expense = expenseWithCategoryCode({
           id: makeId(),
           amount: input.amount,
-          category: input.category,
+          category: legacyCategory,
           description: input.description,
           date: input.date,
           accompagnatore: input.accompagnatore || undefined,

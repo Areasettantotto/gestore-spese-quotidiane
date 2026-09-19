@@ -33,7 +33,7 @@ type AllExpensesViewProps = {
   filters: FiltersState;
   onFiltersChange: (next: FiltersState) => void;
   onBack: () => void;
-  onEdit: (expense: Expense) => void;
+  onEdit: (expense: ExpenseWithCategoryCode) => void;
   onDelete: (expense: Expense) => void;
 };
 
@@ -135,7 +135,7 @@ export function AllExpensesView({
     };
   }, [hasMore, loadMore, visibleCount]);
 
-  const handleEdit = (expense: Expense) => {
+  const handleEdit = (expense: ExpenseWithCategoryCode) => {
     setOpenExpenseId(null);
     onEdit(expense);
   };
