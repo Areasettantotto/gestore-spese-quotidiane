@@ -4,9 +4,8 @@
  * Canonical source of identity (`CategoryCode`), current presentation metadata,
  * and exact legacy DB labels used by the EXPAND compatibility bridge.
  *
- * Pure TypeScript: no React, no Supabase, no I/O. Not imported by production
- * consumers yet. `personal` keeps presentationLabel and legacyLabel as
- * `Shopping` on purpose; `Personale` is a future UI change, not active here.
+ * Pure TypeScript: no React, no Supabase, no I/O. `personal` presentationLabel
+ * is `Personale`; legacyLabel remains `Shopping` for EXPAND write compatibility.
  */
 
 type ExpenseCategoryCatalogEntryShape = {
@@ -56,7 +55,7 @@ export const EXPENSE_CATEGORY_CATALOG = [
   {
     code: 'personal',
     legacyLabel: 'Shopping',
-    presentationLabel: 'Shopping',
+    presentationLabel: 'Personale',
     iconKey: 'ShoppingBag',
     color: '#ec4899',
   },
