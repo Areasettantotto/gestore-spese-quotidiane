@@ -2,8 +2,8 @@ import type { Accompagnatore, Category, Expense } from '@/src/types';
 
 import {
   categoryCodeFromLegacyLabel,
-  expenseCategoryByCode,
   findExpenseCategoryByCode,
+  legacyLabelForCategoryCode,
   type CategoryCode,
 } from './expenseCategoryCatalog';
 import type { ExpenseDbRow, ExpenseWithCategoryCode } from './expenses.types';
@@ -24,7 +24,7 @@ function resolveCategoryIdentityFromDbRow(row: ExpenseDbRow): {
 
   return {
     categoryCode,
-    category: expenseCategoryByCode(categoryCode).presentationLabel as Category,
+    category: legacyLabelForCategoryCode(categoryCode),
   };
 }
 
