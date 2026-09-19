@@ -126,7 +126,8 @@ function toBarRow(point: Last7DaysTrendPoint, isActive: boolean): DayBarRow {
 
 function expenseRowLabel(expense: ExpenseWithCategoryCode): string {
   const trimmed = expense.description.trim();
-  return trimmed.length > 0 ? trimmed : expense.category;
+  if (trimmed.length > 0) return trimmed;
+  return expenseCategoryByCode(expense.categoryCode).presentationLabel;
 }
 
 function CategoryBreakdownList({ point }: { point: Last7DaysTrendPoint }) {

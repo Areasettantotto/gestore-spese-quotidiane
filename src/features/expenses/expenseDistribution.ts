@@ -4,7 +4,6 @@ import {
   type CategoryCode,
 } from '@/src/features/expenses/expenseCategoryCatalog';
 import type { ExpenseWithCategoryCode } from '@/src/features/expenses/expenses.types';
-import type { Expense } from '@/src/types';
 
 export type DistributionMode = 'categories' | 'expenses';
 
@@ -74,15 +73,13 @@ function withIntegerPercents(slices: Omit<DistributionSlice, 'percent'>[], total
   return slices.map((slice, index) => ({ ...slice, percent: percents[index] ?? 0 }));
 }
 
-function expenseVisualLabel(expense: Expense): string {
+function expenseVisualLabel(expense: ExpenseWithCategoryCode): string {
   const trimmed = expense.description.trim();
   if (trimmed !== '') return trimmed;
-  const category = String(expense.category ?? '').trim();
-  if (category !== '') return category;
-  return 'Spesa';
+  return expenseCategoryByCode(expense.categoryCode).presentationLabel;
 }
 
-function compareExpensesForDistribution(a: Expense, b: Expense): number {
+function compareExpensesForDistribution(a: ExpenseWithCategoryCode, b: ExpenseWithCategoryCode): number {
   if (b.amount !== a.amount) return b.amount - a.amount;
   if (a.date !== b.date) return b.date.localeCompare(a.date);
   if (a.id < b.id) return -1;
@@ -149,7 +146,7 @@ function buildCategorySlices(
   return withIntegerPercents(slices, totalMonthly);
 }
 
-function buildExpenseSlices(expenses: readonly Expense[], totalMonthly: number): DistributionSlice[] {
+function buildExpenseSlices(expenses: readonly ExpenseWithCategoryCode[], totalMonthly: number): DistributionSlice[] {
   const ranked = expenses.filter((expense) => isPositiveAmount(expense.amount)).sort(compareExpensesForDistribution);
   const top = ranked.slice(0, TOP_N);
   const displayedSum = top.reduce((sum, expense) => sum + expense.amount, 0);
