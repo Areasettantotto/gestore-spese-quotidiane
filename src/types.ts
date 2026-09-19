@@ -1,15 +1,3 @@
-export const CATEGORIES = [
-  'Alimentazione',
-  'Trasporti',
-  'Casa',
-  'Svago',
-  'Salute',
-  'Shopping',
-  'Altro',
-] as const;
-
-export type Category = (typeof CATEGORIES)[number];
-
 export type Accompagnatore = 'Marco' | 'Veronica' | 'Angela';
 
 export interface Expense {
