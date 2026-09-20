@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { motion } from 'motion/react';
 import { PieChart as PieChartIcon } from 'lucide-react';
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
@@ -97,7 +97,10 @@ function DistributionLegend({ slices }: { slices: DistributionSlice[] }) {
   );
 }
 
-export function ExpenseDistributionCard({ expenses, totalMonthly }: ExpenseDistributionCardProps) {
+export const ExpenseDistributionCard = memo(function ExpenseDistributionCard({
+  expenses,
+  totalMonthly,
+}: ExpenseDistributionCardProps) {
   const [mode, setMode] = useState<DistributionMode>('categories');
   const slices = useMemo(
     () => buildExpenseDistribution({ mode, expenses, totalMonthly }),
@@ -166,4 +169,4 @@ export function ExpenseDistributionCard({ expenses, totalMonthly }: ExpenseDistr
       )}
     </motion.section>
   );
-}
+});
