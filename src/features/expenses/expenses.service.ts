@@ -1,4 +1,4 @@
-import type { LegacyExpenseCategoryLabel } from './expenseCategoryCatalog';
+import type { CategoryCode } from './expenseCategoryCatalog';
 import {
   buildInsertPayload,
   buildUpdatePayload,
@@ -47,14 +47,14 @@ export async function updateExpenseInTenant(params: {
   userId: string;
   tenantId: string;
   amount: number;
-  category: LegacyExpenseCategoryLabel;
+  categoryCode: CategoryCode;
   description: string;
   date: string;
   accompagnatore: string | null | undefined;
 }): Promise<{ error: Error | null }> {
   const payload = buildUpdatePayload({
     amount: params.amount,
-    category: params.category,
+    categoryCode: params.categoryCode,
     description: params.description,
     date: params.date,
     accompagnatore: params.accompagnatore,

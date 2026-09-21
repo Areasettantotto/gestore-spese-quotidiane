@@ -3,9 +3,7 @@ import type { Accompagnatore, Expense } from '@/src/types';
 import {
   categoryCodeFromLegacyLabel,
   findExpenseCategoryByCode,
-  legacyLabelForCategoryCode,
   type CategoryCode,
-  type LegacyExpenseCategoryLabel,
 } from './expenseCategoryCatalog';
 import type { ExpenseDbRow, ExpenseWithCategoryCode } from './expenses.types';
 
@@ -49,7 +47,7 @@ export function mapDbRowToExpense(row: ExpenseDbRow): ExpenseWithCategoryCode {
 export type ExpenseInsertPayload = {
   id: string;
   amount: number;
-  category: LegacyExpenseCategoryLabel;
+  category_code: CategoryCode;
   description: string;
   date: string;
   accompagnatore: string | null;
@@ -67,7 +65,7 @@ export function buildInsertPayload(params: {
   return {
     id: expense.id,
     amount: expense.amount,
-    category: legacyLabelForCategoryCode(expense.categoryCode),
+    category_code: expense.categoryCode,
     description: expense.description,
     date: expense.date,
     accompagnatore: expense.accompagnatore ?? null,
@@ -79,7 +77,7 @@ export function buildInsertPayload(params: {
 
 export type ExpenseUpdatePayload = {
   amount: number;
-  category: LegacyExpenseCategoryLabel;
+  category_code: CategoryCode;
   description: string;
   date: string;
   accompagnatore: string | null;
@@ -89,17 +87,17 @@ export type ExpenseUpdatePayload = {
 
 export function buildUpdatePayload(params: {
   amount: number;
-  category: LegacyExpenseCategoryLabel;
+  categoryCode: CategoryCode;
   description: string;
   date: string;
   accompagnatore: string | null | undefined;
   userId: string;
   tenantId: string;
 }): ExpenseUpdatePayload {
-  const { amount, category, description, date, accompagnatore, userId, tenantId } = params;
+  const { amount, categoryCode, description, date, accompagnatore, userId, tenantId } = params;
   return {
     amount,
-    category,
+    category_code: categoryCode,
     description,
     date,
     accompagnatore: accompagnatore || null,
