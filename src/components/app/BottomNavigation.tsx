@@ -1,11 +1,13 @@
-import { Home, Plus, ReceiptText } from 'lucide-react';
+import { useEffect, useId, useRef, useState } from 'react';
+import { Home, MoreHorizontal, Plus, ReceiptText, Settings } from 'lucide-react';
 
-type BottomNavigationView = 'home' | 'all';
+type BottomNavigationView = 'home' | 'all' | 'settings';
 
 type BottomNavigationProps = {
   activeView: BottomNavigationView;
   onHome: () => void;
   onExpenses: () => void;
+  onSettings: () => void;
   onAdd: () => void;
   addDisabled: boolean;
 };
@@ -18,9 +20,53 @@ const tabClassName = (isActive: boolean) =>
     isActive ? 'font-semibold text-primary' : 'font-medium text-text-muted',
   ].join(' ');
 
-export function BottomNavigation({ activeView, onHome, onExpenses, onAdd, addDisabled }: BottomNavigationProps) {
+export function BottomNavigation({
+  activeView,
+  onHome,
+  onExpenses,
+  onSettings,
+  onAdd,
+  addDisabled,
+}: BottomNavigationProps) {
+  const [isMoreOpen, setIsMoreOpen] = useState(false);
+  const moreRef = useRef<HTMLDivElement>(null);
+  const moreTriggerRef = useRef<HTMLButtonElement>(null);
+  const moreMenuId = useId();
+
   const homeActive = activeView === 'home';
   const expensesActive = activeView === 'all';
+  const settingsActive = activeView === 'settings';
+
+  useEffect(() => {
+    if (!isMoreOpen) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (moreRef.current?.contains(target)) return;
+      setIsMoreOpen(false);
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      setIsMoreOpen(false);
+      moreTriggerRef.current?.focus();
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isMoreOpen]);
+
+  const handleOpenSettings = () => {
+    setIsMoreOpen(false);
+    onSettings();
+  };
 
   return (
     <nav
@@ -49,15 +95,53 @@ export function BottomNavigation({ activeView, onHome, onExpenses, onAdd, addDis
           <Plus size={26} aria-hidden="true" />
         </button>
 
-        <button
-          type="button"
-          className={tabClassName(expensesActive)}
-          onClick={onExpenses}
-          aria-current={expensesActive ? 'page' : undefined}
-        >
-          <ReceiptText size={20} aria-hidden="true" />
-          <span>Spese</span>
-        </button>
+        <div className="flex min-w-0 flex-1 items-center">
+          <button
+            type="button"
+            className={tabClassName(expensesActive)}
+            onClick={onExpenses}
+            aria-current={expensesActive ? 'page' : undefined}
+          >
+            <ReceiptText size={20} aria-hidden="true" />
+            <span>Spese</span>
+          </button>
+
+          <div ref={moreRef} className="relative flex min-w-0 flex-1">
+            <button
+              ref={moreTriggerRef}
+              type="button"
+              className={tabClassName(settingsActive)}
+              onClick={() => setIsMoreOpen((current) => !current)}
+              aria-expanded={isMoreOpen}
+              aria-controls={moreMenuId}
+              aria-current={settingsActive ? 'page' : undefined}
+            >
+              <MoreHorizontal size={20} aria-hidden="true" />
+              <span>Altro</span>
+            </button>
+
+            {isMoreOpen ? (
+              <div
+                id={moreMenuId}
+                className="absolute bottom-full right-0 z-30 mb-3 w-56 rounded-xl border border-border bg-surface py-2 shadow-lg"
+              >
+                <button
+                  type="button"
+                  onClick={handleOpenSettings}
+                  aria-current={settingsActive ? 'page' : undefined}
+                  className={[
+                    'flex min-h-11 w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring-focus/40 focus-visible:ring-inset',
+                    settingsActive ? 'shell-nav-active' : 'font-medium text-text-secondary hover:bg-surface-muted',
+                  ].join(' ')}
+                >
+                  <Settings size={16} className={settingsActive ? 'text-primary' : 'text-text-muted'} aria-hidden="true" />
+                  Impostazioni
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </div>
       </div>
     </nav>
   );

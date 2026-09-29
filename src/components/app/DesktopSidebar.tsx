@@ -1,12 +1,13 @@
 import type { ReactNode } from 'react';
-import { Home, ReceiptText } from 'lucide-react';
+import { Home, ReceiptText, Settings } from 'lucide-react';
 
-type DesktopSidebarView = 'home' | 'all';
+type DesktopSidebarView = 'home' | 'all' | 'settings';
 
 type DesktopSidebarProps = {
   activeView: DesktopSidebarView;
   onHome: () => void;
   onExpenses: () => void;
+  onSettings: () => void;
   bottomSlot?: ReactNode;
 };
 
@@ -20,9 +21,10 @@ const itemClassName = (isActive: boolean) =>
       : 'font-medium text-text-secondary hover:bg-surface-muted hover:text-text-primary',
   ].join(' ');
 
-export function DesktopSidebar({ activeView, onHome, onExpenses, bottomSlot }: DesktopSidebarProps) {
+export function DesktopSidebar({ activeView, onHome, onExpenses, onSettings, bottomSlot }: DesktopSidebarProps) {
   const homeActive = activeView === 'home';
   const expensesActive = activeView === 'all';
+  const settingsActive = activeView === 'settings';
 
   return (
     <aside className="app-shell-sidebar fixed inset-y-0 left-0 z-10 hidden h-screen w-64 flex-col lg:flex">
@@ -52,7 +54,20 @@ export function DesktopSidebar({ activeView, onHome, onExpenses, bottomSlot }: D
         </button>
       </nav>
 
-      <div className="mt-auto min-h-16 border-t border-border-subtle px-3 py-4">{bottomSlot}</div>
+      <div className="mt-auto border-t border-border-subtle px-3 py-4">
+        <nav className="flex flex-col gap-1" aria-label="Impostazioni">
+          <button
+            type="button"
+            className={itemClassName(settingsActive)}
+            onClick={onSettings}
+            aria-current={settingsActive ? 'page' : undefined}
+          >
+            <Settings size={20} className={settingsActive ? 'text-primary' : 'text-text-muted'} aria-hidden="true" />
+            <span>Impostazioni</span>
+          </button>
+        </nav>
+        {bottomSlot ? <div className="mt-3">{bottomSlot}</div> : null}
+      </div>
     </aside>
   );
 }

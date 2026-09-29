@@ -31,8 +31,9 @@ import { RecentExpensesList } from '@/src/components/app/RecentExpensesList';
 import { DashboardHomeSkeleton } from '@/src/components/app/home/DashboardHomeSkeleton';
 import { ExpenseForm } from '@/src/components/app/ExpenseForm';
 import { AllExpensesView } from '@/src/components/app/AllExpensesView';
+import { SettingsView } from '@/src/components/app/SettingsView';
 
-type ViewMode = 'home' | 'all';
+type ViewMode = 'home' | 'all' | 'settings';
 
 type AccessPresentation = {
   badgeLabel: string | null;
@@ -299,15 +300,24 @@ export default function App() {
     void deleteExpense(expense.id);
   };
 
-  const navigateToHome = () => {
+  const rememberExpensesScroll = () => {
     if (view === 'all') {
       expensesScrollYRef.current = window.scrollY;
     }
+  };
+
+  const navigateToHome = () => {
+    rememberExpensesScroll();
     setView('home');
   };
 
   const navigateToExpenses = () => {
     setView('all');
+  };
+
+  const navigateToSettings = () => {
+    rememberExpensesScroll();
+    setView('settings');
   };
 
   useLayoutEffect(() => {
@@ -316,11 +326,11 @@ export default function App() {
   }, [activeTenantId]);
 
   useLayoutEffect(() => {
-    if (view === 'home') {
-      window.scrollTo({ top: 0, behavior: 'auto' });
+    if (view === 'all') {
+      window.scrollTo({ top: expensesScrollYRef.current, behavior: 'auto' });
       return;
     }
-    window.scrollTo({ top: expensesScrollYRef.current, behavior: 'auto' });
+    window.scrollTo({ top: 0, behavior: 'auto' });
   }, [view]);
 
   return (
@@ -329,6 +339,7 @@ export default function App() {
         activeView={view}
         onHome={navigateToHome}
         onExpenses={navigateToExpenses}
+        onSettings={navigateToSettings}
       />
 
       <div className="lg:pl-64">
@@ -345,9 +356,17 @@ export default function App() {
         />
 
         <main className="max-w-2xl mx-auto px-4 pt-4 pb-8 md:pt-8 space-y-8">
-          {userId && activeTenantId && expensesLoadError ? <ExpensesLoadErrorBanner message={expensesLoadError} /> : null}
-          {userId && isTenantContextLoading ? <WorkspaceLoadingState /> : null}
-          {userId && !isTenantContextLoading && !activeTenantId ? <WorkspaceUnavailableState tenantError={tenantError} /> : null}
+          {view !== 'settings' && userId && activeTenantId && expensesLoadError ? <ExpensesLoadErrorBanner message={expensesLoadError} /> : null}
+          {view === 'settings' ? (
+            <SettingsView onBack={navigateToHome} />
+          ) : (
+            <>
+              {userId && isTenantContextLoading ? <WorkspaceLoadingState /> : null}
+              {userId && !isTenantContextLoading && !activeTenantId ? (
+                <WorkspaceUnavailableState tenantError={tenantError} />
+              ) : null}
+            </>
+          )}
 
           {userId && !isTenantContextLoading && activeTenantId ? (
             <>
@@ -414,6 +433,7 @@ export default function App() {
           activeView={view}
           onHome={navigateToHome}
           onExpenses={navigateToExpenses}
+          onSettings={navigateToSettings}
           onAdd={() => setIsAdding(true)}
           addDisabled={!userId || !activeTenantId || isTenantContextLoading}
         />

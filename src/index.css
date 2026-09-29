@@ -82,6 +82,10 @@
   }
 }
 
+html {
+  scrollbar-gutter: stable;
+}
+
 body {
   @apply bg-background text-text-primary font-sans antialiased;
 }
