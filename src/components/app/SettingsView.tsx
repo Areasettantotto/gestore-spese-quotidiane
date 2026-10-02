@@ -1,10 +1,28 @@
 import { ArrowLeft } from 'lucide-react';
 
+import { CompanionsSettingsSection } from '@/src/components/app/settings/CompanionsSettingsSection';
+import { useCompanionsSettings } from '@/src/features/companions/useCompanionsSettings';
+import type { TenantRole } from '@/src/features/tenancy/tenancy.types';
+
 type SettingsViewProps = {
   onBack: () => void;
+  activeTenantId: string | null;
+  membershipRole: TenantRole | null;
+  isTenantContextLoading: boolean;
 };
 
-export function SettingsView({ onBack }: SettingsViewProps) {
+export function SettingsView({
+  onBack,
+  activeTenantId,
+  membershipRole,
+  isTenantContextLoading,
+}: SettingsViewProps) {
+  const companionsSettings = useCompanionsSettings({
+    activeTenantId,
+    membershipRole,
+    isTenantContextLoading,
+  });
+
   return (
     <section aria-labelledby="settings-heading" className="space-y-6">
       <div className="flex items-center justify-between">
@@ -27,6 +45,7 @@ export function SettingsView({ onBack }: SettingsViewProps) {
         </div>
       </div>
       <p className="text-sm text-text-secondary">Preferenze personali e impostazioni dell'organizzazione.</p>
+      <CompanionsSettingsSection status={companionsSettings.status} />
     </section>
   );
 }

@@ -358,7 +358,12 @@ export default function App() {
         <main className="max-w-2xl mx-auto px-4 pt-4 pb-8 md:pt-8 space-y-8">
           {view !== 'settings' && userId && activeTenantId && expensesLoadError ? <ExpensesLoadErrorBanner message={expensesLoadError} /> : null}
           {view === 'settings' ? (
-            <SettingsView onBack={navigateToHome} />
+            <SettingsView
+              onBack={navigateToHome}
+              activeTenantId={activeTenantId}
+              membershipRole={membershipRole}
+              isTenantContextLoading={isTenantContextLoading}
+            />
           ) : (
             <>
               {userId && isTenantContextLoading ? <WorkspaceLoadingState /> : null}
