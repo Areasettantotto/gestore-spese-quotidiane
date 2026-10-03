@@ -1,17 +1,27 @@
+import { useEffect, useId, useRef } from 'react';
+
 import { Skeleton } from '@/src/components/app/Skeleton';
 import type { CompanionsSettingsStatus } from '@/src/features/companions/useCompanionsSettings';
 
 type CompanionsSettingsSectionProps = {
   status: CompanionsSettingsStatus;
+  isUpdating: boolean;
+  updateError: string | null;
+  onCompanionsEnabledChange: ((next: boolean) => Promise<void>) | null;
 };
 
-const STATUS_BADGE_CLASS =
-  'inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium';
-
-export function CompanionsSettingsSection({ status }: CompanionsSettingsSectionProps) {
+export function CompanionsSettingsSection({
+  status,
+  isUpdating,
+  updateError,
+  onCompanionsEnabledChange,
+}: CompanionsSettingsSectionProps) {
   if (status === 'unavailable' || status === 'unreadable') {
     return null;
   }
+
+  const showToggle =
+    (status === 'enabled' || status === 'disabled') && onCompanionsEnabledChange != null;
 
   return (
     <section aria-labelledby="settings-organization-heading" className="space-y-3">
@@ -26,11 +36,19 @@ export function CompanionsSettingsSection({ status }: CompanionsSettingsSectionP
           <h4 id="companions-settings-heading" className="text-base font-semibold text-text-primary">
             Accompagnatori
           </h4>
-          <CompanionsFeatureStatus status={status} />
+          {status === 'loading' ? <CompanionsSettingsLoading /> : null}
         </div>
         <p className="text-sm text-text-secondary">
           Funzione dell&apos;organizzazione per associare persone alle spese.
         </p>
+        {showToggle ? (
+          <CompanionsEnabledSwitch
+            checked={status === 'enabled'}
+            isUpdating={isUpdating}
+            updateError={updateError}
+            onChange={onCompanionsEnabledChange}
+          />
+        ) : null}
         {status === 'error' ? (
           <p className="text-sm text-text-secondary" role="status">
             Non è stato possibile leggere lo stato della funzione.
@@ -46,33 +64,88 @@ export function CompanionsSettingsSection({ status }: CompanionsSettingsSectionP
   );
 }
 
-function CompanionsFeatureStatus({
-  status,
+function CompanionsSettingsLoading() {
+  return (
+    <div aria-live="polite" aria-atomic="true" aria-busy="true">
+      <span className="sr-only">Caricamento stato Accompagnatori</span>
+      <Skeleton className="h-5 w-28 rounded-full" />
+    </div>
+  );
+}
+
+function CompanionsEnabledSwitch({
+  checked,
+  isUpdating,
+  updateError,
+  onChange,
 }: {
-  status: Exclude<CompanionsSettingsStatus, 'unavailable' | 'unreadable'>;
+  checked: boolean;
+  isUpdating: boolean;
+  updateError: string | null;
+  onChange: (next: boolean) => Promise<void>;
 }) {
-  if (status !== 'loading' && status !== 'enabled' && status !== 'disabled') {
-    return null;
-  }
+  const switchId = useId();
+  const labelId = useId();
+  const statusId = useId();
+  const switchRef = useRef<HTMLButtonElement>(null);
+  const wasUpdatingRef = useRef(false);
+
+  useEffect(() => {
+    if (wasUpdatingRef.current && !isUpdating) {
+      switchRef.current?.focus();
+    }
+    wasUpdatingRef.current = isUpdating;
+  }, [isUpdating]);
 
   return (
-    <div aria-live="polite" aria-atomic="true" aria-busy={status === 'loading'}>
-      {status === 'loading' ? (
-        <>
-          <span className="sr-only">Caricamento stato Accompagnatori</span>
-          <Skeleton className="h-5 w-28 rounded-full" />
-        </>
-      ) : (
-        <span
-          className={`${STATUS_BADGE_CLASS} ${
-            status === 'enabled'
-              ? 'border-transparent bg-primary-soft text-primary-soft-fg'
-              : 'border-border bg-surface-muted text-text-secondary'
-          }`}
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-4">
+        <label id={labelId} htmlFor={switchId} className="min-w-0 text-sm text-text-secondary">
+          Abilita la gestione degli Accompagnatori per questa organizzazione.
+        </label>
+        <button
+          ref={switchRef}
+          id={switchId}
+          type="button"
+          role="switch"
+          aria-checked={checked}
+          aria-labelledby={labelId}
+          aria-describedby={statusId}
+          aria-busy={isUpdating}
+          disabled={isUpdating}
+          onClick={() => {
+            if (isUpdating) return;
+            void onChange(!checked);
+          }}
+          className="inline-flex h-11 w-16 shrink-0 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {status === 'enabled' ? 'Funzione attiva' : 'Funzione disattivata'}
-        </span>
-      )}
+          <span
+            aria-hidden="true"
+            className={`relative inline-flex h-7 w-12 items-center rounded-full border transition-colors ${
+              checked ? 'border-transparent bg-primary' : 'border-border bg-surface-muted'
+            }`}
+          >
+            <span
+              className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition-transform ${
+                checked ? 'translate-x-6' : 'translate-x-1'
+              }`}
+            />
+          </span>
+        </button>
+      </div>
+      <p id={statusId} className="text-sm text-text-muted">
+        {checked ? 'Funzione attiva' : 'Funzione disattivata'}
+      </p>
+      {isUpdating ? (
+        <p className="text-sm text-text-muted" role="status">
+          Aggiornamento in corso
+        </p>
+      ) : null}
+      {updateError ? (
+        <p className="text-sm text-danger" role="alert">
+          {updateError}
+        </p>
+      ) : null}
     </div>
   );
 }

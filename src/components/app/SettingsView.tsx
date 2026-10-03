@@ -45,7 +45,12 @@ export function SettingsView({
         </div>
       </div>
       <p className="text-sm text-text-secondary">Preferenze personali e impostazioni dell'organizzazione.</p>
-      <CompanionsSettingsSection status={companionsSettings.status} />
+      <CompanionsSettingsSection
+        status={companionsSettings.status}
+        isUpdating={companionsSettings.isUpdating}
+        updateError={companionsSettings.updateError}
+        onCompanionsEnabledChange={companionsSettings.setCompanionsEnabled}
+      />
     </section>
   );
 }

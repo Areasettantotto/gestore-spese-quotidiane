@@ -1,8 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { TenantRole } from '@/src/features/tenancy/tenancy.types';
 
-import { getCompanionsSettings, type CompanionsFeatureSetting } from './companionsSettings';
+import {
+  getCompanionsSettings,
+  updateCompanionsEnabled,
+  type CompanionsFeatureSetting,
+} from './companionsSettings';
 
 /**
  * unavailable — tenant context still loading, or no active tenant. No query.
@@ -32,6 +36,15 @@ export type UseCompanionsSettingsResult = {
   status: CompanionsSettingsStatus;
   /** True or false only for status enabled or disabled. Null when the setting was not read. */
   companionsEnabled: boolean | null;
+  /** True only while an update for the current tenant is in flight. */
+  isUpdating: boolean;
+  /** Local write failure. Distinct from a read status of error. */
+  updateError: string | null;
+  /**
+   * Present only when an admin may update an existing enabled or disabled setting.
+   * Null for unreadable, unavailable, loading, missing, and read error.
+   */
+  setCompanionsEnabled: ((next: boolean) => Promise<void>) | null;
 };
 
 type FetchedCompanionsSettings = {
@@ -42,8 +55,28 @@ type FetchedCompanionsSettings = {
     | { kind: 'error' };
 };
 
+type CompanionsSettingsMutationUi = {
+  isUpdating: boolean;
+  updateError: string | null;
+};
+
+const UPDATE_ERROR_MESSAGE = 'Non è stato possibile aggiornare la funzione. Riprova.';
+
 function canReadCompanionsSettings(role: TenantRole | null): role is 'admin' {
   return role === 'admin';
+}
+
+function closedResult(
+  status: Exclude<CompanionsSettingsStatus, 'enabled' | 'disabled'>,
+  companionsEnabled: boolean | null = null
+): UseCompanionsSettingsResult {
+  return {
+    status,
+    companionsEnabled,
+    isUpdating: false,
+    updateError: null,
+    setCompanionsEnabled: null,
+  };
 }
 
 export function useCompanionsSettings({
@@ -58,6 +91,26 @@ export function useCompanionsSettings({
 
   const [fetched, setFetched] = useState<FetchedCompanionsSettings | null>(null);
   const [inFlight, setInFlight] = useState(false);
+  const [mutations, setMutations] = useState<Record<string, CompanionsSettingsMutationUi>>({});
+
+  const activeTenantIdRef = useRef(activeTenantId);
+  activeTenantIdRef.current = activeTenantId;
+  const isMountedRef = useRef(true);
+  const readGenerationRef = useRef(0);
+  /**
+   * At most one companions_enabled update in flight per tenant.
+   * The value is that request's id. Another tenant gets its own entry and
+   * cannot clear this one.
+   */
+  const inFlightByTenantRef = useRef<Map<string, number>>(new Map());
+  const nextMutationIdRef = useRef(0);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!shouldRead || !activeTenantId) {
@@ -67,11 +120,16 @@ export function useCompanionsSettings({
     }
 
     const tenantId = activeTenantId;
+    const generationAtStart = readGenerationRef.current;
     let cancelled = false;
     setInFlight(true);
 
     void getCompanionsSettings(tenantId).then((result) => {
-      if (cancelled) return;
+      if (cancelled || !isMountedRef.current) return;
+      if (readGenerationRef.current !== generationAtStart) {
+        setInFlight(false);
+        return;
+      }
 
       if (result.kind === 'ready') {
         setFetched({ tenantId, result: { kind: 'ready', setting: result.setting } });
@@ -89,31 +147,107 @@ export function useCompanionsSettings({
     };
   }, [activeTenantId, shouldRead]);
 
+  const setCompanionsEnabled = useCallback(
+    async (next: boolean) => {
+      if (isTenantContextLoading || !activeTenantId) return;
+      if (!canReadCompanionsSettings(membershipRole)) return;
+      if (typeof next !== 'boolean') return;
+      if (inFlight || fetched == null || fetched.tenantId !== activeTenantId) return;
+      if (fetched.result.kind !== 'ready') return;
+      if (inFlightByTenantRef.current.has(activeTenantId)) return;
+
+      const requestTenantId = activeTenantId;
+      const requestId = ++nextMutationIdRef.current;
+      inFlightByTenantRef.current.set(requestTenantId, requestId);
+      setMutations((current) => ({
+        ...current,
+        [requestTenantId]: { isUpdating: true, updateError: null },
+      }));
+
+      const settle = (patch: CompanionsSettingsMutationUi) => {
+        setMutations((current) => ({
+          ...current,
+          [requestTenantId]: patch,
+        }));
+      };
+
+      try {
+        const result = await updateCompanionsEnabled({
+          tenantId: requestTenantId,
+          nextCompanionsEnabled: next,
+        });
+
+        if (!isMountedRef.current) return;
+        if (inFlightByTenantRef.current.get(requestTenantId) !== requestId) return;
+
+        const stillCurrent = activeTenantIdRef.current === requestTenantId;
+        if (!stillCurrent) {
+          settle({ isUpdating: false, updateError: null });
+          return;
+        }
+
+        if (result.kind === 'updated') {
+          readGenerationRef.current += 1;
+          setFetched({
+            tenantId: requestTenantId,
+            result: { kind: 'ready', setting: result.setting },
+          });
+          settle({ isUpdating: false, updateError: null });
+          return;
+        }
+
+        settle({ isUpdating: false, updateError: UPDATE_ERROR_MESSAGE });
+      } catch (error) {
+        console.error('Failed to update companions settings', error);
+        if (!isMountedRef.current) return;
+        if (inFlightByTenantRef.current.get(requestTenantId) !== requestId) return;
+        if (activeTenantIdRef.current !== requestTenantId) {
+          settle({ isUpdating: false, updateError: null });
+          return;
+        }
+        settle({ isUpdating: false, updateError: UPDATE_ERROR_MESSAGE });
+      } finally {
+        if (inFlightByTenantRef.current.get(requestTenantId) === requestId) {
+          inFlightByTenantRef.current.delete(requestTenantId);
+        }
+      }
+    },
+    [activeTenantId, fetched, inFlight, isTenantContextLoading, membershipRole]
+  );
+
+  const mutationForTenant = activeTenantId != null ? mutations[activeTenantId] : undefined;
+  const isUpdating = mutationForTenant?.isUpdating === true;
+  const updateError = mutationForTenant?.updateError ?? null;
+
   if (isTenantContextLoading || !activeTenantId) {
-    return { status: 'unavailable', companionsEnabled: null };
+    return closedResult('unavailable');
   }
 
   if (!canReadCompanionsSettings(membershipRole)) {
-    return { status: 'unreadable', companionsEnabled: null };
+    return closedResult('unreadable');
   }
 
   const fetchedMatches = fetched != null && fetched.tenantId === activeTenantId;
 
   if (inFlight || !fetchedMatches) {
-    return { status: 'loading', companionsEnabled: null };
+    return closedResult('loading');
   }
 
   if (fetched.result.kind === 'missing') {
-    return { status: 'missing', companionsEnabled: null };
+    return closedResult('missing');
   }
 
   if (fetched.result.kind === 'error') {
-    return { status: 'error', companionsEnabled: null };
+    return closedResult('error');
   }
 
-  if (fetched.result.setting.companionsEnabled) {
-    return { status: 'enabled', companionsEnabled: true };
-  }
+  const companionsEnabled = fetched.result.setting.companionsEnabled;
 
-  return { status: 'disabled', companionsEnabled: false };
+  return {
+    status: companionsEnabled ? 'enabled' : 'disabled',
+    companionsEnabled,
+    isUpdating,
+    updateError,
+    setCompanionsEnabled,
+  };
 }

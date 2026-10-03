@@ -25,7 +25,17 @@ export type CompanionsSettingsReadResult =
   | { kind: 'error' };
 
 /**
- * Read-only companions feature setting for one tenant.
+ * updated — one existing row was updated and the returned shape matched.
+ * missing — the update matched zero rows. Not success, and not feature-off.
+ * error — request failed, or the returned row was not usable.
+ */
+export type CompanionsSettingsUpdateResult =
+  | { kind: 'updated'; setting: CompanionsFeatureSetting }
+  | { kind: 'missing' }
+  | { kind: 'error' };
+
+/**
+ * Read the companions feature setting for one tenant.
  * Callers must already know the reader is an admin; this function does not
  * widen access. It never inserts or updates.
  */
@@ -57,11 +67,59 @@ export async function getCompanionsSettings(
   return { kind: 'ready', setting };
 }
 
+/**
+ * Update companions_enabled on the existing tenant_settings row.
+ * Tenant-scoped UPDATE only. Never inserts, upserts, or deletes.
+ * Zero rows is not success and is not companions_enabled false.
+ */
+export async function updateCompanionsEnabled(params: {
+  tenantId: string;
+  nextCompanionsEnabled: boolean;
+}): Promise<CompanionsSettingsUpdateResult> {
+  if (params.tenantId.length === 0 || typeof params.nextCompanionsEnabled !== 'boolean') {
+    return { kind: 'error' };
+  }
+
+  const { data, error } = await updateCompanionsEnabledRow(params);
+
+  if (error) {
+    console.error('Failed to update companions settings', error);
+    return { kind: 'error' };
+  }
+
+  if (data == null) {
+    console.error('Companions settings update matched no row for the active tenant');
+    return { kind: 'missing' };
+  }
+
+  const setting = mapCompanionsSettingsRow(data, params.tenantId);
+  if (!setting) {
+    console.error('Updated companions settings row did not match the expected shape');
+    return { kind: 'error' };
+  }
+
+  return { kind: 'updated', setting };
+}
+
 async function selectCompanionsSettings(tenantId: string) {
   return supabase
     .from('tenant_settings')
     .select('tenant_id, companions_enabled')
     .eq('tenant_id', tenantId)
+    .maybeSingle();
+}
+
+async function updateCompanionsEnabledRow(params: {
+  tenantId: string;
+  nextCompanionsEnabled: boolean;
+}) {
+  // Existing-row UPDATE only. Do not send tenant_id in the payload.
+  // Do not insert or upsert. Zero rows stays a distinct non-success.
+  return supabase
+    .from('tenant_settings')
+    .update({ companions_enabled: params.nextCompanionsEnabled })
+    .eq('tenant_id', params.tenantId)
+    .select('tenant_id, companions_enabled')
     .maybeSingle();
 }
 
