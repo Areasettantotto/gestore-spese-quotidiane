@@ -2,6 +2,7 @@ import { ArrowLeft } from 'lucide-react';
 
 import { CompanionsSettingsSection } from '@/src/components/app/settings/CompanionsSettingsSection';
 import { useCompanionsSettings } from '@/src/features/companions/useCompanionsSettings';
+import { useTenantCompanions } from '@/src/features/companions/useTenantCompanions';
 import type { TenantRole } from '@/src/features/tenancy/tenancy.types';
 
 type SettingsViewProps = {
@@ -21,6 +22,12 @@ export function SettingsView({
     activeTenantId,
     membershipRole,
     isTenantContextLoading,
+  });
+  const tenantCompanions = useTenantCompanions({
+    activeTenantId,
+    membershipRole,
+    isTenantContextLoading,
+    companionsSettingsStatus: companionsSettings.status,
   });
 
   return (
@@ -50,6 +57,8 @@ export function SettingsView({
         isUpdating={companionsSettings.isUpdating}
         updateError={companionsSettings.updateError}
         onCompanionsEnabledChange={companionsSettings.setCompanionsEnabled}
+        catalogStatus={tenantCompanions.status}
+        catalogItems={tenantCompanions.items}
       />
     </section>
   );

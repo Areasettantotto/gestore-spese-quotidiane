@@ -1,13 +1,17 @@
 import { useEffect, useId, useRef } from 'react';
 
 import { Skeleton } from '@/src/components/app/Skeleton';
+import type { TenantCompanion } from '@/src/features/companions/tenantCompanions';
 import type { CompanionsSettingsStatus } from '@/src/features/companions/useCompanionsSettings';
+import type { TenantCompanionsStatus } from '@/src/features/companions/useTenantCompanions';
 
 type CompanionsSettingsSectionProps = {
   status: CompanionsSettingsStatus;
   isUpdating: boolean;
   updateError: string | null;
   onCompanionsEnabledChange: ((next: boolean) => Promise<void>) | null;
+  catalogStatus: TenantCompanionsStatus;
+  catalogItems: readonly TenantCompanion[];
 };
 
 export function CompanionsSettingsSection({
@@ -15,6 +19,8 @@ export function CompanionsSettingsSection({
   isUpdating,
   updateError,
   onCompanionsEnabledChange,
+  catalogStatus,
+  catalogItems,
 }: CompanionsSettingsSectionProps) {
   if (status === 'unavailable' || status === 'unreadable') {
     return null;
@@ -22,6 +28,9 @@ export function CompanionsSettingsSection({
 
   const showToggle =
     (status === 'enabled' || status === 'disabled') && onCompanionsEnabledChange != null;
+  const showCatalog =
+    (status === 'enabled' || status === 'disabled') &&
+    (catalogStatus === 'loading' || catalogStatus === 'ready' || catalogStatus === 'error');
 
   return (
     <section aria-labelledby="settings-organization-heading" className="space-y-3">
@@ -59,8 +68,69 @@ export function CompanionsSettingsSection({
             L&apos;impostazione della funzione non è presente.
           </p>
         ) : null}
+        {showCatalog ? (
+          <TenantCompanionsCatalog status={catalogStatus} items={catalogItems} />
+        ) : null}
       </article>
     </section>
+  );
+}
+
+function TenantCompanionsCatalog({
+  status,
+  items,
+}: {
+  status: TenantCompanionsStatus;
+  items: readonly TenantCompanion[];
+}) {
+  if (status === 'loading') {
+    return <TenantCompanionsCatalogLoading />;
+  }
+
+  if (status === 'error') {
+    return (
+      <p className="border-t border-border pt-3 text-sm text-text-secondary" role="status">
+        Non è stato possibile leggere gli accompagnatori.
+      </p>
+    );
+  }
+
+  if (status !== 'ready') {
+    return null;
+  }
+
+  if (items.length === 0) {
+    return (
+      <p className="border-t border-border pt-3 text-sm text-text-secondary" role="status">
+        Nessun accompagnatore configurato.
+      </p>
+    );
+  }
+
+  return (
+    <ul aria-label="Accompagnatori configurati" className="divide-y divide-border border-t border-border">
+      {items.map((item) => (
+        <li key={item.id} className="flex items-center justify-between gap-3 py-2.5">
+          <span className="min-w-0 truncate text-sm text-text-primary" title={item.displayName}>
+            {item.displayName}
+          </span>
+          <span className="shrink-0 text-sm text-text-muted">
+            {item.isActive ? 'Attivo' : 'Disattivato'}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function TenantCompanionsCatalogLoading() {
+  return (
+    <div aria-live="polite" aria-atomic="true" aria-busy="true" className="space-y-2 border-t border-border pt-3">
+      <span className="sr-only">Caricamento accompagnatori</span>
+      <Skeleton className="h-5 w-full" />
+      <Skeleton className="h-5 w-4/5" />
+      <Skeleton className="h-5 w-3/5" />
+    </div>
   );
 }
 
