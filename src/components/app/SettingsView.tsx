@@ -53,12 +53,15 @@ export function SettingsView({
       </div>
       <p className="text-sm text-text-secondary">Preferenze personali e impostazioni dell'organizzazione.</p>
       <CompanionsSettingsSection
+        activeTenantId={activeTenantId}
         status={companionsSettings.status}
         isUpdating={companionsSettings.isUpdating}
         updateError={companionsSettings.updateError}
         onCompanionsEnabledChange={companionsSettings.setCompanionsEnabled}
         catalogStatus={tenantCompanions.status}
         catalogItems={tenantCompanions.items}
+        isCreatingCompanion={tenantCompanions.isCreating}
+        onCreateCompanion={tenantCompanions.createCompanion}
       />
     </section>
   );

@@ -1,26 +1,42 @@
-import { useEffect, useId, useRef } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 
 import { Skeleton } from '@/src/components/app/Skeleton';
-import type { TenantCompanion } from '@/src/features/companions/tenantCompanions';
+import {
+  COMPANION_CREATE_ACTIVE_LIMIT_MESSAGE,
+  COMPANION_CREATE_BLANK_NAME_MESSAGE,
+  COMPANION_CREATE_FEATURE_DISABLED_MESSAGE,
+  MAX_ACTIVE_TENANT_COMPANIONS,
+  countActiveTenantCompanions,
+  type TenantCompanion,
+} from '@/src/features/companions/tenantCompanions';
 import type { CompanionsSettingsStatus } from '@/src/features/companions/useCompanionsSettings';
-import type { TenantCompanionsStatus } from '@/src/features/companions/useTenantCompanions';
+import type {
+  TenantCompanionCreateUiResult,
+  TenantCompanionsStatus,
+} from '@/src/features/companions/useTenantCompanions';
 
 type CompanionsSettingsSectionProps = {
+  activeTenantId: string | null;
   status: CompanionsSettingsStatus;
   isUpdating: boolean;
   updateError: string | null;
   onCompanionsEnabledChange: ((next: boolean) => Promise<void>) | null;
   catalogStatus: TenantCompanionsStatus;
   catalogItems: readonly TenantCompanion[];
+  isCreatingCompanion: boolean;
+  onCreateCompanion: ((displayName: string) => Promise<TenantCompanionCreateUiResult>) | null;
 };
 
 export function CompanionsSettingsSection({
+  activeTenantId,
   status,
   isUpdating,
   updateError,
   onCompanionsEnabledChange,
   catalogStatus,
   catalogItems,
+  isCreatingCompanion,
+  onCreateCompanion,
 }: CompanionsSettingsSectionProps) {
   if (status === 'unavailable' || status === 'unreadable') {
     return null;
@@ -31,6 +47,11 @@ export function CompanionsSettingsSection({
   const showCatalog =
     (status === 'enabled' || status === 'disabled') &&
     (catalogStatus === 'loading' || catalogStatus === 'ready' || catalogStatus === 'error');
+  const activeCount = catalogStatus === 'ready' ? countActiveTenantCompanions(catalogItems) : 0;
+  const atActiveLimit =
+    status === 'enabled' && catalogStatus === 'ready' && activeCount >= MAX_ACTIVE_TENANT_COMPANIONS;
+  const showCreate =
+    status === 'enabled' && (onCreateCompanion != null || isCreatingCompanion);
 
   return (
     <section aria-labelledby="settings-organization-heading" className="space-y-3">
@@ -70,6 +91,23 @@ export function CompanionsSettingsSection({
         ) : null}
         {showCatalog ? (
           <TenantCompanionsCatalog status={catalogStatus} items={catalogItems} />
+        ) : null}
+        {status === 'disabled' ? (
+          <p className="border-t border-border pt-3 text-sm text-text-secondary" role="status">
+            {COMPANION_CREATE_FEATURE_DISABLED_MESSAGE}
+          </p>
+        ) : null}
+        {atActiveLimit && !isCreatingCompanion ? (
+          <p className="border-t border-border pt-3 text-sm text-text-secondary" role="status">
+            {COMPANION_CREATE_ACTIVE_LIMIT_MESSAGE}
+          </p>
+        ) : null}
+        {showCreate ? (
+          <CreateCompanionControl
+            activeTenantId={activeTenantId}
+            isCreating={isCreatingCompanion}
+            onCreate={onCreateCompanion}
+          />
         ) : null}
       </article>
     </section>
@@ -120,6 +158,152 @@ function TenantCompanionsCatalog({
         </li>
       ))}
     </ul>
+  );
+}
+
+function CreateCompanionControl({
+  activeTenantId,
+  isCreating,
+  onCreate,
+}: {
+  activeTenantId: string | null;
+  isCreating: boolean;
+  onCreate: ((displayName: string) => Promise<TenantCompanionCreateUiResult>) | null;
+}) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [localError, setLocalError] = useState<string | null>(null);
+  const inputId = useId();
+  const errorId = useId();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const isMountedRef = useRef(true);
+  const activeTenantIdRef = useRef(activeTenantId);
+  activeTenantIdRef.current = activeTenantId;
+  const seenTenantIdRef = useRef(activeTenantId);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (open) inputRef.current?.focus();
+  }, [open]);
+
+  useEffect(() => {
+    if (seenTenantIdRef.current === activeTenantId) return;
+    seenTenantIdRef.current = activeTenantId;
+    setOpen(false);
+    setDraft('');
+    setLocalError(null);
+  }, [activeTenantId]);
+
+  const closeForm = () => {
+    setOpen(false);
+    setDraft('');
+    setLocalError(null);
+  };
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (isCreating || onCreate == null) return;
+    if (draft.trim().length === 0) {
+      setLocalError(COMPANION_CREATE_BLANK_NAME_MESSAGE);
+      return;
+    }
+
+    setLocalError(null);
+    const tenantAtSubmit = activeTenantId;
+    const result = await onCreate(draft);
+    if (!isMountedRef.current) return;
+    if (activeTenantIdRef.current !== tenantAtSubmit) return;
+
+    if (result.kind === 'created') {
+      closeForm();
+      return;
+    }
+
+    if (result.kind === 'failed') {
+      setLocalError(result.message);
+    }
+  };
+
+  if (!open) {
+    return (
+      <div className="border-t border-border pt-3">
+        <button
+          type="button"
+          onClick={() => {
+            setLocalError(null);
+            setOpen(true);
+          }}
+          disabled={onCreate == null}
+          className="rounded-xl px-3 py-2 text-sm font-medium text-primary hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          Aggiungi accompagnatore
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <form
+      onSubmit={(event) => {
+        void handleSubmit(event);
+      }}
+      aria-busy={isCreating}
+      className="space-y-2 border-t border-border pt-3"
+    >
+      <div className="space-y-2">
+        <label htmlFor={inputId} className="text-sm font-medium text-text-secondary">
+          Nome accompagnatore
+        </label>
+        <input
+          ref={inputRef}
+          id={inputId}
+          type="text"
+          value={draft}
+          autoComplete="off"
+          disabled={isCreating}
+          aria-invalid={localError != null}
+          aria-describedby={localError ? errorId : undefined}
+          onChange={(event) => {
+            setDraft(event.target.value);
+            if (localError) setLocalError(null);
+          }}
+          className="input-field"
+        />
+      </div>
+      {localError ? (
+        <p id={errorId} className="text-sm text-danger" role="alert">
+          {localError}
+        </p>
+      ) : null}
+      {isCreating ? (
+        <p className="text-sm text-text-muted" role="status">
+          Aggiunta in corso
+        </p>
+      ) : null}
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="submit"
+          disabled={isCreating || onCreate == null}
+          className="btn-primary px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          Aggiungi
+        </button>
+        <button
+          type="button"
+          onClick={closeForm}
+          disabled={isCreating}
+          className="rounded-xl px-4 py-2 text-sm font-medium text-text-secondary hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Annulla
+        </button>
+      </div>
+    </form>
   );
 }
 
