@@ -5,9 +5,11 @@ import type { TenantRole } from '@/src/features/tenancy/tenancy.types';
 import type { CompanionsSettingsStatus } from './useCompanionsSettings';
 import {
   COMPANION_CREATE_FAILED_MESSAGE,
+  COMPANION_DEACTIVATE_FAILED_MESSAGE,
   MAX_ACTIVE_TENANT_COMPANIONS,
   countActiveTenantCompanions,
   createTenantCompanion,
+  deactivateTenantCompanion,
   listTenantCompanions,
   orderTenantCompanions,
   type TenantCompanion,
@@ -51,6 +53,21 @@ export type TenantCompanionCreateUiResult =
   | { kind: 'failed'; message: string }
   | { kind: 'detached'; writeSucceeded: boolean };
 
+/**
+ * deactivated — the row is inactive in the current tenant catalog.
+ * rejected — a client guard refused the call. No update.
+ * failed — the write did not produce a usable inactive row for the current tenant.
+ * detached — the active tenant changed, or this hook unmounted, before the
+ *   outcome could be applied. A successful write is not reported as a failure
+ *   and is not copied onto another tenant. writeSucceeded records the server
+ *   outcome when it is already known.
+ */
+export type TenantCompanionDeactivateUiResult =
+  | { kind: 'deactivated' }
+  | { kind: 'rejected' }
+  | { kind: 'failed'; message: string }
+  | { kind: 'detached'; writeSucceeded: boolean };
+
 export type UseTenantCompanionsResult = {
   status: TenantCompanionsStatus;
   /** Present only for status ready. Empty means a successful read with no rows. */
@@ -58,11 +75,26 @@ export type UseTenantCompanionsResult = {
   /** True only while a create for the current tenant is in flight. */
   isCreating: boolean;
   /**
+   * Id of the companion being deactivated for the current tenant.
+   * Null when this tenant has no deactivation in flight.
+   */
+  deactivatingCompanionId: string | null;
+  /**
    * Present only when an admin may create for the current tenant:
    * settings enabled, catalog ready, and fewer than 20 active companions.
    * Null does not cancel a create that is already in flight.
    */
   createCompanion: ((displayName: string) => Promise<TenantCompanionCreateUiResult>) | null;
+  /**
+   * Present when an admin may deactivate for the current tenant:
+   * settings enabled or disabled, and catalog ready.
+   * The callback refuses a row that is not active, and refuses to start
+   * while another catalog mutation for this tenant is in flight.
+   * Null does not cancel a deactivation that is already in flight.
+   */
+  deactivateCompanion:
+    | ((companionId: string) => Promise<TenantCompanionDeactivateUiResult>)
+    | null;
 };
 
 type FetchedTenantCompanions = {
@@ -70,8 +102,14 @@ type FetchedTenantCompanions = {
   result: { kind: 'ready'; items: TenantCompanion[] } | { kind: 'error' };
 };
 
-type CompanionCreateUi = {
+type CompanionCatalogMutationUi = {
   isCreating: boolean;
+  deactivatingCompanionId: string | null;
+};
+
+const IDLE_CATALOG_MUTATION: CompanionCatalogMutationUi = {
+  isCreating: false,
+  deactivatingCompanionId: null,
 };
 
 function canReadTenantCompanions(role: TenantRole | null): role is 'admin' {
@@ -84,9 +122,16 @@ function settingsAllowCatalogRead(status: CompanionsSettingsStatus): boolean {
 
 function closedResult(
   status: Exclude<TenantCompanionsStatus, 'ready'>,
-  isCreating = false
+  mutation: { isCreating?: boolean; deactivatingCompanionId?: string | null } = {}
 ): UseTenantCompanionsResult {
-  return { status, items: [], isCreating, createCompanion: null };
+  return {
+    status,
+    items: [],
+    isCreating: mutation.isCreating === true,
+    deactivatingCompanionId: mutation.deactivatingCompanionId ?? null,
+    createCompanion: null,
+    deactivateCompanion: null,
+  };
 }
 
 function catalogWithCreatedCompanion(
@@ -95,6 +140,20 @@ function catalogWithCreatedCompanion(
 ): TenantCompanion[] {
   const next = items.filter((item) => item.id !== created.id);
   next.push(created);
+  return orderTenantCompanions(next);
+}
+
+function catalogWithDeactivatedCompanion(
+  items: readonly TenantCompanion[],
+  deactivated: TenantCompanion
+): TenantCompanion[] {
+  let found = false;
+  const next = items.map((item) => {
+    if (item.id !== deactivated.id) return item;
+    found = true;
+    return deactivated;
+  });
+  if (!found) next.push(deactivated);
   return orderTenantCompanions(next);
 }
 
@@ -112,7 +171,9 @@ export function useTenantCompanions({
 
   const [fetched, setFetched] = useState<FetchedTenantCompanions | null>(null);
   const [inFlight, setInFlight] = useState(false);
-  const [creates, setCreates] = useState<Record<string, CompanionCreateUi>>({});
+  const [catalogMutations, setCatalogMutations] = useState<
+    Record<string, CompanionCatalogMutationUi>
+  >({});
 
   const activeTenantIdRef = useRef(activeTenantId);
   activeTenantIdRef.current = activeTenantId;
@@ -121,12 +182,12 @@ export function useTenantCompanions({
   const isMountedRef = useRef(true);
   const readGenerationRef = useRef(0);
   /**
-   * At most one companion create in flight per tenant.
-   * The value is that request's id. Another tenant gets its own entry and
-   * cannot clear this one.
+   * At most one companion catalog mutation (create or deactivate) in flight
+   * per tenant. The value is that request's id. Another tenant gets its own
+   * entry and cannot clear this one.
    */
   const inFlightByTenantRef = useRef<Map<string, number>>(new Map());
-  const nextCreateIdRef = useRef(0);
+  const nextCatalogMutationIdRef = useRef(0);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -184,19 +245,19 @@ export function useTenantCompanions({
       if (inFlightByTenantRef.current.has(activeTenantId)) return { kind: 'rejected' };
 
       const requestTenantId = activeTenantId;
-      const requestId = ++nextCreateIdRef.current;
+      const requestId = ++nextCatalogMutationIdRef.current;
       const snapshotItems = fetched.result.items.slice();
       inFlightByTenantRef.current.set(requestTenantId, requestId);
-      setCreates((current) => ({
+      setCatalogMutations((current) => ({
         ...current,
-        [requestTenantId]: { isCreating: true },
+        [requestTenantId]: { isCreating: true, deactivatingCompanionId: null },
       }));
 
       const settleIdle = () => {
         if (!isMountedRef.current) return;
-        setCreates((current) => ({
+        setCatalogMutations((current) => ({
           ...current,
-          [requestTenantId]: { isCreating: false },
+          [requestTenantId]: IDLE_CATALOG_MUTATION,
         }));
       };
 
@@ -268,7 +329,108 @@ export function useTenantCompanions({
     [activeTenantId, companionsSettingsStatus, fetched, inFlight, isTenantContextLoading, membershipRole]
   );
 
-  const isCreating = activeTenantId != null && creates[activeTenantId]?.isCreating === true;
+  const deactivateCompanion = useCallback(
+    async (companionId: string): Promise<TenantCompanionDeactivateUiResult> => {
+      if (isTenantContextLoading || !activeTenantId) return { kind: 'rejected' };
+      if (!canReadTenantCompanions(membershipRole)) return { kind: 'rejected' };
+      if (!settingsAllowCatalogRead(companionsSettingsStatus)) return { kind: 'rejected' };
+      if (typeof companionId !== 'string' || companionId.length === 0) return { kind: 'rejected' };
+      if (inFlight || fetched == null || fetched.tenantId !== activeTenantId) {
+        return { kind: 'rejected' };
+      }
+      if (fetched.result.kind !== 'ready') return { kind: 'rejected' };
+      const target = fetched.result.items.find((item) => item.id === companionId);
+      if (target == null || !target.isActive) return { kind: 'rejected' };
+      if (inFlightByTenantRef.current.has(activeTenantId)) return { kind: 'rejected' };
+
+      const requestTenantId = activeTenantId;
+      const requestId = ++nextCatalogMutationIdRef.current;
+      const snapshotItems = fetched.result.items.slice();
+      inFlightByTenantRef.current.set(requestTenantId, requestId);
+      setCatalogMutations((current) => ({
+        ...current,
+        [requestTenantId]: { isCreating: false, deactivatingCompanionId: companionId },
+      }));
+
+      const settleIdle = () => {
+        if (!isMountedRef.current) return;
+        setCatalogMutations((current) => ({
+          ...current,
+          [requestTenantId]: IDLE_CATALOG_MUTATION,
+        }));
+      };
+
+      const detached = (writeSucceeded: boolean): TenantCompanionDeactivateUiResult => {
+        settleIdle();
+        return { kind: 'detached', writeSucceeded };
+      };
+
+      try {
+        const result = await deactivateTenantCompanion(requestTenantId, companionId);
+
+        if (!isMountedRef.current) {
+          return { kind: 'detached', writeSucceeded: result.kind === 'deactivated' };
+        }
+        if (inFlightByTenantRef.current.get(requestTenantId) !== requestId) {
+          return { kind: 'detached', writeSucceeded: result.kind === 'deactivated' };
+        }
+        if (activeTenantIdRef.current !== requestTenantId) {
+          return detached(result.kind === 'deactivated');
+        }
+
+        if (result.kind !== 'deactivated') {
+          settleIdle();
+          return { kind: 'failed', message: result.message };
+        }
+
+        const deactivated = result.companion;
+        const latest = fetchedRef.current;
+        if (latest != null && latest.tenantId !== requestTenantId) {
+          return detached(true);
+        }
+
+        // A catalog read that started before this write must not replace the
+        // list with its pre-deactivate snapshot. Bump only while this tenant
+        // is still current so another tenant's read keeps its own generation.
+        readGenerationRef.current += 1;
+        setFetched((current) => {
+          if (current != null && current.tenantId !== requestTenantId) return current;
+          const base =
+            current != null && current.tenantId === requestTenantId && current.result.kind === 'ready'
+              ? current.result.items
+              : snapshotItems;
+          return {
+            tenantId: requestTenantId,
+            result: {
+              kind: 'ready',
+              items: catalogWithDeactivatedCompanion(base, deactivated),
+            },
+          };
+        });
+        setInFlight(false);
+        settleIdle();
+        return { kind: 'deactivated' };
+      } catch (error) {
+        console.error('Failed to deactivate tenant companion', error);
+        if (!isMountedRef.current) return { kind: 'detached', writeSucceeded: false };
+        if (inFlightByTenantRef.current.get(requestTenantId) !== requestId) {
+          return { kind: 'detached', writeSucceeded: false };
+        }
+        if (activeTenantIdRef.current !== requestTenantId) return detached(false);
+        settleIdle();
+        return { kind: 'failed', message: COMPANION_DEACTIVATE_FAILED_MESSAGE };
+      } finally {
+        if (inFlightByTenantRef.current.get(requestTenantId) === requestId) {
+          inFlightByTenantRef.current.delete(requestTenantId);
+        }
+      }
+    },
+    [activeTenantId, companionsSettingsStatus, fetched, inFlight, isTenantContextLoading, membershipRole]
+  );
+
+  const currentMutation = activeTenantId != null ? catalogMutations[activeTenantId] : undefined;
+  const isCreating = currentMutation?.isCreating === true;
+  const deactivatingCompanionId = currentMutation?.deactivatingCompanionId ?? null;
 
   if (isTenantContextLoading || !activeTenantId) {
     return closedResult('unavailable');
@@ -279,7 +441,7 @@ export function useTenantCompanions({
   }
 
   if (!settingsAllowCatalogRead(companionsSettingsStatus)) {
-    return closedResult('suppressed', isCreating);
+    return closedResult('suppressed', { isCreating, deactivatingCompanionId });
   }
 
   const fetchedMatches = fetched != null && fetched.tenantId === activeTenantId;
@@ -291,17 +453,19 @@ export function useTenantCompanions({
     countActiveTenantCompanions(readyItems) < MAX_ACTIVE_TENANT_COMPANIONS;
 
   if (inFlight || !fetchedMatches) {
-    return closedResult('loading', isCreating);
+    return closedResult('loading', { isCreating, deactivatingCompanionId });
   }
 
   if (fetched.result.kind === 'error') {
-    return closedResult('error', isCreating);
+    return closedResult('error', { isCreating, deactivatingCompanionId });
   }
 
   return {
     status: 'ready',
     items: fetched.result.items,
     isCreating,
+    deactivatingCompanionId,
     createCompanion: canCreate ? createCompanion : null,
+    deactivateCompanion,
   };
 }

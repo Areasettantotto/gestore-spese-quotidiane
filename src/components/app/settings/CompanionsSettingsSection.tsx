@@ -12,6 +12,7 @@ import {
 import type { CompanionsSettingsStatus } from '@/src/features/companions/useCompanionsSettings';
 import type {
   TenantCompanionCreateUiResult,
+  TenantCompanionDeactivateUiResult,
   TenantCompanionsStatus,
 } from '@/src/features/companions/useTenantCompanions';
 
@@ -25,6 +26,10 @@ type CompanionsSettingsSectionProps = {
   catalogItems: readonly TenantCompanion[];
   isCreatingCompanion: boolean;
   onCreateCompanion: ((displayName: string) => Promise<TenantCompanionCreateUiResult>) | null;
+  deactivatingCompanionId: string | null;
+  onDeactivateCompanion:
+    | ((companionId: string) => Promise<TenantCompanionDeactivateUiResult>)
+    | null;
 };
 
 export function CompanionsSettingsSection({
@@ -37,6 +42,8 @@ export function CompanionsSettingsSection({
   catalogItems,
   isCreatingCompanion,
   onCreateCompanion,
+  deactivatingCompanionId,
+  onDeactivateCompanion,
 }: CompanionsSettingsSectionProps) {
   if (status === 'unavailable' || status === 'unreadable') {
     return null;
@@ -90,7 +97,14 @@ export function CompanionsSettingsSection({
           </p>
         ) : null}
         {showCatalog ? (
-          <TenantCompanionsCatalog status={catalogStatus} items={catalogItems} />
+          <TenantCompanionsCatalog
+            activeTenantId={activeTenantId}
+            status={catalogStatus}
+            items={catalogItems}
+            isCreatingCompanion={isCreatingCompanion}
+            deactivatingCompanionId={deactivatingCompanionId}
+            onDeactivateCompanion={onDeactivateCompanion}
+          />
         ) : null}
         {status === 'disabled' ? (
           <p className="border-t border-border pt-3 text-sm text-text-secondary" role="status">
@@ -106,6 +120,7 @@ export function CompanionsSettingsSection({
           <CreateCompanionControl
             activeTenantId={activeTenantId}
             isCreating={isCreatingCompanion}
+            isDeactivateInFlight={deactivatingCompanionId != null}
             onCreate={onCreateCompanion}
           />
         ) : null}
@@ -115,11 +130,21 @@ export function CompanionsSettingsSection({
 }
 
 function TenantCompanionsCatalog({
+  activeTenantId,
   status,
   items,
+  isCreatingCompanion,
+  deactivatingCompanionId,
+  onDeactivateCompanion,
 }: {
+  activeTenantId: string | null;
   status: TenantCompanionsStatus;
   items: readonly TenantCompanion[];
+  isCreatingCompanion: boolean;
+  deactivatingCompanionId: string | null;
+  onDeactivateCompanion:
+    | ((companionId: string) => Promise<TenantCompanionDeactivateUiResult>)
+    | null;
 }) {
   if (status === 'loading') {
     return <TenantCompanionsCatalogLoading />;
@@ -148,26 +173,165 @@ function TenantCompanionsCatalog({
   return (
     <ul aria-label="Accompagnatori configurati" className="divide-y divide-border border-t border-border">
       {items.map((item) => (
-        <li key={item.id} className="flex items-center justify-between gap-3 py-2.5">
-          <span className="min-w-0 truncate text-sm text-text-primary" title={item.displayName}>
-            {item.displayName}
-          </span>
-          <span className="shrink-0 text-sm text-text-muted">
-            {item.isActive ? 'Attivo' : 'Disattivato'}
-          </span>
+        <li key={item.id} className="space-y-2 py-2.5" aria-busy={deactivatingCompanionId === item.id}>
+          <CompanionCatalogRow
+            item={item}
+            activeTenantId={activeTenantId}
+            isCreatingCompanion={isCreatingCompanion}
+            isDeactivating={deactivatingCompanionId === item.id}
+            deactivateLocked={
+              isCreatingCompanion ||
+              (deactivatingCompanionId != null && deactivatingCompanionId !== item.id)
+            }
+            onDeactivate={onDeactivateCompanion}
+          />
         </li>
       ))}
     </ul>
   );
 }
 
+function CompanionCatalogRow({
+  item,
+  activeTenantId,
+  isCreatingCompanion,
+  isDeactivating,
+  deactivateLocked,
+  onDeactivate,
+}: {
+  item: TenantCompanion;
+  activeTenantId: string | null;
+  isCreatingCompanion: boolean;
+  isDeactivating: boolean;
+  deactivateLocked: boolean;
+  onDeactivate: ((companionId: string) => Promise<TenantCompanionDeactivateUiResult>) | null;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
+  const errorId = useId();
+  const isMountedRef = useRef(true);
+  const activeTenantIdRef = useRef(activeTenantId);
+  activeTenantIdRef.current = activeTenantId;
+  const seenTenantIdRef = useRef(activeTenantId);
+  const showDeactivate = item.isActive && onDeactivate != null;
+  const showConfirmation = item.isActive && confirming;
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (seenTenantIdRef.current === activeTenantId) return;
+    seenTenantIdRef.current = activeTenantId;
+    setConfirming(false);
+    setLocalError(null);
+  }, [activeTenantId]);
+
+  useEffect(() => {
+    if (item.isActive) return;
+    setConfirming(false);
+    setLocalError(null);
+  }, [item.isActive]);
+
+  const handleConfirm = async () => {
+    if (!showDeactivate || onDeactivate == null) return;
+    if (isDeactivating || deactivateLocked || isCreatingCompanion) return;
+
+    setLocalError(null);
+    const tenantAtConfirm = activeTenantId;
+    const result = await onDeactivate(item.id);
+    if (!isMountedRef.current) return;
+    if (activeTenantIdRef.current !== tenantAtConfirm) return;
+
+    if (result.kind === 'deactivated') {
+      setConfirming(false);
+      setLocalError(null);
+      return;
+    }
+
+    if (result.kind === 'failed') {
+      setLocalError(result.message);
+    }
+  };
+
+  return (
+    <>
+      <div className="flex items-center justify-between gap-3">
+        <span className="min-w-0 truncate text-sm text-text-primary" title={item.displayName}>
+          {item.displayName}
+        </span>
+        <span className="flex shrink-0 items-center gap-2">
+          <span className="text-sm text-text-muted">{item.isActive ? 'Attivo' : 'Disattivato'}</span>
+          {showDeactivate && !showConfirmation ? (
+            <button
+              type="button"
+              onClick={() => {
+                setLocalError(null);
+                setConfirming(true);
+              }}
+              disabled={deactivateLocked}
+              className="rounded-xl px-2.5 py-1 text-sm font-medium text-danger hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Disattiva
+            </button>
+          ) : null}
+        </span>
+      </div>
+      {showConfirmation ? (
+        <div className="space-y-2">
+          <p className="text-sm text-text-secondary">Disattivare questo accompagnatore?</p>
+          <p className="text-sm text-text-muted">Lo storico rimarrà disponibile.</p>
+          {localError ? (
+            <p id={errorId} className="text-sm text-danger" role="alert">
+              {localError}
+            </p>
+          ) : null}
+          {isDeactivating ? (
+            <p className="text-sm text-text-muted" role="status">
+              Disattivazione in corso
+            </p>
+          ) : null}
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                void handleConfirm();
+              }}
+              disabled={isDeactivating || deactivateLocked || onDeactivate == null}
+              className="btn-primary px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Conferma
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setConfirming(false);
+                setLocalError(null);
+              }}
+              disabled={isDeactivating}
+              className="rounded-xl px-4 py-2 text-sm font-medium text-text-secondary hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Annulla
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
 function CreateCompanionControl({
   activeTenantId,
   isCreating,
+  isDeactivateInFlight,
   onCreate,
 }: {
   activeTenantId: string | null;
   isCreating: boolean;
+  isDeactivateInFlight: boolean;
   onCreate: ((displayName: string) => Promise<TenantCompanionCreateUiResult>) | null;
 }) {
   const [open, setOpen] = useState(false);
@@ -208,7 +372,7 @@ function CreateCompanionControl({
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (isCreating || onCreate == null) return;
+    if (isCreating || isDeactivateInFlight || onCreate == null) return;
     if (draft.trim().length === 0) {
       setLocalError(COMPANION_CREATE_BLANK_NAME_MESSAGE);
       return;
@@ -239,7 +403,7 @@ function CreateCompanionControl({
             setLocalError(null);
             setOpen(true);
           }}
-          disabled={onCreate == null}
+          disabled={onCreate == null || isDeactivateInFlight}
           className="rounded-xl px-3 py-2 text-sm font-medium text-primary hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:cursor-not-allowed disabled:opacity-60"
         >
           Aggiungi accompagnatore
@@ -266,7 +430,7 @@ function CreateCompanionControl({
           type="text"
           value={draft}
           autoComplete="off"
-          disabled={isCreating}
+          disabled={isCreating || isDeactivateInFlight}
           aria-invalid={localError != null}
           aria-describedby={localError ? errorId : undefined}
           onChange={(event) => {
@@ -289,7 +453,7 @@ function CreateCompanionControl({
       <div className="flex flex-wrap gap-2">
         <button
           type="submit"
-          disabled={isCreating || onCreate == null}
+          disabled={isCreating || isDeactivateInFlight || onCreate == null}
           className="btn-primary px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
         >
           Aggiungi

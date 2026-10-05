@@ -62,6 +62,8 @@ export function SettingsView({
         catalogItems={tenantCompanions.items}
         isCreatingCompanion={tenantCompanions.isCreating}
         onCreateCompanion={tenantCompanions.createCompanion}
+        deactivatingCompanionId={tenantCompanions.deactivatingCompanionId}
+        onDeactivateCompanion={tenantCompanions.deactivateCompanion}
       />
     </section>
   );

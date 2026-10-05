@@ -26,6 +26,8 @@ export const COMPANION_CREATE_FEATURE_DISABLED_MESSAGE =
   'Attiva la funzione per aggiungere un accompagnatore.';
 export const COMPANION_CREATE_FAILED_MESSAGE =
   "Non è stato possibile aggiungere l'accompagnatore. Riprova.";
+export const COMPANION_DEACTIVATE_FAILED_MESSAGE =
+  "Non è stato possibile disattivare l'accompagnatore. Riprova.";
 
 /**
  * created — insert succeeded and the returned row matched the catalog mapper.
@@ -33,6 +35,14 @@ export const COMPANION_CREATE_FAILED_MESSAGE =
  */
 export type TenantCompanionCreateResult =
   | { kind: 'created'; companion: TenantCompanion }
+  | { kind: 'failed'; message: string };
+
+/**
+ * deactivated — update succeeded and the returned row is inactive.
+ * failed — no usable inactive row. message is local copy, never a raw database error.
+ */
+export type TenantCompanionDeactivateResult =
+  | { kind: 'deactivated'; companion: TenantCompanion }
   | { kind: 'failed'; message: string };
 
 const SERVER_ACTIVE_LIMIT_REACHED = 'active companion limit of 20 per tenant was reached (DATA-51)';
@@ -129,6 +139,47 @@ export async function createTenantCompanion(
   }
 }
 
+/**
+ * Set one companion inactive for the tenant.
+ * Payload is is_active: false only. The row is matched by tenant_id and id.
+ * is_active is not part of the filter, so a row already inactive still matches.
+ * display_name and delegated_auth_user_id are neither sent nor selected.
+ * This function does not insert, reactivate, rename, or delete.
+ */
+export async function deactivateTenantCompanion(
+  tenantId: string,
+  companionId: string
+): Promise<TenantCompanionDeactivateResult> {
+  if (tenantId.length === 0 || companionId.length === 0) {
+    return { kind: 'failed', message: COMPANION_DEACTIVATE_FAILED_MESSAGE };
+  }
+
+  try {
+    const { data, error } = await updateTenantCompanionInactive(tenantId, companionId);
+
+    if (error) {
+      console.error('Failed to deactivate tenant companion', error);
+      return { kind: 'failed', message: COMPANION_DEACTIVATE_FAILED_MESSAGE };
+    }
+
+    if (data == null) {
+      console.error('Tenant companion deactivation matched no row for the active tenant');
+      return { kind: 'failed', message: COMPANION_DEACTIVATE_FAILED_MESSAGE };
+    }
+
+    const companion = mapTenantCompanionRow(data, tenantId);
+    if (!companion || companion.id !== companionId || companion.isActive) {
+      console.error('Deactivated tenant companion row did not match the expected shape');
+      return { kind: 'failed', message: COMPANION_DEACTIVATE_FAILED_MESSAGE };
+    }
+
+    return { kind: 'deactivated', companion };
+  } catch (error) {
+    console.error('Failed to deactivate tenant companion', error);
+    return { kind: 'failed', message: COMPANION_DEACTIVATE_FAILED_MESSAGE };
+  }
+}
+
 export function countActiveTenantCompanions(items: readonly TenantCompanion[]): number {
   let count = 0;
   for (const item of items) {
@@ -152,6 +203,20 @@ async function insertTenantCompanion(tenantId: string, displayName: string) {
     .insert(payload)
     .select('id, tenant_id, display_name, is_active')
     .single();
+}
+
+async function updateTenantCompanionInactive(tenantId: string, companionId: string) {
+  // is_active false only. Do not send display_name or delegated_auth_user_id.
+  // Do not filter on is_active: a concurrent deactivation must still match.
+  const payload: { is_active: false } = { is_active: false };
+
+  return supabase
+    .from('tenant_companions')
+    .update(payload)
+    .eq('tenant_id', tenantId)
+    .eq('id', companionId)
+    .select('id, tenant_id, display_name, is_active')
+    .maybeSingle();
 }
 
 async function selectTenantCompanions(tenantId: string) {
