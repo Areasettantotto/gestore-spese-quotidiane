@@ -41,6 +41,7 @@ export function mapDbRowToExpense(row: ExpenseDbRow): ExpenseWithCategoryCode {
     description: row.description,
     date: row.date,
     accompagnatore: (row.accompagnatore ?? undefined) as Accompagnatore | undefined,
+    companionId: row.companion_id ?? null,
   };
 }
 

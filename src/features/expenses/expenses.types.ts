@@ -52,5 +52,6 @@ export type ExpenseDbRow = {
   user_id?: string;
   owner_id?: string;
   accompagnatore?: string | null;
+  companion_id: string | null;
   created_at?: string;
 };

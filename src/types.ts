@@ -6,6 +6,7 @@ export interface Expense {
   description: string;
   date: string;
   accompagnatore?: Accompagnatore;
+  companionId?: string | null;
 }
 
 export const ACCOMPAGNATORI: Accompagnatore[] = ['Marco', 'Veronica', 'Angela'];
