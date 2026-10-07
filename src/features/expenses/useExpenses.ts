@@ -181,7 +181,13 @@ export function useExpenses(options: {
           alert('Impossibile aggiornare la spesa: ' + (error.message || JSON.stringify(error)));
         } else {
           const local = expenseFromUpdatePayload(input.editingId, payloadCore, input.categoryCode);
-          setExpenses((prev) => prev.map((exp) => (exp.id === input.editingId ? local : exp)));
+          setExpenses((prev) =>
+            prev.map((exp) => {
+              if (exp.id !== input.editingId) return exp;
+              if (exp.companionId === undefined) return local;
+              return { ...local, companionId: exp.companionId };
+            }),
+          );
         }
       } else {
         const expense = expenseWithCategoryCode(
