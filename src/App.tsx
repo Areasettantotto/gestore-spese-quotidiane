@@ -13,6 +13,7 @@ import { buildLast7DaysTrend } from '@/src/features/expenses/last7DaysTrend';
 import type { CategoryCode } from '@/src/features/expenses/expenseCategoryCatalog';
 import type { ExpenseFormData, ExpenseWithCategoryCode } from '@/src/features/expenses/expenses.types';
 import { useExpenses } from '@/src/features/expenses/useExpenses';
+import { useExpenseCompanionRead } from '@/src/features/companions/useExpenseCompanionRead';
 import { useActiveTenant } from '@/src/features/tenancy/useActiveTenant';
 import { currentCalendarMonthStartDate } from '@/src/features/budgets/monthlyBudgets';
 import { useCurrentMonthlyBudget } from '@/src/features/budgets/useCurrentMonthlyBudget';
@@ -104,6 +105,12 @@ export default function App() {
     resolveTenantForMutation,
     resetTenantState,
   } = useActiveTenant();
+
+  const expenseCompanionRead = useExpenseCompanionRead({
+    activeTenantId,
+    membershipRole,
+    isTenantContextLoading,
+  });
 
   const effectiveAccess = useEffectiveAccess({
     activeTenantId,
@@ -208,6 +215,19 @@ export default function App() {
         previousMonthName: format(previousStartDate, 'MMMM', { locale: it }),
       };
     }, [expenses, periodMonth]);
+
+  const readyCompanionItems =
+    expenseCompanionRead.status === 'ready' ? expenseCompanionRead.items : null;
+
+  const companionDisplayNamesById = useMemo(() => {
+    if (readyCompanionItems == null) return null;
+
+    const lookup = new Map<string, string>();
+    for (const companion of readyCompanionItems) {
+      lookup.set(companion.id, companion.displayName);
+    }
+    return lookup;
+  }, [readyCompanionItems]);
 
   const recentExpenses = useMemo(() => {
     return [...expenses].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
@@ -404,6 +424,7 @@ export default function App() {
                     />
                     <RecentExpensesList
                       expenses={recentExpenses}
+                      companionDisplayNamesById={companionDisplayNamesById}
                       onViewAll={navigateToExpenses}
                       onEdit={handleEditClick}
                       onDelete={handleConfirmedDeleteExpense}
@@ -416,6 +437,7 @@ export default function App() {
                 <AllExpensesView
                   filteredTotal={filteredTotal}
                   filteredExpenses={filteredExpenses}
+                  companionDisplayNamesById={companionDisplayNamesById}
                   filters={{ filterMonth, filterCategory, filterAccompagnatore, filterSearch }}
                   onFiltersChange={(next) => {
                     setFilterMonth(next.filterMonth);

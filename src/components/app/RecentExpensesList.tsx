@@ -8,12 +8,19 @@ import { ExpenseListItem, useMobileSwipeViewport } from '@/src/components/app/Ex
 
 type RecentExpensesListProps = {
   expenses: ExpenseWithCategoryCode[];
+  companionDisplayNamesById: ReadonlyMap<string, string> | null;
   onViewAll: () => void;
   onEdit: (expense: ExpenseWithCategoryCode) => void;
   onDelete: (expense: Expense) => void;
 };
 
-export function RecentExpensesList({ expenses, onViewAll, onEdit, onDelete }: RecentExpensesListProps) {
+export function RecentExpensesList({
+  expenses,
+  companionDisplayNamesById,
+  onViewAll,
+  onEdit,
+  onDelete,
+}: RecentExpensesListProps) {
   const isMobileSwipe = useMobileSwipeViewport();
   const [openExpenseId, setOpenExpenseId] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Expense | null>(null);
@@ -62,6 +69,7 @@ export function RecentExpensesList({ expenses, onViewAll, onEdit, onDelete }: Re
               >
                 <ExpenseListItem
                   expense={expense}
+                  companionDisplayNamesById={companionDisplayNamesById}
                   dateFormat="d MMM"
                   isMobileSwipe={isMobileSwipe}
                   isOpen={openExpenseId === expense.id}

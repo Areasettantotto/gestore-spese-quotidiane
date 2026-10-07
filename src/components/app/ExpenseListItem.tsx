@@ -32,6 +32,7 @@ export type ExpenseDateFormat = 'd MMM' | 'd MMMM yyyy';
 
 export type ExpenseListItemProps = {
   expense: ExpenseWithCategoryCode;
+  companionDisplayNamesById: ReadonlyMap<string, string> | null;
   dateFormat: ExpenseDateFormat;
   isMobileSwipe: boolean;
   isOpen: boolean;
@@ -59,8 +60,26 @@ export function useMobileSwipeViewport(): boolean {
   return isMobile;
 }
 
+function historicalCompanionDisplayName(
+  companionId: string | null | undefined,
+  companionDisplayNamesById: ReadonlyMap<string, string> | null,
+): string | undefined {
+  if (companionDisplayNamesById == null || companionId == null) return undefined;
+  return companionDisplayNamesById.get(companionId);
+}
+
+function expenseCompanionInitial(
+  expense: ExpenseWithCategoryCode,
+  companionDisplayNamesById: ReadonlyMap<string, string> | null,
+): string {
+  const historicalName = historicalCompanionDisplayName(expense.companionId, companionDisplayNamesById);
+  const label = historicalName !== undefined ? historicalName : expense.accompagnatore;
+  return label ? label.charAt(0) : 'S';
+}
+
 export function ExpenseListItem({
   expense,
+  companionDisplayNamesById,
   dateFormat,
   isMobileSwipe,
   isOpen,
@@ -75,6 +94,7 @@ export function ExpenseListItem({
       <div className="card relative overflow-hidden">
         <SwipeableExpenseCard
           expense={expense}
+          companionDisplayNamesById={companionDisplayNamesById}
           dateFormat={dateFormat}
           isOpen={isOpen}
           onOpen={onOpen}
@@ -91,6 +111,7 @@ export function ExpenseListItem({
     <div className="card card-interactive p-4 flex items-center justify-between group">
       <ExpenseCardBody
         expense={expense}
+        companionDisplayNamesById={companionDisplayNamesById}
         dateFormat={dateFormat}
         showDesktopActions
         onEdit={onEdit}
@@ -102,6 +123,7 @@ export function ExpenseListItem({
 
 type SwipeableExpenseCardProps = {
   expense: ExpenseWithCategoryCode;
+  companionDisplayNamesById: ReadonlyMap<string, string> | null;
   dateFormat: ExpenseDateFormat;
   isOpen: boolean;
   onOpen: () => void;
@@ -115,6 +137,7 @@ type DragAxis = 'x' | 'y' | null;
 
 function SwipeableExpenseCard({
   expense,
+  companionDisplayNamesById,
   dateFormat,
   isOpen,
   onOpen,
@@ -263,6 +286,7 @@ function SwipeableExpenseCard({
       >
         <ExpenseCardBody
           expense={expense}
+          companionDisplayNamesById={companionDisplayNamesById}
           dateFormat={dateFormat}
           showDesktopActions={false}
           onEdit={onEdit}
@@ -275,12 +299,14 @@ function SwipeableExpenseCard({
 
 function ExpenseCardBody({
   expense,
+  companionDisplayNamesById,
   dateFormat,
   showDesktopActions,
   onEdit,
   onDelete,
 }: {
   expense: ExpenseWithCategoryCode;
+  companionDisplayNamesById: ReadonlyMap<string, string> | null;
   dateFormat: ExpenseDateFormat;
   showDesktopActions: boolean;
   onEdit: () => void;
@@ -303,7 +329,7 @@ function ExpenseCardBody({
           <p className="font-semibold text-text-primary">{expense.description}</p>
           <div className="flex items-center gap-2 text-xs text-text-muted">
             <span className="font-medium px-1.5 py-0.5 bg-surface-muted rounded text-text-secondary">
-              {expense.accompagnatore ? expense.accompagnatore.charAt(0) : 'S'}
+              {expenseCompanionInitial(expense, companionDisplayNamesById)}
             </span>
             <span>•</span>
             <span>{format(parseISO(expense.date), dateFormat, { locale: it })}</span>

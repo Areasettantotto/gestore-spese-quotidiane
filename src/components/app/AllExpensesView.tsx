@@ -30,6 +30,7 @@ type ProgressiveRenderState = {
 type AllExpensesViewProps = {
   filteredTotal: number;
   filteredExpenses: ExpenseWithCategoryCode[];
+  companionDisplayNamesById: ReadonlyMap<string, string> | null;
   filters: FiltersState;
   onFiltersChange: (next: FiltersState) => void;
   onBack: () => void;
@@ -40,6 +41,7 @@ type AllExpensesViewProps = {
 export function AllExpensesView({
   filteredTotal,
   filteredExpenses,
+  companionDisplayNamesById,
   filters,
   onFiltersChange,
   onBack,
@@ -235,6 +237,7 @@ export function AllExpensesView({
               >
                 <ExpenseListItem
                   expense={expense}
+                  companionDisplayNamesById={companionDisplayNamesById}
                   dateFormat="d MMMM yyyy"
                   isMobileSwipe={isMobileSwipe}
                   isOpen={openExpenseId === expense.id}
