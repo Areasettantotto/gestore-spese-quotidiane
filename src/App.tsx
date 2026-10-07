@@ -11,7 +11,15 @@ import { type Expense, type Accompagnatore } from './types';
 import { supabase } from './lib/supabaseClient';
 import { buildLast7DaysTrend } from '@/src/features/expenses/last7DaysTrend';
 import type { CategoryCode } from '@/src/features/expenses/expenseCategoryCatalog';
-import type { ExpenseFormData, ExpenseWithCategoryCode } from '@/src/features/expenses/expenses.types';
+import {
+  deriveExpenseCompanionSelector,
+  resolveSubmittedExpenseCompanion,
+} from '@/src/features/expenses/expenses.mapper';
+import {
+  emptyExpenseFormDraft,
+  type ExpenseFormData,
+  type ExpenseWithCategoryCode,
+} from '@/src/features/expenses/expenses.types';
 import { useExpenses } from '@/src/features/expenses/useExpenses';
 import { useExpenseCompanionRead } from '@/src/features/companions/useExpenseCompanionRead';
 import { useActiveTenant } from '@/src/features/tenancy/useActiveTenant';
@@ -147,13 +155,9 @@ export default function App() {
   const [isExpenseSubmitting, setIsExpenseSubmitting] = useState(false);
   const expenseSubmitLockRef = useRef(false);
   const expensesScrollYRef = useRef(0);
-  const [newExpense, setNewExpense] = useState<ExpenseFormData>({
-    amount: undefined,
-    categoryCode: 'food',
-    description: '',
-    date: format(new Date(), 'yyyy-MM-dd'),
-    accompagnatore: undefined,
-  });
+  const [newExpense, setNewExpense] = useState<ExpenseFormData>(() =>
+    emptyExpenseFormDraft(format(new Date(), 'yyyy-MM-dd')),
+  );
 
   useEffect(() => {
     let mounted = true;
@@ -262,15 +266,49 @@ export default function App() {
     return expenses.filter((expense) => dateKeys.has(expense.date));
   }, [expenses, last7DaysTrend]);
 
+  const editingExpense = useMemo(() => {
+    if (editingId == null) return null;
+    return expenses.find((expense) => expense.id === editingId) ?? null;
+  }, [editingId, expenses]);
+
+  const existingCompanionId = editingExpense ? (editingExpense.companionId ?? null) : null;
+
+  const companionSelector = useMemo(
+    () =>
+      deriveExpenseCompanionSelector({
+        status: expenseCompanionRead.status,
+        companionsEnabled: expenseCompanionRead.companionsEnabled,
+        items: expenseCompanionRead.items,
+        existingCompanionId,
+      }),
+    [
+      expenseCompanionRead.status,
+      expenseCompanionRead.companionsEnabled,
+      expenseCompanionRead.items,
+      existingCompanionId,
+    ],
+  );
+
+  useEffect(() => {
+    if (companionSelector.writable) return;
+
+    if (editingId == null) {
+      setNewExpense((current) =>
+        current.companionId == null ? current : { ...current, companionId: null },
+      );
+      return;
+    }
+
+    setNewExpense((current) =>
+      current.companionId === existingCompanionId
+        ? current
+        : { ...current, companionId: existingCompanionId },
+    );
+  }, [companionSelector.writable, editingId, existingCompanionId]);
+
   const resetExpenseDraft = () => {
     setEditingId(null);
-    setNewExpense({
-      amount: undefined,
-      categoryCode: 'food',
-      description: '',
-      date: format(new Date(), 'yyyy-MM-dd'),
-      accompagnatore: undefined,
-    });
+    setNewExpense(emptyExpenseFormDraft(format(new Date(), 'yyyy-MM-dd')));
   };
 
   const handleAddExpense = async (e: React.FormEvent) => {
@@ -287,12 +325,30 @@ export default function App() {
     setIsExpenseSubmitting(true);
 
     try {
+      if (editingId != null && editingExpense == null) {
+        console.error('Cannot update expense companion because the original expense is no longer loaded');
+        return;
+      }
+
+      const companionWrite = resolveSubmittedExpenseCompanion({
+        mode: editingId == null ? 'create' : 'update',
+        writable: companionSelector.writable,
+        options: companionSelector.options,
+        draftCompanionId: newExpense.companionId,
+        originalCompanionId: existingCompanionId,
+      });
+      if (!companionWrite) {
+        console.error('Rejected expense companion selection outside the writable option set');
+        return;
+      }
+
       await saveExpense({
         amount: amountNum,
         categoryCode: newExpense.categoryCode,
         description: newExpense.description,
         date: newExpense.date,
-        accompagnatore: newExpense.accompagnatore,
+        companionId: companionWrite.companionId,
+        accompagnatore: companionWrite.accompagnatore,
         editingId,
       });
 
@@ -310,7 +366,7 @@ export default function App() {
       categoryCode: expense.categoryCode,
       description: expense.description,
       date: expense.date,
-      accompagnatore: expense.accompagnatore,
+      companionId: expense.companionId ?? null,
     });
     setEditingId(expense.id);
     setIsAdding(true);
@@ -470,6 +526,7 @@ export default function App() {
         isOpen={isAdding}
         editingId={editingId}
         newExpense={newExpense}
+        companionSelector={companionSelector}
         onChange={setNewExpense}
         onClose={() => {
           setIsAdding(false);

@@ -2,7 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { supabase } from '@/src/lib/supabaseClient';
 
-import { expenseFromUpdatePayload, expenseWithCategoryCode, mapDbRowToExpense } from './expenses.mapper';
+import {
+  applyLocalExpenseUpdate,
+  expenseFromUpdatePayload,
+  localExpenseForCreate,
+  mapDbRowToExpense,
+  type ExpenseUpdatePayload,
+} from './expenses.mapper';
 import {
   createExpenseInTenant,
   deleteExpenseInTenant,
@@ -160,13 +166,16 @@ export function useExpenses(options: {
       }
 
       if (input.editingId) {
-        const payloadCore = {
+        const payloadCore: Omit<ExpenseUpdatePayload, 'owner_id' | 'tenant_id'> = {
           amount: input.amount,
           category_code: input.categoryCode,
           description: input.description,
           date: input.date,
-          accompagnatore: input.accompagnatore || null,
+          companion_id: input.companionId,
         };
+        if (input.accompagnatore !== undefined) {
+          payloadCore.accompagnatore = input.accompagnatore;
+        }
         const { error } = await updateExpenseInTenant({
           expenseId: input.editingId,
           userId: user.id,
@@ -175,7 +184,8 @@ export function useExpenses(options: {
           categoryCode: input.categoryCode,
           description: payloadCore.description,
           date: payloadCore.date,
-          accompagnatore: payloadCore.accompagnatore,
+          companionId: input.companionId,
+          accompagnatore: input.accompagnatore,
         });
         if (error) {
           alert('Impossibile aggiornare la spesa: ' + (error.message || JSON.stringify(error)));
@@ -184,22 +194,24 @@ export function useExpenses(options: {
           setExpenses((prev) =>
             prev.map((exp) => {
               if (exp.id !== input.editingId) return exp;
-              if (exp.companionId === undefined) return local;
-              return { ...local, companionId: exp.companionId };
+              return applyLocalExpenseUpdate({
+                previous: exp,
+                updated: local,
+                accompagnatore: input.accompagnatore,
+              });
             }),
           );
         }
       } else {
-        const expense = expenseWithCategoryCode(
-          {
-            id: makeId(),
-            amount: input.amount,
-            description: input.description,
-            date: input.date,
-            accompagnatore: input.accompagnatore || undefined,
-          },
-          input.categoryCode,
-        );
+        const expense = localExpenseForCreate({
+          id: makeId(),
+          amount: input.amount,
+          description: input.description,
+          date: input.date,
+          categoryCode: input.categoryCode,
+          companionId: input.companionId,
+          accompagnatore: input.accompagnatore,
+        });
 
         const { error } = await createExpenseInTenant({
           expense,

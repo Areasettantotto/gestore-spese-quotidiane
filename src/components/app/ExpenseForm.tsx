@@ -3,26 +3,37 @@ import { useEffect, useId, useRef } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { format } from 'date-fns';
 import { Tag, User, X } from 'lucide-react';
-import { ACCOMPAGNATORI, type Accompagnatore } from '@/src/types';
 import {
   CATEGORY_CODES,
   expenseCategoryByCode,
   isCategoryCode,
 } from '@/src/features/expenses/expenseCategoryCatalog';
-import type { ExpenseFormData } from '@/src/features/expenses/expenses.types';
+import type { ExpenseCompanionSelectorModel } from '@/src/features/expenses/expenses.mapper';
+import { emptyExpenseFormDraft, type ExpenseFormData } from '@/src/features/expenses/expenses.types';
 
 type ExpenseFormProps = {
   isOpen: boolean;
   editingId: string | null;
   newExpense: ExpenseFormData;
+  companionSelector: ExpenseCompanionSelectorModel;
   onChange: (expense: ExpenseFormData) => void;
   onClose: () => void;
   onSubmit: (e: React.FormEvent) => void;
   isSubmitting: boolean;
 };
 
-export function ExpenseForm({ isOpen, editingId, newExpense, onChange, onClose, onSubmit, isSubmitting }: ExpenseFormProps) {
+export function ExpenseForm({
+  isOpen,
+  editingId,
+  newExpense,
+  companionSelector,
+  onChange,
+  onClose,
+  onSubmit,
+  isSubmitting,
+}: ExpenseFormProps) {
   const titleId = useId();
+  const companionFieldId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -31,15 +42,11 @@ export function ExpenseForm({ isOpen, editingId, newExpense, onChange, onClose, 
   }, [isOpen]);
 
   const resetAndClose = () => {
-    onChange({
-      amount: undefined,
-      categoryCode: 'food',
-      description: '',
-      date: format(new Date(), 'yyyy-MM-dd'),
-      accompagnatore: undefined,
-    });
+    onChange(emptyExpenseFormDraft(format(new Date(), 'yyyy-MM-dd')));
     onClose();
   };
+
+  const showCompanionField = companionSelector.writable || companionSelector.preserveExisting;
 
   return (
     <AnimatePresence>
@@ -137,29 +144,46 @@ export function ExpenseForm({ isOpen, editingId, newExpense, onChange, onClose, 
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-text-secondary">Accompagnatore</label>
-                <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 text-text-faint shrink-0 pointer-events-none" size={18} />
-                  <select
-                    className="input-field pl-10! w-full appearance-none leading-normal"
-                    value={newExpense.accompagnatore ?? ''}
-                    onChange={(e) =>
-                      onChange({
-                        ...newExpense,
-                        accompagnatore: e.target.value ? (e.target.value as Accompagnatore) : undefined,
-                      })
-                    }
-                  >
-                    <option value="">Senza Accompagnatore</option>
-                    {ACCOMPAGNATORI.map((a) => (
-                      <option key={a} value={a}>
-                        {a}
-                      </option>
-                    ))}
-                  </select>
+              {showCompanionField ? (
+                <div className="space-y-2">
+                  <label htmlFor={companionFieldId} className="text-sm font-semibold text-text-secondary">
+                    Accompagnatore
+                  </label>
+                  <div className="relative">
+                    <User className="absolute left-3 top-1/2 -translate-y-1/2 text-text-faint shrink-0 pointer-events-none" size={18} />
+                    {companionSelector.writable ? (
+                      <select
+                        id={companionFieldId}
+                        className="input-field pl-10! w-full appearance-none leading-normal"
+                        value={newExpense.companionId ?? ''}
+                        onChange={(e) => {
+                          const nextId = e.target.value;
+                          onChange({
+                            ...newExpense,
+                            companionId: nextId === '' ? null : nextId,
+                          });
+                        }}
+                      >
+                        <option value="">Senza Accompagnatore</option>
+                        {companionSelector.options.map((option) => (
+                          <option key={option.id} value={option.id}>
+                            {option.displayName}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div
+                        id={companionFieldId}
+                        role="textbox"
+                        aria-readonly="true"
+                        className="input-field pl-10! flex items-center"
+                      >
+                        {companionSelector.frozenDisplayName ?? 'Accompagnatore collegato'}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
+              ) : null}
 
               <button type="submit" disabled={isSubmitting} className="btn-primary w-full py-4 text-lg mt-4">
                 {isSubmitting

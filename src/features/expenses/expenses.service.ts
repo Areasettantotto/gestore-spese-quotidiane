@@ -50,6 +50,7 @@ export async function updateExpenseInTenant(params: {
   categoryCode: CategoryCode;
   description: string;
   date: string;
+  companionId: string | null;
   accompagnatore: string | null | undefined;
 }): Promise<{ error: Error | null }> {
   const payload = buildUpdatePayload({
@@ -57,6 +58,7 @@ export async function updateExpenseInTenant(params: {
     categoryCode: params.categoryCode,
     description: params.description,
     date: params.date,
+    companionId: params.companionId,
     accompagnatore: params.accompagnatore,
     userId: params.userId,
     tenantId: params.tenantId,
