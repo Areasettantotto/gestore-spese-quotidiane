@@ -3,7 +3,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/src/lib/supabaseClient';
 
 import {
-  applyLocalExpenseUpdate,
   expenseFromUpdatePayload,
   localExpenseForCreate,
   mapDbRowToExpense,
@@ -173,9 +172,6 @@ export function useExpenses(options: {
           date: input.date,
           companion_id: input.companionId,
         };
-        if (input.accompagnatore !== undefined) {
-          payloadCore.accompagnatore = input.accompagnatore;
-        }
         const { error } = await updateExpenseInTenant({
           expenseId: input.editingId,
           userId: user.id,
@@ -185,22 +181,12 @@ export function useExpenses(options: {
           description: payloadCore.description,
           date: payloadCore.date,
           companionId: input.companionId,
-          accompagnatore: input.accompagnatore,
         });
         if (error) {
           alert('Impossibile aggiornare la spesa: ' + (error.message || JSON.stringify(error)));
         } else {
           const local = expenseFromUpdatePayload(input.editingId, payloadCore, input.categoryCode);
-          setExpenses((prev) =>
-            prev.map((exp) => {
-              if (exp.id !== input.editingId) return exp;
-              return applyLocalExpenseUpdate({
-                previous: exp,
-                updated: local,
-                accompagnatore: input.accompagnatore,
-              });
-            }),
-          );
+          setExpenses((prev) => prev.map((exp) => (exp.id === input.editingId ? local : exp)));
         }
       } else {
         const expense = localExpenseForCreate({
@@ -210,7 +196,6 @@ export function useExpenses(options: {
           date: input.date,
           categoryCode: input.categoryCode,
           companionId: input.companionId,
-          accompagnatore: input.accompagnatore,
         });
 
         const { error } = await createExpenseInTenant({

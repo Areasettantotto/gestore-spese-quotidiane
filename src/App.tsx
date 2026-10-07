@@ -7,16 +7,19 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 're
 import { format, startOfMonth, endOfMonth, lastDayOfMonth, setDate, subMonths } from 'date-fns';
 import { it } from 'date-fns/locale';
 
-import { type Expense, type Accompagnatore } from './types';
+import { type Expense } from './types';
 import { supabase } from './lib/supabaseClient';
 import { buildLast7DaysTrend } from '@/src/features/expenses/last7DaysTrend';
 import type { CategoryCode } from '@/src/features/expenses/expenseCategoryCatalog';
 import {
   deriveExpenseCompanionSelector,
+  expenseCompanionFilterChoices,
+  expenseMatchesCompanionFilter,
   resolveSubmittedExpenseCompanion,
 } from '@/src/features/expenses/expenses.mapper';
 import {
   emptyExpenseFormDraft,
+  type ExpenseCompanionFilter,
   type ExpenseFormData,
   type ExpenseWithCategoryCode,
 } from '@/src/features/expenses/expenses.types';
@@ -147,7 +150,7 @@ export default function App() {
 
   const [filterMonth, setFilterMonth] = useState(format(new Date(), 'yyyy-MM'));
   const [filterCategory, setFilterCategory] = useState<CategoryCode | 'all'>('all');
-  const [filterAccompagnatore, setFilterAccompagnatore] = useState<Accompagnatore | 'Tutte' | 'Senza'>('Tutte');
+  const [companionFilter, setCompanionFilter] = useState<ExpenseCompanionFilter>({ kind: 'all' });
   const [filterSearch, setFilterSearch] = useState('');
 
   const [isAdding, setIsAdding] = useState(false);
@@ -233,6 +236,15 @@ export default function App() {
     return lookup;
   }, [readyCompanionItems]);
 
+  const companionFilterChoices = useMemo(
+    () =>
+      expenseCompanionFilterChoices({
+        expenses,
+        catalog: readyCompanionItems,
+      }),
+    [expenses, readyCompanionItems],
+  );
+
   const recentExpenses = useMemo(() => {
     return [...expenses].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
   }, [expenses]);
@@ -243,10 +255,8 @@ export default function App() {
         const matchesMonth = e.date.startsWith(filterMonth);
         const matchesCategory = filterCategory === 'all' || e.categoryCode === filterCategory;
         const matchesSearch = e.description.toLowerCase().includes(filterSearch.toLowerCase());
-        const matchesAccompagnatore =
-          filterAccompagnatore === 'Tutte' ||
-          (filterAccompagnatore === 'Senza' ? e.accompagnatore === undefined : e.accompagnatore === filterAccompagnatore);
-        return matchesMonth && matchesCategory && matchesSearch && matchesAccompagnatore;
+        const matchesCompanion = expenseMatchesCompanionFilter(e.companionId, companionFilter);
+        return matchesMonth && matchesCategory && matchesSearch && matchesCompanion;
       })
       .sort((a, b) => {
         const dateA = new Date(a.date).getTime();
@@ -254,7 +264,7 @@ export default function App() {
         if (dateB !== dateA) return dateB - dateA;
         return a.description.localeCompare(b.description);
       });
-  }, [expenses, filterMonth, filterCategory, filterSearch, filterAccompagnatore]);
+  }, [expenses, filterMonth, filterCategory, filterSearch, companionFilter]);
 
   const filteredTotal = useMemo(() => {
     return filteredExpenses.reduce((acc, curr) => acc + curr.amount, 0);
@@ -348,7 +358,6 @@ export default function App() {
         description: newExpense.description,
         date: newExpense.date,
         companionId: companionWrite.companionId,
-        accompagnatore: companionWrite.accompagnatore,
         editingId,
       });
 
@@ -472,7 +481,7 @@ export default function App() {
                       onOpenCurrentMonthExpenses={() => {
                         setFilterMonth(format(new Date(), 'yyyy-MM'));
                         setFilterCategory('all');
-                        setFilterAccompagnatore('Tutte');
+                        setCompanionFilter({ kind: 'all' });
                         setFilterSearch('');
                         expensesScrollYRef.current = 0;
                         setView('all');
@@ -494,11 +503,12 @@ export default function App() {
                   filteredTotal={filteredTotal}
                   filteredExpenses={filteredExpenses}
                   companionDisplayNamesById={companionDisplayNamesById}
-                  filters={{ filterMonth, filterCategory, filterAccompagnatore, filterSearch }}
+                  companionFilterChoices={companionFilterChoices}
+                  filters={{ filterMonth, filterCategory, companionFilter, filterSearch }}
                   onFiltersChange={(next) => {
                     setFilterMonth(next.filterMonth);
                     setFilterCategory(next.filterCategory);
-                    setFilterAccompagnatore(next.filterAccompagnatore);
+                    setCompanionFilter(next.companionFilter);
                     setFilterSearch(next.filterSearch);
                   }}
                   onBack={navigateToHome}

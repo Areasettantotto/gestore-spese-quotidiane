@@ -6,7 +6,12 @@ import {
   findExpenseCategoryByCode,
   type CategoryCode,
 } from './expenseCategoryCatalog';
-import type { ExpenseDbRow, ExpenseWithCategoryCode } from './expenses.types';
+import type {
+  ExpenseCompanionFilter,
+  ExpenseCompanionFilterChoice,
+  ExpenseDbRow,
+  ExpenseWithCategoryCode,
+} from './expenses.types';
 
 export type ExpenseCompanionChoice = {
   id: string;
@@ -26,8 +31,6 @@ export type ExpenseCompanionSelectorModel = {
 
 export type ExpenseCompanionPersistence = {
   companionId: string | null;
-  /** undefined leaves the legacy accompagnatore column unchanged. */
-  accompagnatore: string | null | undefined;
 };
 
 type ExpenseCompanionCatalogRow = {
@@ -71,7 +74,6 @@ export function mapDbRowToExpense(row: ExpenseDbRow): ExpenseWithCategoryCode {
     categoryCode,
     description: row.description,
     date: row.date,
-    accompagnatore: row.accompagnatore ?? undefined,
     companionId: row.companion_id ?? null,
   };
 }
@@ -82,7 +84,6 @@ export type ExpenseInsertPayload = {
   category_code: CategoryCode;
   description: string;
   date: string;
-  accompagnatore: string | null;
   companion_id: string | null;
   user_id: string;
   owner_id: string;
@@ -101,7 +102,6 @@ export function buildInsertPayload(params: {
     category_code: expense.categoryCode,
     description: expense.description,
     date: expense.date,
-    accompagnatore: expense.accompagnatore ?? null,
     companion_id: expense.companionId ?? null,
     user_id: userId,
     owner_id: userId,
@@ -115,7 +115,6 @@ export type ExpenseUpdatePayload = {
   description: string;
   date: string;
   companion_id: string | null;
-  accompagnatore?: string | null;
   owner_id: string;
   tenant_id: string;
 };
@@ -126,12 +125,11 @@ export function buildUpdatePayload(params: {
   description: string;
   date: string;
   companionId: string | null;
-  accompagnatore: string | null | undefined;
   userId: string;
   tenantId: string;
 }): ExpenseUpdatePayload {
-  const { amount, categoryCode, description, date, companionId, accompagnatore, userId, tenantId } = params;
-  const payload: ExpenseUpdatePayload = {
+  const { amount, categoryCode, description, date, companionId, userId, tenantId } = params;
+  return {
     amount,
     category_code: categoryCode,
     description,
@@ -140,12 +138,6 @@ export function buildUpdatePayload(params: {
     owner_id: userId,
     tenant_id: tenantId,
   };
-
-  if (accompagnatore !== undefined) {
-    payload.accompagnatore = accompagnatore;
-  }
-
-  return payload;
 }
 
 /** Fields safe to merge onto local state after update. Write payload is unchanged. */
@@ -160,7 +152,6 @@ export function expenseFromUpdatePayload(
       amount: payload.amount,
       description: payload.description,
       date: payload.date,
-      accompagnatore: payload.accompagnatore ?? undefined,
       companionId: payload.companion_id,
     },
     categoryCode,
@@ -174,7 +165,6 @@ export function localExpenseForCreate(params: {
   description: string;
   date: string;
   companionId: string | null;
-  accompagnatore: string | null | undefined;
 }): ExpenseWithCategoryCode {
   return expenseWithCategoryCode(
     {
@@ -182,27 +172,10 @@ export function localExpenseForCreate(params: {
       amount: params.amount,
       description: params.description,
       date: params.date,
-      accompagnatore: params.accompagnatore ?? undefined,
       companionId: params.companionId,
     },
     params.categoryCode,
   );
-}
-
-/**
- * Keep the previous compatibility text only when this update did not write it.
- * companionId always comes from the submitted local expense.
- */
-export function applyLocalExpenseUpdate(params: {
-  previous: ExpenseWithCategoryCode;
-  updated: ExpenseWithCategoryCode;
-  accompagnatore: string | null | undefined;
-}): ExpenseWithCategoryCode {
-  if (params.accompagnatore !== undefined) return params.updated;
-  return {
-    ...params.updated,
-    accompagnatore: params.previous.accompagnatore,
-  };
 }
 
 export function deriveExpenseCompanionSelector(params: {
@@ -258,8 +231,9 @@ export function deriveExpenseCompanionSelector(params: {
 }
 
 /**
- * Decide the relational id and whether the legacy snapshot is written.
- * Identity changes are id comparisons. displayName is copied only for an explicit assign.
+ * Relational companion id for create or update.
+ * Returns null when a changed id is outside the writable option set.
+ * displayName is never identity and is never written.
  */
 export function resolveSubmittedExpenseCompanion(params: {
   mode: 'create' | 'update';
@@ -270,25 +244,62 @@ export function resolveSubmittedExpenseCompanion(params: {
 }): ExpenseCompanionPersistence | null {
   if (params.mode === 'create') {
     if (!params.writable || params.draftCompanionId == null) {
-      return { companionId: null, accompagnatore: null };
+      return { companionId: null };
     }
 
     const selected = params.options.find((option) => option.id === params.draftCompanionId);
     if (!selected) return null;
-    return { companionId: selected.id, accompagnatore: selected.displayName };
+    return { companionId: selected.id };
   }
 
   const submittedId = params.writable ? params.draftCompanionId : params.originalCompanionId;
 
   if (submittedId === params.originalCompanionId) {
-    return { companionId: submittedId, accompagnatore: undefined };
+    return { companionId: submittedId };
   }
 
   if (submittedId == null) {
-    return { companionId: null, accompagnatore: null };
+    return { companionId: null };
   }
 
   const selected = params.options.find((option) => option.id === submittedId);
   if (!selected) return null;
-  return { companionId: selected.id, accompagnatore: selected.displayName };
+  return { companionId: selected.id };
+}
+
+/**
+ * Named companion filter options for ids referenced by the loaded expenses.
+ * A null catalog means the reader is not ready: no specific names are invented.
+ * Active and inactive catalog rows are both eligible when referenced.
+ */
+export function expenseCompanionFilterChoices(params: {
+  expenses: readonly { companionId?: string | null }[];
+  catalog: readonly { id: string; displayName: string }[] | null;
+}): ExpenseCompanionFilterChoice[] {
+  if (params.catalog == null) return [];
+
+  const referenced = new Set<string>();
+  for (const expense of params.expenses) {
+    if (expense.companionId) referenced.add(expense.companionId);
+  }
+
+  const choices: ExpenseCompanionFilterChoice[] = [];
+  const seen = new Set<string>();
+  for (const companion of params.catalog) {
+    if (!referenced.has(companion.id) || seen.has(companion.id)) continue;
+    seen.add(companion.id);
+    choices.push({ companionId: companion.id, displayName: companion.displayName });
+  }
+  return choices;
+}
+
+/** Companion filter identity is all, none, or an exact companion id. */
+export function expenseMatchesCompanionFilter(
+  companionId: string | null | undefined,
+  filter: ExpenseCompanionFilter,
+): boolean {
+  if (filter.kind === 'all') return true;
+  const id = companionId ?? null;
+  if (filter.kind === 'none') return id == null;
+  return id === filter.companionId;
 }

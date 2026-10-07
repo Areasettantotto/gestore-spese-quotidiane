@@ -60,21 +60,17 @@ export function useMobileSwipeViewport(): boolean {
   return isMobile;
 }
 
-function historicalCompanionDisplayName(
-  companionId: string | null | undefined,
-  companionDisplayNamesById: ReadonlyMap<string, string> | null,
-): string | undefined {
-  if (companionDisplayNamesById == null || companionId == null) return undefined;
-  return companionDisplayNamesById.get(companionId);
-}
+const SENZA_COMPANION_MARK = 'S';
+const UNRESOLVED_COMPANION_MARK = 'A';
 
-function expenseCompanionInitial(
+function expenseCompanionBadge(
   expense: ExpenseWithCategoryCode,
   companionDisplayNamesById: ReadonlyMap<string, string> | null,
 ): string {
-  const historicalName = historicalCompanionDisplayName(expense.companionId, companionDisplayNamesById);
-  const label = historicalName !== undefined ? historicalName : expense.accompagnatore;
-  return label ? label.charAt(0) : 'S';
+  if (expense.companionId == null) return SENZA_COMPANION_MARK;
+  const resolvedName = companionDisplayNamesById?.get(expense.companionId);
+  if (resolvedName) return resolvedName.charAt(0);
+  return UNRESOLVED_COMPANION_MARK;
 }
 
 export function ExpenseListItem({
@@ -329,7 +325,7 @@ function ExpenseCardBody({
           <p className="font-semibold text-text-primary">{expense.description}</p>
           <div className="flex items-center gap-2 text-xs text-text-muted">
             <span className="font-medium px-1.5 py-0.5 bg-surface-muted rounded text-text-secondary">
-              {expenseCompanionInitial(expense, companionDisplayNamesById)}
+              {expenseCompanionBadge(expense, companionDisplayNamesById)}
             </span>
             <span>•</span>
             <span>{format(parseISO(expense.date), dateFormat, { locale: it })}</span>

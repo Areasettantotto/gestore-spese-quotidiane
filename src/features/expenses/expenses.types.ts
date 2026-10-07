@@ -7,7 +7,7 @@ import type { Expense } from '@/src/types';
 
 import type { CategoryCode } from './expenseCategoryCatalog';
 
-export type { Accompagnatore, Expense } from '@/src/types';
+export type { Expense } from '@/src/types';
 export type { CategoryCode } from './expenseCategoryCatalog';
 
 /**
@@ -38,25 +38,36 @@ export function emptyExpenseFormDraft(date: string): ExpenseFormData {
   };
 }
 
-/**
- * Payload from the add/edit form into mutations.
- * accompagnatore is a compatibility snapshot, not identity:
- * undefined leaves the legacy column unchanged;
- * null writes SQL null;
- * string is the selected display name at submit time.
- */
+/** Payload from the add/edit form into mutations. Companion identity is companionId. */
 export type SaveExpenseFormInput = {
   amount: number;
   categoryCode: CategoryCode;
   description: string;
   date: string;
   companionId: string | null;
-  accompagnatore?: string | null;
   editingId: string | null;
 };
 
 /**
- * Expense row as stored / returned by Supabase (public.expenses).
+ * All-expenses companion filter.
+ * all matches every loaded expense.
+ * none matches companionId null.
+ * companion matches that relational id exactly. displayName is not identity.
+ */
+export type ExpenseCompanionFilter =
+  | { kind: 'all' }
+  | { kind: 'none' }
+  | { kind: 'companion'; companionId: string };
+
+/** Named filter option for a companion id that current expenses actually reference. */
+export type ExpenseCompanionFilterChoice = {
+  companionId: string;
+  displayName: string;
+};
+
+/**
+ * Expense row fields the application reads from public.expenses.
+ * The legacy text column is not part of this type.
  */
 export type ExpenseDbRow = {
   id: string;
@@ -68,7 +79,6 @@ export type ExpenseDbRow = {
   tenant_id?: string;
   user_id?: string;
   owner_id?: string;
-  accompagnatore?: string | null;
   companion_id: string | null;
   created_at?: string;
 };

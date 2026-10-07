@@ -1,13 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { ArrowLeft, Calendar, Filter, Search, User } from 'lucide-react';
-import { ACCOMPAGNATORI, type Accompagnatore, type Expense } from '@/src/types';
+import { type Expense } from '@/src/types';
 import {
   CATEGORY_CODES,
   expenseCategoryByCode,
   type CategoryCode,
 } from '@/src/features/expenses/expenseCategoryCatalog';
-import type { ExpenseWithCategoryCode } from '@/src/features/expenses/expenses.types';
+import type {
+  ExpenseCompanionFilter,
+  ExpenseCompanionFilterChoice,
+  ExpenseWithCategoryCode,
+} from '@/src/features/expenses/expenses.types';
 import { DeleteExpenseConfirmDialog } from '@/src/components/app/DeleteExpenseConfirmDialog';
 import { ExpenseListItem, useMobileSwipeViewport } from '@/src/components/app/ExpenseListItem';
 
@@ -15,12 +19,31 @@ const INITIAL_VISIBLE_EXPENSES = 30;
 const VISIBLE_EXPENSES_STEP = 30;
 const SENTINEL_ROOT_MARGIN = '0px 0px 280px 0px';
 
+const COMPANION_FILTER_ALL = 'all';
+const COMPANION_FILTER_NONE = 'none';
+const COMPANION_FILTER_PREFIX = 'companion:';
+
 type FiltersState = {
   filterMonth: string;
   filterCategory: CategoryCode | 'all';
-  filterAccompagnatore: Accompagnatore | 'Tutte' | 'Senza';
+  companionFilter: ExpenseCompanionFilter;
   filterSearch: string;
 };
+
+function companionFilterToValue(filter: ExpenseCompanionFilter): string {
+  if (filter.kind === 'all') return COMPANION_FILTER_ALL;
+  if (filter.kind === 'none') return COMPANION_FILTER_NONE;
+  return `${COMPANION_FILTER_PREFIX}${filter.companionId}`;
+}
+
+function companionFilterFromValue(value: string): ExpenseCompanionFilter {
+  if (value === COMPANION_FILTER_NONE) return { kind: 'none' };
+  if (value.startsWith(COMPANION_FILTER_PREFIX)) {
+    const companionId = value.slice(COMPANION_FILTER_PREFIX.length);
+    if (companionId.length > 0) return { kind: 'companion', companionId };
+  }
+  return { kind: 'all' };
+}
 
 type ProgressiveRenderState = {
   filterKey: string;
@@ -31,6 +54,7 @@ type AllExpensesViewProps = {
   filteredTotal: number;
   filteredExpenses: ExpenseWithCategoryCode[];
   companionDisplayNamesById: ReadonlyMap<string, string> | null;
+  companionFilterChoices: readonly ExpenseCompanionFilterChoice[];
   filters: FiltersState;
   onFiltersChange: (next: FiltersState) => void;
   onBack: () => void;
@@ -42,6 +66,7 @@ export function AllExpensesView({
   filteredTotal,
   filteredExpenses,
   companionDisplayNamesById,
+  companionFilterChoices,
   filters,
   onFiltersChange,
   onBack,
@@ -57,7 +82,7 @@ export function AllExpensesView({
     filters.filterSearch,
     filters.filterMonth,
     filters.filterCategory,
-    filters.filterAccompagnatore,
+    filters.companionFilter,
   ]);
   const [progressive, setProgressive] = useState<ProgressiveRenderState>({
     filterKey,
@@ -137,6 +162,12 @@ export function AllExpensesView({
     };
   }, [hasMore, loadMore, visibleCount]);
 
+  const selectedCompanionId =
+    filters.companionFilter.kind === 'companion' ? filters.companionFilter.companionId : null;
+  const selectedCompanionResolved =
+    selectedCompanionId != null &&
+    companionFilterChoices.some((choice) => choice.companionId === selectedCompanionId);
+
   const handleEdit = (expense: ExpenseWithCategoryCode) => {
     setOpenExpenseId(null);
     onEdit(expense);
@@ -207,18 +238,21 @@ export function AllExpensesView({
             <User className="absolute left-3 top-1/2 -translate-y-1/2 text-text-faint shrink-0 pointer-events-none" size={18} />
             <select
               className="input-field pl-10! flex-1 w-full min-w-0 max-w-full appearance-none leading-normal box-border"
-              value={filters.filterAccompagnatore}
+              value={companionFilterToValue(filters.companionFilter)}
               onChange={(e) =>
-                onFiltersChange({ ...filters, filterAccompagnatore: e.target.value as Accompagnatore | 'Tutte' | 'Senza' })
+                onFiltersChange({ ...filters, companionFilter: companionFilterFromValue(e.target.value) })
               }
             >
-              <option value="Tutte">Tutte</option>
-              <option value="Senza">Senza Accompagnatore</option>
-              {ACCOMPAGNATORI.map((a) => (
-                <option key={a} value={a}>
-                  {a}
+              <option value={COMPANION_FILTER_ALL}>Tutte</option>
+              <option value={COMPANION_FILTER_NONE}>Senza Accompagnatore</option>
+              {companionFilterChoices.map((choice) => (
+                <option key={choice.companionId} value={`${COMPANION_FILTER_PREFIX}${choice.companionId}`}>
+                  {choice.displayName}
                 </option>
               ))}
+              {selectedCompanionId != null && !selectedCompanionResolved ? (
+                <option value={`${COMPANION_FILTER_PREFIX}${selectedCompanionId}`}>Accompagnatore</option>
+              ) : null}
             </select>
           </div>
         </div>
