@@ -20,6 +20,7 @@ type ExpenseFormProps = {
   onClose: () => void;
   onSubmit: (e: React.FormEvent) => void;
   isSubmitting: boolean;
+  submitError?: string | null;
 };
 
 export function ExpenseForm({
@@ -31,6 +32,7 @@ export function ExpenseForm({
   onClose,
   onSubmit,
   isSubmitting,
+  submitError,
 }: ExpenseFormProps) {
   const titleId = useId();
   const companionFieldId = useId();
@@ -183,6 +185,12 @@ export function ExpenseForm({
                     )}
                   </div>
                 </div>
+              ) : null}
+
+              {submitError ? (
+                <p className="text-sm text-danger" role="alert">
+                  {submitError}
+                </p>
               ) : null}
 
               <button type="submit" disabled={isSubmitting} className="btn-primary w-full py-4 text-lg mt-4">

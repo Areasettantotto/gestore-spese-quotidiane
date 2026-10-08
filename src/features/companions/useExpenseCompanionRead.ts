@@ -26,6 +26,12 @@ export type UseExpenseCompanionReadParams = {
   activeTenantId: string | null;
   membershipRole: TenantRole | null;
   isTenantContextLoading: boolean;
+  /**
+   * Invalidation token for the active tenant. A change withholds the previous
+   * snapshot and runs the existing settings and catalog read again.
+   * It does not carry companions_enabled.
+   */
+  settingsRefreshKey: number;
 };
 
 export type UseExpenseCompanionReadResult = {
@@ -39,16 +45,19 @@ export type UseExpenseCompanionReadResult = {
 type ExpenseCompanionReadSnapshot =
   | {
       tenantId: string;
+      refreshKey: number;
       kind: 'ready';
       companionsEnabled: boolean;
       items: readonly TenantCompanion[];
     }
   | {
       tenantId: string;
+      refreshKey: number;
       kind: 'missing';
     }
   | {
       tenantId: string;
+      refreshKey: number;
       kind: 'error';
     };
 
@@ -70,6 +79,7 @@ export function useExpenseCompanionRead({
   activeTenantId,
   membershipRole,
   isTenantContextLoading,
+  settingsRefreshKey,
 }: UseExpenseCompanionReadParams): UseExpenseCompanionReadResult {
   const shouldRead =
     !isTenantContextLoading &&
@@ -99,6 +109,7 @@ export function useExpenseCompanionRead({
     }
 
     const tenantId = activeTenantId;
+    const refreshKeyAtStart = settingsRefreshKey;
     let cancelled = false;
     setInFlight(true);
 
@@ -116,17 +127,18 @@ export function useExpenseCompanionRead({
     ]).then(
       ([settingsResult, catalogResult]) => {
         if (settingsResult.kind === 'error' || catalogResult.kind === 'error') {
-          applySnapshot({ tenantId, kind: 'error' });
+          applySnapshot({ tenantId, refreshKey: refreshKeyAtStart, kind: 'error' });
           return;
         }
 
         if (settingsResult.kind === 'missing') {
-          applySnapshot({ tenantId, kind: 'missing' });
+          applySnapshot({ tenantId, refreshKey: refreshKeyAtStart, kind: 'missing' });
           return;
         }
 
         applySnapshot({
           tenantId,
+          refreshKey: refreshKeyAtStart,
           kind: 'ready',
           companionsEnabled: settingsResult.setting.companionsEnabled,
           items: catalogResult.items,
@@ -134,14 +146,14 @@ export function useExpenseCompanionRead({
       },
       (error: unknown) => {
         console.error('Failed to load expense companions', error);
-        applySnapshot({ tenantId, kind: 'error' });
+        applySnapshot({ tenantId, refreshKey: refreshKeyAtStart, kind: 'error' });
       }
     );
 
     return () => {
       cancelled = true;
     };
-  }, [activeTenantId, shouldRead]);
+  }, [activeTenantId, settingsRefreshKey, shouldRead]);
 
   if (isTenantContextLoading || !activeTenantId) {
     return closedResult('unavailable');
@@ -151,7 +163,12 @@ export function useExpenseCompanionRead({
     return closedResult('unreadable');
   }
 
-  if (inFlight || fetched == null || fetched.tenantId !== activeTenantId) {
+  if (
+    inFlight ||
+    fetched == null ||
+    fetched.tenantId !== activeTenantId ||
+    fetched.refreshKey !== settingsRefreshKey
+  ) {
     return closedResult('loading');
   }
 

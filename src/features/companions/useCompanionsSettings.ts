@@ -30,6 +30,12 @@ export type UseCompanionsSettingsParams = {
   activeTenantId: string | null;
   membershipRole: TenantRole | null;
   isTenantContextLoading: boolean;
+  /**
+   * Called only after a successful companions_enabled update for that tenant.
+   * Not called when the write fails, matches no row, or a newer write superseded it.
+   * The new boolean is not passed: the caller refreshes its own read.
+   */
+  onCompanionsEnabledUpdated?: (tenantId: string) => void;
 };
 
 export type UseCompanionsSettingsResult = {
@@ -83,6 +89,7 @@ export function useCompanionsSettings({
   activeTenantId,
   membershipRole,
   isTenantContextLoading,
+  onCompanionsEnabledUpdated,
 }: UseCompanionsSettingsParams): UseCompanionsSettingsResult {
   const shouldRead =
     !isTenantContextLoading &&
@@ -95,6 +102,8 @@ export function useCompanionsSettings({
 
   const activeTenantIdRef = useRef(activeTenantId);
   activeTenantIdRef.current = activeTenantId;
+  const onCompanionsEnabledUpdatedRef = useRef(onCompanionsEnabledUpdated);
+  onCompanionsEnabledUpdatedRef.current = onCompanionsEnabledUpdated;
   const isMountedRef = useRef(true);
   const readGenerationRef = useRef(0);
   /**
@@ -177,8 +186,13 @@ export function useCompanionsSettings({
           nextCompanionsEnabled: next,
         });
 
-        if (!isMountedRef.current) return;
         if (inFlightByTenantRef.current.get(requestTenantId) !== requestId) return;
+
+        if (result.kind === 'updated') {
+          onCompanionsEnabledUpdatedRef.current?.(requestTenantId);
+        }
+
+        if (!isMountedRef.current) return;
 
         const stillCurrent = activeTenantIdRef.current === requestTenantId;
         if (!stillCurrent) {

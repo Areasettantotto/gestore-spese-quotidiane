@@ -10,6 +10,7 @@ type SettingsViewProps = {
   activeTenantId: string | null;
   membershipRole: TenantRole | null;
   isTenantContextLoading: boolean;
+  onCompanionsEnabledUpdated: (tenantId: string) => void;
 };
 
 export function SettingsView({
@@ -17,11 +18,13 @@ export function SettingsView({
   activeTenantId,
   membershipRole,
   isTenantContextLoading,
+  onCompanionsEnabledUpdated,
 }: SettingsViewProps) {
   const companionsSettings = useCompanionsSettings({
     activeTenantId,
     membershipRole,
     isTenantContextLoading,
+    onCompanionsEnabledUpdated,
   });
   const tenantCompanions = useTenantCompanions({
     activeTenantId,

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { format, startOfMonth, endOfMonth, lastDayOfMonth, setDate, subMonths } from 'date-fns';
 import { it } from 'date-fns/locale';
 
@@ -78,6 +78,22 @@ function sumExpensesBetween(expenses: Expense[], fromDate: string, toDate: strin
   return sumExpenses(expensesBetween(expenses, fromDate, toDate));
 }
 
+const COMPANION_SUBMIT_LOADING_MESSAGE =
+  'Attendi il completamento del caricamento degli Accompagnatori e riprova.';
+const COMPANION_SUBMIT_UNCONFIRMED_MESSAGE =
+  "L'assegnazione dell'Accompagnatore non può essere confermata.";
+
+function expenseCompanionAssignmentPending(params: {
+  isEditing: boolean;
+  draftCompanionId: string | null;
+  originalCompanionId: string | null;
+  writable: boolean;
+}): boolean {
+  if (params.writable) return false;
+  if (!params.isEditing) return params.draftCompanionId != null;
+  return params.draftCompanionId !== params.originalCompanionId;
+}
+
 function accessPresentationFromEffectiveAccess(access: UseEffectiveAccessResult): AccessPresentation {
   if (access.status !== 'success') {
     return { badgeLabel: null, accountTier: null, giftLabel: null };
@@ -117,10 +133,28 @@ export default function App() {
     resetTenantState,
   } = useActiveTenant();
 
+  const [companionSettingsRefresh, setCompanionSettingsRefresh] = useState<{
+    tenantId: string;
+    key: number;
+  } | null>(null);
+
+  const handleCompanionsEnabledUpdated = useCallback((tenantId: string) => {
+    setCompanionSettingsRefresh((current) => ({
+      tenantId,
+      key: current?.tenantId === tenantId ? current.key + 1 : 1,
+    }));
+  }, []);
+
+  const companionSettingsRefreshKey =
+    companionSettingsRefresh != null && companionSettingsRefresh.tenantId === activeTenantId
+      ? companionSettingsRefresh.key
+      : 0;
+
   const expenseCompanionRead = useExpenseCompanionRead({
     activeTenantId,
     membershipRole,
     isTenantContextLoading,
+    settingsRefreshKey: companionSettingsRefreshKey,
   });
 
   const effectiveAccess = useEffectiveAccess({
@@ -156,6 +190,7 @@ export default function App() {
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isExpenseSubmitting, setIsExpenseSubmitting] = useState(false);
+  const [expenseCompanionSubmitError, setExpenseCompanionSubmitError] = useState<string | null>(null);
   const expenseSubmitLockRef = useRef(false);
   const expensesScrollYRef = useRef(0);
   const [newExpense, setNewExpense] = useState<ExpenseFormData>(() =>
@@ -227,14 +262,16 @@ export default function App() {
     expenseCompanionRead.status === 'ready' ? expenseCompanionRead.items : null;
 
   const companionDisplayNamesById = useMemo(() => {
-    if (readyCompanionItems == null) return null;
+    if (readyCompanionItems == null || expenseCompanionRead.companionsEnabled !== true) {
+      return null;
+    }
 
     const lookup = new Map<string, string>();
     for (const companion of readyCompanionItems) {
       lookup.set(companion.id, companion.displayName);
     }
     return lookup;
-  }, [readyCompanionItems]);
+  }, [readyCompanionItems, expenseCompanionRead.companionsEnabled]);
 
   const companionFilterChoices = useMemo(
     () =>
@@ -299,7 +336,21 @@ export default function App() {
     ],
   );
 
+  const draftCompanionTenantIdRef = useRef(activeTenantId);
+
   useEffect(() => {
+    const tenantChanged = draftCompanionTenantIdRef.current !== activeTenantId;
+    if (tenantChanged) {
+      draftCompanionTenantIdRef.current = activeTenantId;
+      setNewExpense((current) =>
+        current.companionId == null ? current : { ...current, companionId: null },
+      );
+      return;
+    }
+
+    // Same-tenant reload only. A settled denial still clears below.
+    if (expenseCompanionRead.status === 'loading') return;
+
     if (companionSelector.writable) return;
 
     if (editingId == null) {
@@ -314,7 +365,26 @@ export default function App() {
         ? current
         : { ...current, companionId: existingCompanionId },
     );
-  }, [companionSelector.writable, editingId, existingCompanionId]);
+  }, [
+    activeTenantId,
+    expenseCompanionRead.status,
+    companionSelector.writable,
+    editingId,
+    existingCompanionId,
+  ]);
+
+  const companionAssignmentPending = expenseCompanionAssignmentPending({
+    isEditing: editingId != null,
+    draftCompanionId: newExpense.companionId,
+    originalCompanionId: existingCompanionId,
+    writable: companionSelector.writable,
+  });
+
+  useEffect(() => {
+    if (!isAdding || !companionAssignmentPending) {
+      setExpenseCompanionSubmitError(null);
+    }
+  }, [isAdding, companionAssignmentPending]);
 
   const resetExpenseDraft = () => {
     setEditingId(null);
@@ -329,6 +399,22 @@ export default function App() {
 
     if (!newExpense.description || !newExpense.date || !newExpense.categoryCode) return;
     if (isNaN(amountNum) || amountNum <= 0) return;
+
+    if (
+      expenseCompanionAssignmentPending({
+        isEditing: editingId != null,
+        draftCompanionId: newExpense.companionId,
+        originalCompanionId: existingCompanionId,
+        writable: companionSelector.writable,
+      })
+    ) {
+      setExpenseCompanionSubmitError(
+        expenseCompanionRead.status === 'loading'
+          ? COMPANION_SUBMIT_LOADING_MESSAGE
+          : COMPANION_SUBMIT_UNCONFIRMED_MESSAGE,
+      );
+      return;
+    }
 
     if (expenseSubmitLockRef.current) return;
     expenseSubmitLockRef.current = true;
@@ -448,6 +534,7 @@ export default function App() {
               activeTenantId={activeTenantId}
               membershipRole={membershipRole}
               isTenantContextLoading={isTenantContextLoading}
+              onCompanionsEnabledUpdated={handleCompanionsEnabledUpdated}
             />
           ) : (
             <>
@@ -544,6 +631,7 @@ export default function App() {
         }}
         onSubmit={handleAddExpense}
         isSubmitting={isExpenseSubmitting}
+        submitError={expenseCompanionSubmitError}
       />
     </div>
   );

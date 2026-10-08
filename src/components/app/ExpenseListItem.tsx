@@ -66,9 +66,10 @@ const UNRESOLVED_COMPANION_MARK = 'A';
 function expenseCompanionBadge(
   expense: ExpenseWithCategoryCode,
   companionDisplayNamesById: ReadonlyMap<string, string> | null,
-): string {
+): string | null {
+  if (companionDisplayNamesById == null) return null;
   if (expense.companionId == null) return SENZA_COMPANION_MARK;
-  const resolvedName = companionDisplayNamesById?.get(expense.companionId);
+  const resolvedName = companionDisplayNamesById.get(expense.companionId);
   if (resolvedName) return resolvedName.charAt(0);
   return UNRESOLVED_COMPANION_MARK;
 }
@@ -309,6 +310,7 @@ function ExpenseCardBody({
   onDelete: () => void;
 }) {
   const Icon = ICON_COMPONENTS[expenseCategoryByCode(expense.categoryCode).iconKey] ?? Tag;
+  const companionBadge = expenseCompanionBadge(expense, companionDisplayNamesById);
 
   return (
     <>
@@ -324,10 +326,14 @@ function ExpenseCardBody({
         <div>
           <p className="font-semibold text-text-primary">{expense.description}</p>
           <div className="flex items-center gap-2 text-xs text-text-muted">
-            <span className="font-medium px-1.5 py-0.5 bg-surface-muted rounded text-text-secondary">
-              {expenseCompanionBadge(expense, companionDisplayNamesById)}
-            </span>
-            <span>•</span>
+            {companionBadge != null ? (
+              <>
+                <span className="font-medium px-1.5 py-0.5 bg-surface-muted rounded text-text-secondary">
+                  {companionBadge}
+                </span>
+                <span>•</span>
+              </>
+            ) : null}
             <span>{format(parseISO(expense.date), dateFormat, { locale: it })}</span>
           </div>
         </div>
