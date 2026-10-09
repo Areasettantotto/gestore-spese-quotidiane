@@ -70,7 +70,7 @@ export function RecentExpensesList({
                 <ExpenseListItem
                   expense={expense}
                   companionDisplayNamesById={companionDisplayNamesById}
-                  dateFormat="d MMM"
+                  dateFormat="d MMM yyyy"
                   isMobileSwipe={isMobileSwipe}
                   isOpen={openExpenseId === expense.id}
                   onOpen={() => setOpenExpenseId(expense.id)}

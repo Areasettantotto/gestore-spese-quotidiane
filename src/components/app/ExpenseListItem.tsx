@@ -28,7 +28,7 @@ const REVEAL_WIDTH = ACTION_PANEL_WIDTH * 2;
 const DIRECTION_LOCK_PX = 10;
 const OPEN_RATIO = 0.35;
 
-export type ExpenseDateFormat = 'd MMM' | 'd MMMM yyyy';
+export type ExpenseDateFormat = 'd MMM yyyy';
 
 export type ExpenseListItemProps = {
   expense: ExpenseWithCategoryCode;

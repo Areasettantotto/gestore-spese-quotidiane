@@ -272,7 +272,7 @@ export function AllExpensesView({
                 <ExpenseListItem
                   expense={expense}
                   companionDisplayNamesById={companionDisplayNamesById}
-                  dateFormat="d MMMM yyyy"
+                  dateFormat="d MMM yyyy"
                   isMobileSwipe={isMobileSwipe}
                   isOpen={openExpenseId === expense.id}
                   onOpen={() => setOpenExpenseId(expense.id)}
