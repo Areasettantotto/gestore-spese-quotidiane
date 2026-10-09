@@ -36,6 +36,15 @@ export type UseTenantCompanionsParams = {
   membershipRole: TenantRole | null;
   isTenantContextLoading: boolean;
   companionsSettingsStatus: CompanionsSettingsStatus;
+  /**
+   * Called only after this request still owns a server-confirmed create or
+   * deactivation. The argument is the tenant id captured by that request.
+   * Not called for a rejected call, a failed write, or a response superseded
+   * by a newer catalog mutation. Also called when the hook has unmounted or
+   * the active tenant has changed: the caller scopes the refresh so another
+   * tenant does not receive this catalog. The new row is not passed.
+   */
+  onCompanionCatalogChanged?: (tenantId: string) => void;
 };
 
 /**
@@ -162,6 +171,7 @@ export function useTenantCompanions({
   membershipRole,
   isTenantContextLoading,
   companionsSettingsStatus,
+  onCompanionCatalogChanged,
 }: UseTenantCompanionsParams): UseTenantCompanionsResult {
   const shouldRead =
     !isTenantContextLoading &&
@@ -177,6 +187,8 @@ export function useTenantCompanions({
 
   const activeTenantIdRef = useRef(activeTenantId);
   activeTenantIdRef.current = activeTenantId;
+  const onCompanionCatalogChangedRef = useRef(onCompanionCatalogChanged);
+  onCompanionCatalogChangedRef.current = onCompanionCatalogChanged;
   const fetchedRef = useRef(fetched);
   fetchedRef.current = fetched;
   const isMountedRef = useRef(true);
@@ -269,10 +281,18 @@ export function useTenantCompanions({
       try {
         const result = await createTenantCompanion(requestTenantId, displayName);
 
-        if (!isMountedRef.current) {
+        if (inFlightByTenantRef.current.get(requestTenantId) !== requestId) {
           return { kind: 'detached', writeSucceeded: result.kind === 'created' };
         }
-        if (inFlightByTenantRef.current.get(requestTenantId) !== requestId) {
+
+        // Request tenant, not the tenant that happens to be active now.
+        // A superseded response already returned. Unmount and tenant change
+        // still return detached below and do not merge this row elsewhere.
+        if (result.kind === 'created') {
+          onCompanionCatalogChangedRef.current?.(requestTenantId);
+        }
+
+        if (!isMountedRef.current) {
           return { kind: 'detached', writeSucceeded: result.kind === 'created' };
         }
         if (activeTenantIdRef.current !== requestTenantId) {
@@ -368,10 +388,18 @@ export function useTenantCompanions({
       try {
         const result = await deactivateTenantCompanion(requestTenantId, companionId);
 
-        if (!isMountedRef.current) {
+        if (inFlightByTenantRef.current.get(requestTenantId) !== requestId) {
           return { kind: 'detached', writeSucceeded: result.kind === 'deactivated' };
         }
-        if (inFlightByTenantRef.current.get(requestTenantId) !== requestId) {
+
+        // Request tenant, not the tenant that happens to be active now.
+        // A superseded response already returned. Unmount and tenant change
+        // still return detached below and do not merge this row elsewhere.
+        if (result.kind === 'deactivated') {
+          onCompanionCatalogChangedRef.current?.(requestTenantId);
+        }
+
+        if (!isMountedRef.current) {
           return { kind: 'detached', writeSucceeded: result.kind === 'deactivated' };
         }
         if (activeTenantIdRef.current !== requestTenantId) {

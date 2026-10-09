@@ -31,6 +31,7 @@ export function SettingsView({
     membershipRole,
     isTenantContextLoading,
     companionsSettingsStatus: companionsSettings.status,
+    onCompanionCatalogChanged: onCompanionsEnabledUpdated,
   });
 
   return (
