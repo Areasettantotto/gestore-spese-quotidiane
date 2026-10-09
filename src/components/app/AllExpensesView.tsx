@@ -55,6 +55,7 @@ type AllExpensesViewProps = {
   filteredExpenses: ExpenseWithCategoryCode[];
   companionDisplayNamesById: ReadonlyMap<string, string> | null;
   companionFilterChoices: readonly ExpenseCompanionFilterChoice[];
+  companionFilterVisible: boolean;
   filters: FiltersState;
   onFiltersChange: (next: FiltersState) => void;
   onBack: () => void;
@@ -67,6 +68,7 @@ export function AllExpensesView({
   filteredExpenses,
   companionDisplayNamesById,
   companionFilterChoices,
+  companionFilterVisible,
   filters,
   onFiltersChange,
   onBack,
@@ -234,27 +236,29 @@ export function AllExpensesView({
               })}
             </select>
           </div>
-          <div className="relative w-full min-w-0 md:min-w-30 flex items-center">
-            <User className="absolute left-3 top-1/2 -translate-y-1/2 text-text-faint shrink-0 pointer-events-none" size={18} />
-            <select
-              className="input-field pl-10! flex-1 w-full min-w-0 max-w-full appearance-none leading-normal box-border"
-              value={companionFilterToValue(filters.companionFilter)}
-              onChange={(e) =>
-                onFiltersChange({ ...filters, companionFilter: companionFilterFromValue(e.target.value) })
-              }
-            >
-              <option value={COMPANION_FILTER_ALL}>Tutte</option>
-              <option value={COMPANION_FILTER_NONE}>Senza Accompagnatore</option>
-              {companionFilterChoices.map((choice) => (
-                <option key={choice.companionId} value={`${COMPANION_FILTER_PREFIX}${choice.companionId}`}>
-                  {choice.displayName}
-                </option>
-              ))}
-              {selectedCompanionId != null && !selectedCompanionResolved ? (
-                <option value={`${COMPANION_FILTER_PREFIX}${selectedCompanionId}`}>Accompagnatore</option>
-              ) : null}
-            </select>
-          </div>
+          {companionFilterVisible ? (
+            <div className="relative w-full min-w-0 md:min-w-30 flex items-center">
+              <User className="absolute left-3 top-1/2 -translate-y-1/2 text-text-faint shrink-0 pointer-events-none" size={18} />
+              <select
+                className="input-field pl-10! flex-1 w-full min-w-0 max-w-full appearance-none leading-normal box-border"
+                value={companionFilterToValue(filters.companionFilter)}
+                onChange={(e) =>
+                  onFiltersChange({ ...filters, companionFilter: companionFilterFromValue(e.target.value) })
+                }
+              >
+                <option value={COMPANION_FILTER_ALL}>Tutte</option>
+                <option value={COMPANION_FILTER_NONE}>Senza Accompagnatore</option>
+                {companionFilterChoices.map((choice) => (
+                  <option key={choice.companionId} value={`${COMPANION_FILTER_PREFIX}${choice.companionId}`}>
+                    {choice.displayName}
+                  </option>
+                ))}
+                {selectedCompanionId != null && !selectedCompanionResolved ? (
+                  <option value={`${COMPANION_FILTER_PREFIX}${selectedCompanionId}`}>Accompagnatore</option>
+                ) : null}
+              </select>
+            </div>
+          ) : null}
         </div>
       </div>
 

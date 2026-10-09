@@ -286,13 +286,17 @@ export default function App() {
     return [...expenses].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
   }, [expenses]);
 
+  const companionFilterVisible =
+    expenseCompanionRead.status === 'ready' && expenseCompanionRead.companionsEnabled === true;
+
   const filteredExpenses = useMemo(() => {
+    const appliedCompanionFilter = companionFilterVisible ? companionFilter : { kind: 'all' as const };
     return expenses
       .filter((e) => {
         const matchesMonth = e.date.startsWith(filterMonth);
         const matchesCategory = filterCategory === 'all' || e.categoryCode === filterCategory;
         const matchesSearch = e.description.toLowerCase().includes(filterSearch.toLowerCase());
-        const matchesCompanion = expenseMatchesCompanionFilter(e.companionId, companionFilter);
+        const matchesCompanion = expenseMatchesCompanionFilter(e.companionId, appliedCompanionFilter);
         return matchesMonth && matchesCategory && matchesSearch && matchesCompanion;
       })
       .sort((a, b) => {
@@ -301,7 +305,7 @@ export default function App() {
         if (dateB !== dateA) return dateB - dateA;
         return a.description.localeCompare(b.description);
       });
-  }, [expenses, filterMonth, filterCategory, filterSearch, companionFilter]);
+  }, [expenses, filterMonth, filterCategory, filterSearch, companionFilter, companionFilterVisible]);
 
   const filteredTotal = useMemo(() => {
     return filteredExpenses.reduce((acc, curr) => acc + curr.amount, 0);
@@ -337,6 +341,23 @@ export default function App() {
   );
 
   const draftCompanionTenantIdRef = useRef(activeTenantId);
+  const companionFilterTenantIdRef = useRef(activeTenantId);
+
+  useEffect(() => {
+    const tenantChanged = companionFilterTenantIdRef.current !== activeTenantId;
+    if (tenantChanged) {
+      companionFilterTenantIdRef.current = activeTenantId;
+      setCompanionFilter((current) => (current.kind === 'all' ? current : { kind: 'all' }));
+      return;
+    }
+
+    // Same-tenant reload only. Confirmed OFF still clears below.
+    if (expenseCompanionRead.status === 'loading') return;
+
+    if (expenseCompanionRead.status === 'ready' && expenseCompanionRead.companionsEnabled === false) {
+      setCompanionFilter((current) => (current.kind === 'all' ? current : { kind: 'all' }));
+    }
+  }, [activeTenantId, expenseCompanionRead.status, expenseCompanionRead.companionsEnabled]);
 
   useEffect(() => {
     const tenantChanged = draftCompanionTenantIdRef.current !== activeTenantId;
@@ -591,6 +612,7 @@ export default function App() {
                   filteredExpenses={filteredExpenses}
                   companionDisplayNamesById={companionDisplayNamesById}
                   companionFilterChoices={companionFilterChoices}
+                  companionFilterVisible={companionFilterVisible}
                   filters={{ filterMonth, filterCategory, companionFilter, filterSearch }}
                   onFiltersChange={(next) => {
                     setFilterMonth(next.filterMonth);
