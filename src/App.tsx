@@ -88,10 +88,16 @@ function expenseCompanionAssignmentPending(params: {
   draftCompanionId: string | null;
   originalCompanionId: string | null;
   writable: boolean;
+  options: readonly { id: string }[];
 }): boolean {
-  if (params.writable) return false;
-  if (!params.isEditing) return params.draftCompanionId != null;
-  return params.draftCompanionId !== params.originalCompanionId;
+  if (!params.writable) {
+    if (!params.isEditing) return params.draftCompanionId != null;
+    return params.draftCompanionId !== params.originalCompanionId;
+  }
+
+  if (params.draftCompanionId == null) return false;
+  if (params.isEditing && params.draftCompanionId === params.originalCompanionId) return false;
+  return !params.options.some((option) => option.id === params.draftCompanionId);
 }
 
 function accessPresentationFromEffectiveAccess(access: UseEffectiveAccessResult): AccessPresentation {
@@ -399,6 +405,7 @@ export default function App() {
     draftCompanionId: newExpense.companionId,
     originalCompanionId: existingCompanionId,
     writable: companionSelector.writable,
+    options: companionSelector.options,
   });
 
   useEffect(() => {
@@ -427,6 +434,7 @@ export default function App() {
         draftCompanionId: newExpense.companionId,
         originalCompanionId: existingCompanionId,
         writable: companionSelector.writable,
+        options: companionSelector.options,
       })
     ) {
       setExpenseCompanionSubmitError(
