@@ -59,6 +59,11 @@ export function useExpenses(options: {
 }) {
   const { userId, activeTenantId, isTenantContextLoading, resolveTenantForMutation } = options;
 
+  // Assigned before expenses state so a queued updater sees this render's tenant.
+  // loadScopeTenantIdRef is not this gate: a same-tenant reload sets it to null.
+  const activeTenantIdRef = useRef(activeTenantId);
+  activeTenantIdRef.current = activeTenantId;
+
   const [expenses, setExpenses] = useState<ExpenseWithCategoryCode[]>([]);
   const [expensesLoadError, setExpensesLoadError] = useState<string | null>(null);
   const [initialLoadStatus, setInitialLoadStatus] = useState<ExpensesInitialLoadStatus>('loading');
@@ -192,7 +197,10 @@ export function useExpenses(options: {
           return { error };
         }
         const local = expenseFromUpdatePayload(input.editingId, payloadCore, input.categoryCode);
-        setExpenses((prev) => prev.map((exp) => (exp.id === input.editingId ? local : exp)));
+        setExpenses((prev) => {
+          if (activeTenantIdRef.current !== tenantIdForSave) return prev;
+          return prev.map((exp) => (exp.id === input.editingId ? local : exp));
+        });
         return { error: null };
       }
 
@@ -215,7 +223,10 @@ export function useExpenses(options: {
         alert('Impossibile salvare la spesa: ' + (error.message || JSON.stringify(error)));
         return { error };
       }
-      setExpenses((prev) => [expense, ...prev]);
+      setExpenses((prev) => {
+        if (activeTenantIdRef.current !== tenantIdForSave) return prev;
+        return [expense, ...prev];
+      });
       return { error: null };
     },
     [resolveTenantForMutation]
