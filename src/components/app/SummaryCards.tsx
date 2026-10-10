@@ -5,6 +5,7 @@ import { BudgetCard, type BudgetCardModel } from '@/src/components/app/home/Budg
 import { ExpenseDistributionCard } from '@/src/components/app/home/ExpenseDistributionCard';
 import { Last7DaysTrendCard } from '@/src/components/app/home/Last7DaysTrendCard';
 import type { CurrentMonthlyBudgetStatus } from '@/src/features/budgets/useCurrentMonthlyBudget';
+import type { DistributionCompanion } from '@/src/features/expenses/expenseDistribution';
 import type { ExpenseWithCategoryCode } from '@/src/features/expenses/expenses.types';
 import type { Last7DaysTrendPoint } from '@/src/features/expenses/last7DaysTrend';
 
@@ -20,6 +21,8 @@ type SummaryCardsProps = {
   currentMonthExpenses: readonly ExpenseWithCategoryCode[];
   last7DaysTrend: readonly Last7DaysTrendPoint[];
   last7DaysExpenses: readonly ExpenseWithCategoryCode[];
+  companionModeAvailable: boolean;
+  companions: readonly DistributionCompanion[];
   onOpenCurrentMonthExpenses: () => void;
   onSaveBudget: (amount: number) => Promise<{ ok: true } | { ok: false; message: string }>;
 };
@@ -117,6 +120,8 @@ export function SummaryCards({
   currentMonthExpenses,
   last7DaysTrend,
   last7DaysExpenses,
+  companionModeAvailable,
+  companions,
   onOpenCurrentMonthExpenses,
   onSaveBudget,
 }: SummaryCardsProps) {
@@ -165,7 +170,12 @@ export function SummaryCards({
           />
         ) : null}
 
-        <ExpenseDistributionCard expenses={currentMonthExpenses} totalMonthly={totalMonthly} />
+        <ExpenseDistributionCard
+          expenses={currentMonthExpenses}
+          totalMonthly={totalMonthly}
+          companionModeAvailable={companionModeAvailable}
+          companions={companions}
+        />
       </div>
 
       <Last7DaysTrendCard points={last7DaysTrend} expenses={last7DaysExpenses} />

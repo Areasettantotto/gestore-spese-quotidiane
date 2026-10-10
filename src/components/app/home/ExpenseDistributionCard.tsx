@@ -1,18 +1,23 @@
-import { memo, useMemo, useState } from 'react';
+import { memo, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import { PieChart as PieChartIcon } from 'lucide-react';
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 
 import {
   buildExpenseDistribution,
+  type DistributionCompanion,
   type DistributionMode,
   type DistributionSlice,
 } from '@/src/features/expenses/expenseDistribution';
 import type { ExpenseWithCategoryCode } from '@/src/features/expenses/expenses.types';
 
+const NO_DISTRIBUTION_COMPANIONS: readonly DistributionCompanion[] = [];
+
 type ExpenseDistributionCardProps = {
   expenses: readonly ExpenseWithCategoryCode[];
   totalMonthly: number;
+  companionModeAvailable: boolean;
+  companions: readonly DistributionCompanion[];
 };
 
 function formatEuroAmount(value: number): string {
@@ -41,14 +46,26 @@ function DistributionTooltip({
 
 function ModeToggle({
   mode,
+  companionModeAvailable,
   onChange,
 }: {
   mode: DistributionMode;
+  companionModeAvailable: boolean;
   onChange: (next: DistributionMode) => void;
 }) {
+  const categoriesRef = useRef<HTMLButtonElement>(null);
+  const companionHadFocusRef = useRef(false);
+
+  useLayoutEffect(() => {
+    if (companionModeAvailable || !companionHadFocusRef.current) return;
+    companionHadFocusRef.current = false;
+    categoriesRef.current?.focus();
+  }, [companionModeAvailable]);
+
   return (
     <div role="group" aria-label="Modalità distribuzione" className="home-view-toggle">
       <button
+        ref={categoriesRef}
         type="button"
         aria-pressed={mode === 'categories'}
         onClick={() => onChange('categories')}
@@ -64,6 +81,24 @@ function ModeToggle({
       >
         Spese
       </button>
+      {companionModeAvailable ? (
+        <button
+          type="button"
+          aria-pressed={mode === 'companions'}
+          onClick={() => onChange('companions')}
+          onFocus={() => {
+            companionHadFocusRef.current = true;
+          }}
+          onBlur={(event) => {
+            if (event.currentTarget.isConnected) {
+              companionHadFocusRef.current = false;
+            }
+          }}
+          className={`home-view-toggle-option${mode === 'companions' ? ' home-view-toggle-option--active' : ''}`}
+        >
+          Accompagnatori
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -100,12 +135,30 @@ function DistributionLegend({ slices }: { slices: DistributionSlice[] }) {
 export const ExpenseDistributionCard = memo(function ExpenseDistributionCard({
   expenses,
   totalMonthly,
+  companionModeAvailable,
+  companions,
 }: ExpenseDistributionCardProps) {
   const [mode, setMode] = useState<DistributionMode>('categories');
-  const slices = useMemo(
-    () => buildExpenseDistribution({ mode, expenses, totalMonthly }),
-    [mode, expenses, totalMonthly]
-  );
+  const activeMode: DistributionMode =
+    mode === 'companions' && !companionModeAvailable ? 'categories' : mode;
+  const companionCatalog = activeMode === 'companions' ? companions : NO_DISTRIBUTION_COMPANIONS;
+
+  useLayoutEffect(() => {
+    if (companionModeAvailable || mode !== 'companions') return;
+    setMode('categories');
+  }, [companionModeAvailable, mode]);
+
+  const slices = useMemo(() => {
+    if (activeMode === 'companions') {
+      return buildExpenseDistribution({
+        mode: 'companions',
+        expenses,
+        totalMonthly,
+        companions: companionCatalog,
+      });
+    }
+    return buildExpenseDistribution({ mode: activeMode, expenses, totalMonthly });
+  }, [activeMode, expenses, totalMonthly, companionCatalog]);
   const isEmpty = !(totalMonthly > 0);
 
   return (
@@ -123,7 +176,7 @@ export const ExpenseDistributionCard = memo(function ExpenseDistributionCard({
           </div>
           <h2 className="min-w-0 truncate text-sm font-medium text-text-muted">Distribuzione spese</h2>
         </div>
-        <ModeToggle mode={mode} onChange={setMode} />
+        <ModeToggle mode={activeMode} companionModeAvailable={companionModeAvailable} onChange={setMode} />
       </div>
 
       {isEmpty ? (

@@ -10,6 +10,7 @@ import { it } from 'date-fns/locale';
 import { type Expense } from './types';
 import { supabase } from './lib/supabaseClient';
 import { buildLast7DaysTrend } from '@/src/features/expenses/last7DaysTrend';
+import type { DistributionCompanion } from '@/src/features/expenses/expenseDistribution';
 import type { CategoryCode } from '@/src/features/expenses/expenseCategoryCatalog';
 import {
   deriveExpenseCompanionSelector,
@@ -46,6 +47,8 @@ import { AllExpensesView } from '@/src/components/app/AllExpensesView';
 import { SettingsView } from '@/src/components/app/SettingsView';
 
 type ViewMode = 'home' | 'all' | 'settings';
+
+const HIDDEN_HOME_DISTRIBUTION_COMPANIONS: readonly DistributionCompanion[] = [];
 
 type AccessPresentation = {
   badgeLabel: string | null;
@@ -299,6 +302,11 @@ export default function App() {
 
   const companionFilterVisible =
     expenseCompanionRead.status === 'ready' && expenseCompanionRead.companionsEnabled === true;
+  const companionDistributionAvailable =
+    expenseCompanionRead.status === 'ready' && expenseCompanionRead.companionsEnabled === true;
+  const homeDistributionCompanions = companionDistributionAvailable
+    ? expenseCompanionRead.items
+    : HIDDEN_HOME_DISTRIBUTION_COMPANIONS;
 
   const filteredExpenses = useMemo(() => {
     const appliedCompanionFilter = companionFilterVisible ? companionFilter : { kind: 'all' as const };
@@ -626,6 +634,8 @@ export default function App() {
                       currentMonthExpenses={currentMonthExpenses}
                       last7DaysTrend={last7DaysTrend}
                       last7DaysExpenses={last7DaysExpenses}
+                      companionModeAvailable={companionDistributionAvailable}
+                      companions={homeDistributionCompanions}
                       onSaveBudget={currentMonthlyBudget.saveCurrentMonthlyBudget}
                       onOpenCurrentMonthExpenses={() => {
                         setFilterMonth(format(new Date(), 'yyyy-MM'));

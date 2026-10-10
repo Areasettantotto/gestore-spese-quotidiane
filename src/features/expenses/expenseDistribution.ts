@@ -5,7 +5,7 @@ import {
 } from '@/src/features/expenses/expenseCategoryCatalog';
 import type { ExpenseWithCategoryCode } from '@/src/features/expenses/expenses.types';
 
-export type DistributionMode = 'categories' | 'expenses';
+export type DistributionMode = 'categories' | 'expenses' | 'companions';
 
 export type DistributionSlice = {
   key: string;
@@ -13,6 +13,12 @@ export type DistributionSlice = {
   amount: number;
   percent: number;
   color: string;
+};
+
+/** Catalog row already loaded for the active tenant. Identity is `id`, never the label. */
+export type DistributionCompanion = {
+  id: string;
+  displayName: string;
 };
 
 const TOP_N = 4;
@@ -23,6 +29,13 @@ const EXPENSE_RANK_COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6'] as cons
 
 export const ALTRE_CATEGORIE_LABEL = 'Altre categorie';
 const ALTRE_SPESE_LABEL = 'Altre spese';
+const SENZA_ACCOMPAGNATORE_LABEL = 'Senza accompagnatore';
+const ACCOMPAGNATORE_NON_DISPONIBILE_LABEL = 'Accompagnatore non disponibile';
+
+/** Synthetic keys cannot collide with `companion-id:${id}`. */
+const COMPANION_NONE_KEY = 'companion-none';
+const COMPANION_UNAVAILABLE_KEY = 'companion-unavailable';
+const COMPANION_REMAINDER_KEY = 'companion-remainder';
 
 function isPositiveAmount(value: number): boolean {
   return Number.isFinite(value) && value > 0;
@@ -181,12 +194,112 @@ function buildExpenseSlices(expenses: readonly ExpenseWithCategoryCode[], totalM
   return withIntegerPercents(slices, totalMonthly);
 }
 
-export function buildExpenseDistribution(params: {
-  mode: DistributionMode;
-  expenses: readonly ExpenseWithCategoryCode[];
-  totalMonthly: number;
-}): DistributionSlice[] {
+type CompanionGroup = {
+  key: string;
+  label: string;
+  amount: number;
+};
+
+function companionDistributionKey(companionId: string): string {
+  return `companion-id:${companionId}`;
+}
+
+function compareCompanionGroups(a: CompanionGroup, b: CompanionGroup): number {
+  if (b.amount !== a.amount) return b.amount - a.amount;
+  const byLabel = a.label.localeCompare(b.label, 'it', { sensitivity: 'base' });
+  if (byLabel !== 0) return byLabel;
+  if (a.key < b.key) return -1;
+  if (a.key > b.key) return 1;
+  return 0;
+}
+
+/**
+ * Positive amounts grouped by companion id.
+ * A null id is one group. Every id missing from the current catalog shares one group.
+ * Labels come from that catalog. Raw ids are never labels.
+ * Inactive catalog rows stay eligible.
+ */
+function buildCompanionSlices(
+  expenses: readonly ExpenseWithCategoryCode[],
+  totalMonthly: number,
+  companions: readonly DistributionCompanion[]
+): DistributionSlice[] {
+  const labelsById = new Map<string, string>();
+  for (const companion of companions) {
+    if (!labelsById.has(companion.id)) {
+      labelsById.set(companion.id, companion.displayName);
+    }
+  }
+
+  const groups = new Map<string, CompanionGroup>();
+  const addAmount = (key: string, label: string, amount: number) => {
+    const existing = groups.get(key);
+    if (existing) {
+      existing.amount += amount;
+      return;
+    }
+    groups.set(key, { key, label, amount });
+  };
+
+  for (const expense of expenses) {
+    if (!isPositiveAmount(expense.amount)) continue;
+    const companionId = expense.companionId ?? null;
+    if (companionId == null) {
+      addAmount(COMPANION_NONE_KEY, SENZA_ACCOMPAGNATORE_LABEL, expense.amount);
+      continue;
+    }
+    const label = labelsById.get(companionId);
+    if (label == null) {
+      addAmount(COMPANION_UNAVAILABLE_KEY, ACCOMPAGNATORE_NON_DISPONIBILE_LABEL, expense.amount);
+      continue;
+    }
+    addAmount(companionDistributionKey(companionId), label, expense.amount);
+  }
+
+  const ranked = [...groups.values()].filter((group) => isPositiveAmount(group.amount)).sort(compareCompanionGroups);
+  const top = ranked.slice(0, TOP_N);
+  const leftover = ranked.slice(TOP_N).reduce((sum, group) => sum + group.amount, 0);
+
+  const slices: Omit<DistributionSlice, 'percent'>[] = top.map((group, index) => ({
+    key: group.key,
+    label: group.label,
+    amount: group.amount,
+    color: EXPENSE_RANK_COLORS[index] ?? ALTRE_SPESE_COLOR,
+  }));
+
+  if (ranked.length > TOP_N && isPositiveAmount(leftover)) {
+    slices.push({
+      key: COMPANION_REMAINDER_KEY,
+      label: ALTRE_SPESE_LABEL,
+      amount: leftover,
+      color: ALTRE_SPESE_COLOR,
+    });
+  }
+
+  if (slices.length === 0 && isPositiveAmount(totalMonthly)) {
+    slices.push({
+      key: COMPANION_REMAINDER_KEY,
+      label: ALTRE_SPESE_LABEL,
+      amount: totalMonthly,
+      color: ALTRE_SPESE_COLOR,
+    });
+  }
+
+  return withIntegerPercents(slices, totalMonthly);
+}
+
+export function buildExpenseDistribution(
+  params: {
+    expenses: readonly ExpenseWithCategoryCode[];
+    totalMonthly: number;
+  } & (
+    | { mode: 'categories' | 'expenses' }
+    | { mode: 'companions'; companions: readonly DistributionCompanion[] }
+  )
+): DistributionSlice[] {
   const { mode, expenses, totalMonthly } = params;
   if (!(totalMonthly > 0)) return [];
-  return mode === 'expenses' ? buildExpenseSlices(expenses, totalMonthly) : buildCategorySlices(expenses, totalMonthly);
+  if (mode === 'expenses') return buildExpenseSlices(expenses, totalMonthly);
+  if (mode === 'companions') return buildCompanionSlices(expenses, totalMonthly, params.companions);
+  return buildCategorySlices(expenses, totalMonthly);
 }
