@@ -198,6 +198,11 @@ export default function App() {
   const [isExpenseSubmitting, setIsExpenseSubmitting] = useState(false);
   const [expenseCompanionSubmitError, setExpenseCompanionSubmitError] = useState<string | null>(null);
   const expenseSubmitLockRef = useRef(false);
+  const expenseFormSessionRef = useRef(0);
+  const expenseFormContextRef = useRef<{
+    userId: string | null;
+    activeTenantId: string | null;
+  } | null>(null);
   const expensesScrollYRef = useRef(0);
   const [newExpense, setNewExpense] = useState<ExpenseFormData>(() =>
     emptyExpenseFormDraft(format(new Date(), 'yyyy-MM-dd')),
@@ -419,6 +424,27 @@ export default function App() {
     setNewExpense(emptyExpenseFormDraft(format(new Date(), 'yyyy-MM-dd')));
   };
 
+  const discardExpenseFormSession = () => {
+    expenseFormSessionRef.current += 1;
+    setIsAdding(false);
+    resetExpenseDraft();
+    setExpenseCompanionSubmitError(null);
+  };
+
+  useLayoutEffect(() => {
+    const nextContext = { userId, activeTenantId };
+    const previousContext = expenseFormContextRef.current;
+    expenseFormContextRef.current = nextContext;
+    if (previousContext == null) return;
+    if (
+      previousContext.userId === nextContext.userId &&
+      previousContext.activeTenantId === nextContext.activeTenantId
+    ) {
+      return;
+    }
+    discardExpenseFormSession();
+  }, [userId, activeTenantId]);
+
   const handleAddExpense = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -448,6 +474,7 @@ export default function App() {
     if (expenseSubmitLockRef.current) return;
     expenseSubmitLockRef.current = true;
     setIsExpenseSubmitting(true);
+    const ownedExpenseFormSession = expenseFormSessionRef.current;
 
     try {
       if (editingId != null && editingExpense == null) {
@@ -475,6 +502,9 @@ export default function App() {
         companionId: companionWrite.companionId,
         editingId,
       });
+      if (expenseFormSessionRef.current !== ownedExpenseFormSession) {
+        return;
+      }
       if (!saveResult || saveResult.error !== null) {
         return;
       }
@@ -658,10 +688,7 @@ export default function App() {
         newExpense={newExpense}
         companionSelector={companionSelector}
         onChange={setNewExpense}
-        onClose={() => {
-          setIsAdding(false);
-          resetExpenseDraft();
-        }}
+        onClose={discardExpenseFormSession}
         onSubmit={handleAddExpense}
         isSubmitting={isExpenseSubmitting}
         submitError={expenseCompanionSubmitError}
