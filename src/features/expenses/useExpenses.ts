@@ -21,6 +21,10 @@ export type { SaveExpenseFormInput } from './expenses.types';
 
 export type ExpensesInitialLoadStatus = 'loading' | 'success' | 'error';
 
+export type SaveExpenseResult = {
+  error: Error | null;
+};
+
 type LoadExpensesResult = 'ok' | 'error' | 'stale';
 
 const makeId = (): string => {
@@ -150,18 +154,18 @@ export function useExpenses(options: {
   );
 
   const saveExpense = useCallback(
-    async (input: SaveExpenseFormInput) => {
+    async (input: SaveExpenseFormInput): Promise<SaveExpenseResult> => {
       const { data: sessionData } = await supabase.auth.getSession();
       const user = sessionData?.session?.user;
       if (!user) {
         alert('Utente non autenticato');
-        return;
+        return { error: new Error('Utente non autenticato') };
       }
 
       const tenantIdForSave = await resolveTenantForMutation(user.id);
       if (!tenantIdForSave) {
         alert('Tenant non caricato, effettua di nuovo il login');
-        return;
+        return { error: new Error('Tenant non caricato, effettua di nuovo il login') };
       }
 
       if (input.editingId) {
@@ -172,7 +176,7 @@ export function useExpenses(options: {
           date: input.date,
           companion_id: input.companionId,
         };
-        const { error } = await updateExpenseInTenant({
+        const updateResult = await updateExpenseInTenant({
           expenseId: input.editingId,
           userId: user.id,
           tenantId: tenantIdForSave,
@@ -182,33 +186,37 @@ export function useExpenses(options: {
           date: payloadCore.date,
           companionId: input.companionId,
         });
-        if (error) {
+        if (!updateResult || updateResult.error !== null) {
+          const error = updateResult?.error ?? new Error('Impossibile aggiornare la spesa');
           alert('Impossibile aggiornare la spesa: ' + (error.message || JSON.stringify(error)));
-        } else {
-          const local = expenseFromUpdatePayload(input.editingId, payloadCore, input.categoryCode);
-          setExpenses((prev) => prev.map((exp) => (exp.id === input.editingId ? local : exp)));
+          return { error };
         }
-      } else {
-        const expense = localExpenseForCreate({
-          id: makeId(),
-          amount: input.amount,
-          description: input.description,
-          date: input.date,
-          categoryCode: input.categoryCode,
-          companionId: input.companionId,
-        });
-
-        const { error } = await createExpenseInTenant({
-          expense,
-          userId: user.id,
-          tenantId: tenantIdForSave,
-        });
-        if (error) {
-          alert('Impossibile salvare la spesa: ' + (error.message || JSON.stringify(error)));
-        } else {
-          setExpenses((prev) => [expense, ...prev]);
-        }
+        const local = expenseFromUpdatePayload(input.editingId, payloadCore, input.categoryCode);
+        setExpenses((prev) => prev.map((exp) => (exp.id === input.editingId ? local : exp)));
+        return { error: null };
       }
+
+      const expense = localExpenseForCreate({
+        id: makeId(),
+        amount: input.amount,
+        description: input.description,
+        date: input.date,
+        categoryCode: input.categoryCode,
+        companionId: input.companionId,
+      });
+
+      const createResult = await createExpenseInTenant({
+        expense,
+        userId: user.id,
+        tenantId: tenantIdForSave,
+      });
+      if (!createResult || createResult.error !== null) {
+        const error = createResult?.error ?? new Error('Impossibile salvare la spesa');
+        alert('Impossibile salvare la spesa: ' + (error.message || JSON.stringify(error)));
+        return { error };
+      }
+      setExpenses((prev) => [expense, ...prev]);
+      return { error: null };
     },
     [resolveTenantForMutation]
   );

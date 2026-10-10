@@ -467,7 +467,7 @@ export default function App() {
         return;
       }
 
-      await saveExpense({
+      const saveResult = await saveExpense({
         amount: amountNum,
         categoryCode: newExpense.categoryCode,
         description: newExpense.description,
@@ -475,6 +475,9 @@ export default function App() {
         companionId: companionWrite.companionId,
         editingId,
       });
+      if (!saveResult || saveResult.error !== null) {
+        return;
+      }
 
       setIsAdding(false);
       resetExpenseDraft();
