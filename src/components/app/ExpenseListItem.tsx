@@ -5,6 +5,8 @@ import { it } from 'date-fns/locale';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { Coffee, Heart, Home, Music, Pencil, ShoppingBag, Tag, Trash2, Truck } from 'lucide-react';
+import { ExpenseCompanionBadge } from '@/src/components/app/ExpenseCompanionBadge';
+import { resolveExpenseCompanionPresentation } from '@/src/features/companions/expenseCompanionPresentation';
 import { expenseCategoryByCode } from '@/src/features/expenses/expenseCategoryCatalog';
 import type { ExpenseWithCategoryCode } from '@/src/features/expenses/expenses.types';
 
@@ -58,20 +60,6 @@ export function useMobileSwipeViewport(): boolean {
   }, []);
 
   return isMobile;
-}
-
-const SENZA_COMPANION_MARK = 'S';
-const UNRESOLVED_COMPANION_MARK = 'A';
-
-function expenseCompanionBadge(
-  expense: ExpenseWithCategoryCode,
-  companionDisplayNamesById: ReadonlyMap<string, string> | null,
-): string | null {
-  if (companionDisplayNamesById == null) return null;
-  if (expense.companionId == null) return SENZA_COMPANION_MARK;
-  const resolvedName = companionDisplayNamesById.get(expense.companionId);
-  if (resolvedName) return resolvedName.charAt(0);
-  return UNRESOLVED_COMPANION_MARK;
 }
 
 export function ExpenseListItem({
@@ -310,35 +298,38 @@ function ExpenseCardBody({
   onDelete: () => void;
 }) {
   const Icon = ICON_COMPONENTS[expenseCategoryByCode(expense.categoryCode).iconKey] ?? Tag;
-  const companionBadge = expenseCompanionBadge(expense, companionDisplayNamesById);
+  const companionPresentation = resolveExpenseCompanionPresentation(
+    expense.companionId,
+    companionDisplayNamesById,
+  );
 
   return (
     <>
-      <div className="flex items-center gap-4">
+      <div className="flex min-w-0 flex-1 items-center gap-4">
         <div
           className={cn(
-            'w-12 h-12 rounded-xl flex items-center justify-center',
+            'w-12 h-12 shrink-0 rounded-xl flex items-center justify-center',
             'bg-surface-muted text-text-muted group-hover:bg-primary-soft group-hover:text-primary transition-colors',
           )}
         >
           <Icon size={20} />
         </div>
-        <div>
+        <div className="min-w-0 flex-1">
           <p className="font-semibold text-text-primary">{expense.description}</p>
-          <div className="flex items-center gap-2 text-xs text-text-muted">
-            {companionBadge != null ? (
+          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-text-muted">
+            {companionPresentation.status !== 'hidden' ? (
               <>
-                <span className="font-medium px-1.5 py-0.5 bg-surface-muted rounded text-text-secondary">
-                  {companionBadge}
-                </span>
+                <ExpenseCompanionBadge presentation={companionPresentation} />
                 <span>•</span>
               </>
             ) : null}
-            <span>{format(parseISO(expense.date), dateFormat, { locale: it })}</span>
+            <span className="shrink-0 whitespace-nowrap">
+              {format(parseISO(expense.date), dateFormat, { locale: it })}
+            </span>
           </div>
         </div>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex shrink-0 items-center gap-2">
         <p className="font-bold text-text-primary">
           €{expense.amount.toLocaleString('it-IT', { minimumFractionDigits: 2 })}
         </p>

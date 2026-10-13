@@ -23,6 +23,7 @@ type SummaryCardsProps = {
   last7DaysExpenses: readonly ExpenseWithCategoryCode[];
   companionModeAvailable: boolean;
   companions: readonly DistributionCompanion[];
+  companionDisplayNamesById: ReadonlyMap<string, string> | null;
   onOpenCurrentMonthExpenses: () => void;
   onSaveBudget: (amount: number) => Promise<{ ok: true } | { ok: false; message: string }>;
 };
@@ -122,6 +123,7 @@ export function SummaryCards({
   last7DaysExpenses,
   companionModeAvailable,
   companions,
+  companionDisplayNamesById,
   onOpenCurrentMonthExpenses,
   onSaveBudget,
 }: SummaryCardsProps) {
@@ -178,7 +180,11 @@ export function SummaryCards({
         />
       </div>
 
-      <Last7DaysTrendCard points={last7DaysTrend} expenses={last7DaysExpenses} />
+      <Last7DaysTrendCard
+        points={last7DaysTrend}
+        expenses={last7DaysExpenses}
+        companionDisplayNamesById={companionDisplayNamesById}
+      />
     </div>
   );
 }

@@ -636,6 +636,7 @@ export default function App() {
                       last7DaysExpenses={last7DaysExpenses}
                       companionModeAvailable={companionDistributionAvailable}
                       companions={homeDistributionCompanions}
+                      companionDisplayNamesById={companionDisplayNamesById}
                       onSaveBudget={currentMonthlyBudget.saveCurrentMonthlyBudget}
                       onOpenCurrentMonthExpenses={() => {
                         setFilterMonth(format(new Date(), 'yyyy-MM'));

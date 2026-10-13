@@ -1,9 +1,12 @@
+import { ACCOMPAGNATORE_NON_DISPONIBILE_LABEL } from '@/src/features/companions/expenseCompanionPresentation';
 import {
   CATEGORY_CODES,
   expenseCategoryByCode,
   type CategoryCode,
 } from '@/src/features/expenses/expenseCategoryCatalog';
 import type { ExpenseWithCategoryCode } from '@/src/features/expenses/expenses.types';
+
+export { ACCOMPAGNATORE_NON_DISPONIBILE_LABEL };
 
 export type DistributionMode = 'categories' | 'expenses' | 'companions';
 
@@ -30,7 +33,6 @@ const EXPENSE_RANK_COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6'] as cons
 export const ALTRE_CATEGORIE_LABEL = 'Altre categorie';
 const ALTRE_SPESE_LABEL = 'Altre spese';
 const SENZA_ACCOMPAGNATORE_LABEL = 'Senza accompagnatore';
-const ACCOMPAGNATORE_NON_DISPONIBILE_LABEL = 'Accompagnatore non disponibile';
 
 /** Synthetic keys cannot collide with `companion-id:${id}`. */
 const COMPANION_NONE_KEY = 'companion-none';

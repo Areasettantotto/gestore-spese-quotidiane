@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import { format, parse } from 'date-fns';
 import { it } from 'date-fns/locale';
-import { TrendingUp, X } from 'lucide-react';
+import { ChevronDown, TrendingUp, X } from 'lucide-react';
 import { motion } from 'motion/react';
 import {
   Bar,
@@ -14,12 +14,22 @@ import {
   YAxis,
 } from 'recharts';
 
+import { ExpenseCompanionBadge } from '@/src/components/app/ExpenseCompanionBadge';
+import {
+  buildTrendYScale,
+  cleanScaleNumber,
+  decimalsForStep,
+} from '@/src/components/app/home/last7DaysTrendYScale';
+import { resolveExpenseCompanionPresentation } from '@/src/features/companions/expenseCompanionPresentation';
 import {
   CATEGORY_CODES,
   expenseCategoryByCode,
   isCategoryCode,
 } from '@/src/features/expenses/expenseCategoryCatalog';
-import { allocateIntegerPercents, ALTRE_CATEGORIE_LABEL } from '@/src/features/expenses/expenseDistribution';
+import {
+  allocateIntegerPercents,
+  ALTRE_CATEGORIE_LABEL,
+} from '@/src/features/expenses/expenseDistribution';
 import type { ExpenseWithCategoryCode } from '@/src/features/expenses/expenses.types';
 import {
   ALTRE_CATEGORIE_KEY,
@@ -27,15 +37,11 @@ import {
   type Last7DaysCategoryKey,
   type Last7DaysTrendPoint,
 } from '@/src/features/expenses/last7DaysTrend';
-import {
-  buildTrendYScale,
-  cleanScaleNumber,
-  decimalsForStep,
-} from '@/src/components/app/home/last7DaysTrendYScale';
 
 type Last7DaysTrendCardProps = {
   points: readonly Last7DaysTrendPoint[];
   expenses: readonly ExpenseWithCategoryCode[];
+  companionDisplayNamesById: ReadonlyMap<string, string> | null;
 };
 
 type DayDetailMode = 'categories' | 'expenses';
@@ -166,11 +172,17 @@ function CategoryBreakdownList({ point }: { point: Last7DaysTrendPoint }) {
   );
 }
 
-function DayExpenseList({ expenses }: { expenses: readonly ExpenseWithCategoryCode[] }) {
+function DayExpenseList({
+  expenses,
+  companionDisplayNamesById,
+}: {
+  expenses: readonly ExpenseWithCategoryCode[];
+  companionDisplayNamesById: ReadonlyMap<string, string> | null;
+}) {
   if (expenses.length === 0) return null;
 
   return (
-    <ul className="space-y-1.5">
+    <ul className="min-w-0 space-y-1.5">
       {expenses.map((expense) => {
         const catalog = expenseCategoryByCode(expense.categoryCode);
         return (
@@ -183,8 +195,14 @@ function DayExpenseList({ expenses }: { expenses: readonly ExpenseWithCategoryCo
             <span className="min-w-0 flex-1">
               <span className="block break-words text-text-secondary">{expenseRowLabel(expense)}</span>
               <span className="block text-xs text-text-muted">{catalog.presentationLabel}</span>
+              <ExpenseCompanionBadge
+                presentation={resolveExpenseCompanionPresentation(
+                  expense.companionId,
+                  companionDisplayNamesById,
+                )}
+              />
             </span>
-            <span className="whitespace-nowrap tabular-nums text-zinc-600 dark:text-text-secondary">
+            <span className="shrink-0 whitespace-nowrap tabular-nums text-zinc-600 dark:text-text-secondary">
               {formatEuroAmount(expense.amount)}
             </span>
           </li>
@@ -241,11 +259,13 @@ function TrendDetail({ point }: { point: Last7DaysTrendPoint }) {
 function MobileDayDetail({
   point,
   dayExpenses,
+  companionDisplayNamesById,
   detailMode,
   onDetailModeChange,
 }: {
   point: Last7DaysTrendPoint;
   dayExpenses: readonly ExpenseWithCategoryCode[];
+  companionDisplayNamesById: ReadonlyMap<string, string> | null;
   detailMode: DayDetailMode;
   onDetailModeChange: (next: DayDetailMode) => void;
 }) {
@@ -262,7 +282,10 @@ function MobileDayDetail({
         {detailMode === 'categories' ? (
           <CategoryBreakdownList point={point} />
         ) : (
-          <DayExpenseList expenses={dayExpenses} />
+          <DayExpenseList
+            expenses={dayExpenses}
+            companionDisplayNamesById={companionDisplayNamesById}
+          />
         )}
       </div>
     </div>
@@ -319,13 +342,19 @@ function InspectorCategoryList({ point }: { point: Last7DaysTrendPoint }) {
   );
 }
 
-function InspectorExpenseList({ expenses }: { expenses: readonly ExpenseWithCategoryCode[] }) {
+function InspectorExpenseList({
+  expenses,
+  companionDisplayNamesById,
+}: {
+  expenses: readonly ExpenseWithCategoryCode[];
+  companionDisplayNamesById: ReadonlyMap<string, string> | null;
+}) {
   if (expenses.length === 0) {
     return <p className={INSPECTOR_EMPTY}>Nessuna spesa</p>;
   }
 
   return (
-    <ul className="-mr-1 mt-2 max-h-56 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1 md:max-h-none">
+    <ul className="-mr-1 mt-2 max-h-56 min-h-0 min-w-0 flex-1 space-y-2 overflow-y-auto pb-1 pr-1 md:max-h-none">
       {expenses.map((expense) => {
         const label = expenseRowLabel(expense);
         const catalog = expenseCategoryByCode(expense.categoryCode);
@@ -341,8 +370,14 @@ function InspectorExpenseList({ expenses }: { expenses: readonly ExpenseWithCate
                 {label}
               </span>
               <span className="block text-xs text-text-muted">{catalog.presentationLabel}</span>
+              <ExpenseCompanionBadge
+                presentation={resolveExpenseCompanionPresentation(
+                  expense.companionId,
+                  companionDisplayNamesById,
+                )}
+              />
             </span>
-            <span className="whitespace-nowrap font-medium tabular-nums text-text-primary">
+            <span className="shrink-0 whitespace-nowrap font-medium tabular-nums text-text-primary">
               {formatEuroAmount(expense.amount)}
             </span>
           </li>
@@ -356,17 +391,23 @@ function InspectorExpenseList({ expenses }: { expenses: readonly ExpenseWithCate
  * Fine-pointer side inspector for the pinned day. Lives inside the card, next to the chart.
  * From `md` up it fills its grid cell absolutely: the row height is dictated by the left
  * column only, so the box ends exactly where chart + summary end and never grows past it.
- * Header and Categorie stay fixed; the Spese list takes the remaining height and scrolls.
+ * Categorie starts expanded and can collapse. The Spese list takes the remaining
+ * height and scrolls, including the space freed when Categorie is collapsed.
  */
 function DesktopDayInspector({
   point,
   dayExpenses,
+  companionDisplayNamesById,
   onClose,
 }: {
   point: Last7DaysTrendPoint;
   dayExpenses: readonly ExpenseWithCategoryCode[];
+  companionDisplayNamesById: ReadonlyMap<string, string> | null;
   onClose: () => void;
 }) {
+  const [categoriesExpanded, setCategoriesExpanded] = useState(true);
+  const categoriesPanelId = useId();
+
   return (
     <aside
       aria-label={`Dettaglio giorno ${point.label}`}
@@ -391,13 +432,33 @@ function DesktopDayInspector({
       </div>
 
       <section className="mt-3 shrink-0 border-t border-zinc-200/70 pt-3 dark:border-border">
-        <h3 className={INSPECTOR_SECTION_TITLE}>Categorie</h3>
-        <InspectorCategoryList point={point} />
+        <h3>
+          <button
+            type="button"
+            aria-expanded={categoriesExpanded}
+            aria-controls={categoriesPanelId}
+            onClick={() => setCategoriesExpanded((current) => !current)}
+            className={`${INSPECTOR_SECTION_TITLE} flex w-full items-center justify-between gap-2 rounded-md text-left hover:text-text-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring-focus/40`}
+          >
+            <span>Categorie</span>
+            <ChevronDown
+              size={14}
+              aria-hidden="true"
+              className={`shrink-0 transition-transform duration-150 ${categoriesExpanded ? '' : '-rotate-90'}`}
+            />
+          </button>
+        </h3>
+        <div id={categoriesPanelId} hidden={!categoriesExpanded}>
+          <InspectorCategoryList point={point} />
+        </div>
       </section>
 
-      <section className="mt-3 flex min-h-0 flex-1 flex-col border-t border-zinc-200/70 pt-3 dark:border-border">
+      <section className="mt-3 flex min-h-0 min-w-0 flex-1 flex-col border-t border-zinc-200/70 pt-3 dark:border-border">
         <h3 className={`${INSPECTOR_SECTION_TITLE} shrink-0`}>Spese</h3>
-        <InspectorExpenseList expenses={dayExpenses} />
+        <InspectorExpenseList
+          expenses={dayExpenses}
+          companionDisplayNamesById={companionDisplayNamesById}
+        />
       </section>
     </aside>
   );
@@ -498,7 +559,11 @@ function TrendWindowSummaryPanel({ summary }: { summary: TrendWindowSummary }) {
   );
 }
 
-export function Last7DaysTrendCard({ points, expenses }: Last7DaysTrendCardProps) {
+export function Last7DaysTrendCard({
+  points,
+  expenses,
+  companionDisplayNamesById,
+}: Last7DaysTrendCardProps) {
   const isEmpty = points.reduce((sum, point) => sum + point.amount, 0) === 0;
   const fineHover = useFineHover();
   const [hoveredDateKey, setHoveredDateKey] = useState<string | null>(null);
@@ -663,6 +728,7 @@ export function Last7DaysTrendCard({ points, expenses }: Last7DaysTrendCardProps
                 <DesktopDayInspector
                   point={selectedPoint}
                   dayExpenses={selectedDayExpenses}
+                  companionDisplayNamesById={companionDisplayNamesById}
                   onClose={() => setSelectedDateKey(null)}
                 />
               </div>
@@ -672,6 +738,7 @@ export function Last7DaysTrendCard({ points, expenses }: Last7DaysTrendCardProps
             <MobileDayDetail
               point={selectedPoint}
               dayExpenses={selectedDayExpenses}
+              companionDisplayNamesById={companionDisplayNamesById}
               detailMode={detailMode}
               onDetailModeChange={setDetailMode}
             />
