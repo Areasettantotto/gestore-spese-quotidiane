@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { format, parse } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { ChevronDown, TrendingUp, X } from 'lucide-react';
@@ -50,6 +50,38 @@ const EMERALD_BAR = '#10b981';
 const ALTRE_CATEGORIE_COLOR = '#94a3b8';
 const STACK_CATEGORY_KEYS = [...CATEGORY_CODES, ALTRE_CATEGORIE_KEY] as const;
 const FINE_HOVER_QUERY = '(hover: hover) and (pointer: fine)';
+const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
+/** Ignore subpixel rounding so a title that fits does not start a reveal. */
+const TITLE_OVERFLOW_TOLERANCE_PX = 1;
+/**
+ * Hairline between expense rows only. `divide-y` paints a 1px bottom border
+ * on every row except the last, so nothing sits above the first expense and
+ * nothing trails the last.
+ */
+const EXPENSE_LIST_DIVIDERS = 'divide-y divide-border';
+
+/**
+ * 12px on the inner side of that hairline. The border is the row's bottom
+ * edge, so this padding is what separates it from the previous expense
+ * (including a Companion badge) and from the next one. `space-y` is not
+ * combined with it: that margin would sit below the border and stack a
+ * second gap. The first row keeps no top padding and the last no bottom padding.
+ */
+const EXPENSE_ROW_CLASS = 'flex min-w-0 items-start gap-2 py-3 first:pt-0 last:pb-0';
+
+/**
+ * Desktop inspector scroller only. The list otherwise uses the native
+ * scrollbar. Standard properties cover engines that ignore WebKit pseudos
+ * (`thin` is their narrowest usable width). The pseudos ask for a 6px thumb
+ * where the browser honors them. The thumb uses the faint text token.
+ */
+const INSPECTOR_EXPENSE_SCROLLBAR_CLASS =
+  '[&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-text-faint [&::-webkit-scrollbar-thumb:hover]:bg-text-muted';
+
+const INSPECTOR_EXPENSE_SCROLLBAR_STYLE = {
+  scrollbarWidth: 'thin' as const,
+  scrollbarColor: 'var(--color-text-faint) transparent',
+};
 
 function presentationLabelForCategoryKey(key: Last7DaysCategoryKey): string {
   if (key === ALTRE_CATEGORIE_KEY || !isCategoryCode(key)) return ALTRE_CATEGORIE_LABEL;
@@ -100,6 +132,27 @@ function useFineHover(): boolean {
   }, []);
 
   return fineHover;
+}
+
+function usePrefersReducedMotion(): boolean {
+  const [reducedMotion, setReducedMotion] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia(REDUCED_MOTION_QUERY).matches;
+  });
+
+  useEffect(() => {
+    const media = window.matchMedia(REDUCED_MOTION_QUERY);
+    const sync = () => setReducedMotion(media.matches);
+    sync();
+    media.addEventListener('change', sync);
+    return () => media.removeEventListener('change', sync);
+  }, []);
+
+  return reducedMotion;
+}
+
+function titleRevealDurationMs(overflowPx: number): number {
+  return Math.min(900, Math.max(280, overflowPx * 7));
 }
 
 function chartIndexFromState(activeIndex: unknown): number | null {
@@ -182,11 +235,11 @@ function DayExpenseList({
   if (expenses.length === 0) return null;
 
   return (
-    <ul className="min-w-0 space-y-1.5">
+    <ul className={`min-w-0 ${EXPENSE_LIST_DIVIDERS}`}>
       {expenses.map((expense) => {
         const catalog = expenseCategoryByCode(expense.categoryCode);
         return (
-          <li key={expense.id} className="flex min-w-0 items-start gap-2">
+          <li key={expense.id} className={EXPENSE_ROW_CLASS}>
             <span
               className="mt-1.5 size-2 shrink-0 rounded-full"
               style={{ backgroundColor: catalog.color }}
@@ -342,6 +395,127 @@ function InspectorCategoryList({ point }: { point: Last7DaysTrendPoint }) {
   );
 }
 
+const DESKTOP_TITLE_CLASS =
+  'block min-w-0 rounded-sm text-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring-focus/40 dark:text-text-primary';
+
+/**
+ * Desktop inspector title. Stays truncated until the rendered text actually
+ * overflows. A fine pointer slides that text once, by the measured overflow,
+ * and holds there. Keyboard focus wraps the full description, and reduced
+ * motion uses that same wrap instead of sliding. The title box does not
+ * change width, so the slide leaves the amount, category, and badge put.
+ */
+function DesktopExpenseTitle({
+  label,
+  fineHover,
+  reducedMotion,
+}: {
+  label: string;
+  fineHover: boolean;
+  reducedMotion: boolean;
+}) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const fullWidthRef = useRef(0);
+  const slideRef = useRef(false);
+  const wrapRef = useRef(false);
+  const fineHoverRef = useRef(fineHover);
+  const suppressFocusRevealRef = useRef(false);
+  const [overflowPx, setOverflowPx] = useState(0);
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+
+  const canReveal = overflowPx > 0;
+  // Hover slides without reflow. Focus wraps the whole description; reduced
+  // motion uses that wrap for hover as well, with no text movement.
+  const slideReveal = hovered && !focused && canReveal && fineHover && !reducedMotion;
+  const wrapReveal = canReveal && (focused || (hovered && (reducedMotion || !fineHover)));
+
+  fineHoverRef.current = fineHover;
+  slideRef.current = slideReveal;
+  wrapRef.current = wrapReveal;
+
+  useLayoutEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+
+    const measure = () => {
+      if (wrapRef.current) return;
+      const visible = node.clientWidth;
+      if (visible <= 0) {
+        setOverflowPx((current) => (current === 0 ? current : 0));
+        return;
+      }
+
+      const full = slideRef.current ? fullWidthRef.current : node.scrollWidth;
+      if (!slideRef.current) fullWidthRef.current = node.scrollWidth;
+      const next = full - visible > TITLE_OVERFLOW_TOLERANCE_PX ? full - visible : 0;
+      setOverflowPx((current) => (current === next ? current : next));
+      if (next > 0 && fineHoverRef.current && node.matches(':hover')) {
+        setHovered(true);
+      }
+    };
+
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    let cancelled = false;
+    const fontsReady = document.fonts?.ready;
+    if (fontsReady) {
+      void fontsReady.then(() => {
+        if (!cancelled) measure();
+      });
+    }
+    return () => {
+      cancelled = true;
+      observer.disconnect();
+    };
+  }, [label]);
+
+  return (
+    <span
+      ref={ref}
+      className={wrapReveal ? `${DESKTOP_TITLE_CLASS} break-words` : `${DESKTOP_TITLE_CLASS} truncate`}
+      style={
+        !wrapReveal && canReveal && fineHover && !reducedMotion
+          ? {
+              textIndent: slideReveal ? `-${overflowPx}px` : '0px',
+              textOverflow: slideReveal ? 'clip' : undefined,
+              transition: `text-indent ${titleRevealDurationMs(overflowPx)}ms ease-out`,
+            }
+          : undefined
+      }
+      tabIndex={canReveal ? 0 : undefined}
+      onPointerEnter={() => {
+        if (!fineHover || overflowPx === 0) return;
+        setHovered(true);
+      }}
+      onPointerLeave={() => setHovered(false)}
+      onPointerDown={(event) => {
+        // Pointer clicks must not pin the reveal. Keyboard focus still slides or wraps it.
+        if (event.pointerType !== 'mouse' && event.pointerType !== 'pen') return;
+        suppressFocusRevealRef.current = true;
+        event.preventDefault();
+      }}
+      onPointerUp={() => {
+        suppressFocusRevealRef.current = false;
+      }}
+      onFocus={() => {
+        if (overflowPx === 0 || suppressFocusRevealRef.current) {
+          suppressFocusRevealRef.current = false;
+          return;
+        }
+        setFocused(true);
+      }}
+      onBlur={() => {
+        suppressFocusRevealRef.current = false;
+        setFocused(false);
+      }}
+    >
+      {label}
+    </span>
+  );
+}
+
 function InspectorExpenseList({
   expenses,
   companionDisplayNamesById,
@@ -349,26 +523,30 @@ function InspectorExpenseList({
   expenses: readonly ExpenseWithCategoryCode[];
   companionDisplayNamesById: ReadonlyMap<string, string> | null;
 }) {
+  const fineHover = useFineHover();
+  const reducedMotion = usePrefersReducedMotion();
+
   if (expenses.length === 0) {
     return <p className={INSPECTOR_EMPTY}>Nessuna spesa</p>;
   }
 
   return (
-    <ul className="-mr-1 mt-2 max-h-56 min-h-0 min-w-0 flex-1 space-y-2 overflow-y-auto pb-1 pr-1 md:max-h-none">
+    <ul
+      className={`-mr-1 mt-2 max-h-56 min-h-0 min-w-0 flex-1 overflow-y-auto pb-1 pr-1 md:max-h-none ${EXPENSE_LIST_DIVIDERS} ${INSPECTOR_EXPENSE_SCROLLBAR_CLASS}`}
+      style={INSPECTOR_EXPENSE_SCROLLBAR_STYLE}
+    >
       {expenses.map((expense) => {
         const label = expenseRowLabel(expense);
         const catalog = expenseCategoryByCode(expense.categoryCode);
         return (
-          <li key={expense.id} className="flex min-w-0 items-start gap-2">
+          <li key={expense.id} className={EXPENSE_ROW_CLASS}>
             <span
               className="mt-1.5 size-2 shrink-0 rounded-full"
               style={{ backgroundColor: catalog.color }}
               aria-hidden="true"
             />
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-zinc-800 dark:text-text-primary" title={label}>
-                {label}
-              </span>
+              <DesktopExpenseTitle label={label} fineHover={fineHover} reducedMotion={reducedMotion} />
               <span className="block text-xs text-text-muted">{catalog.presentationLabel}</span>
               <ExpenseCompanionBadge
                 presentation={resolveExpenseCompanionPresentation(
