@@ -225,6 +225,7 @@ export function useExpenses(options: {
       }
       setExpenses((prev) => {
         if (activeTenantIdRef.current !== tenantIdForSave) return prev;
+        if (prev.some((e) => e.id === expense.id)) return prev;
         return [expense, ...prev];
       });
       return { error: null };
