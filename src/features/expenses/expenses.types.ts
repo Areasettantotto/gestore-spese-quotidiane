@@ -46,6 +46,11 @@ export type SaveExpenseFormInput = {
   date: string;
   companionId: string | null;
   editingId: string | null;
+  /**
+   * Expense id owned by the current create-form session.
+   * Required for create. Null on update; never a substitute for editingId.
+   */
+  createExpenseId: string | null;
 };
 
 /**

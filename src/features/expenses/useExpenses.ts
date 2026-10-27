@@ -27,7 +27,7 @@ export type SaveExpenseResult = {
 
 type LoadExpensesResult = 'ok' | 'error' | 'stale';
 
-const makeId = (): string => {
+export const makeId = (): string => {
   const cryptoApi = globalThis.crypto;
   if (cryptoApi?.randomUUID) {
     return cryptoApi.randomUUID();
@@ -204,8 +204,15 @@ export function useExpenses(options: {
         return { error: null };
       }
 
+      const createExpenseId = input.createExpenseId;
+      if (typeof createExpenseId !== 'string' || createExpenseId.trim() === '') {
+        const error = new Error('Identificativo di creazione mancante');
+        alert('Impossibile salvare la spesa: ' + error.message);
+        return { error };
+      }
+
       const expense = localExpenseForCreate({
-        id: makeId(),
+        id: createExpenseId,
         amount: input.amount,
         description: input.description,
         date: input.date,

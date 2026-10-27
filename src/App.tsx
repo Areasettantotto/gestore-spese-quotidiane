@@ -24,7 +24,7 @@ import {
   type ExpenseFormData,
   type ExpenseWithCategoryCode,
 } from '@/src/features/expenses/expenses.types';
-import { useExpenses } from '@/src/features/expenses/useExpenses';
+import { makeId, useExpenses } from '@/src/features/expenses/useExpenses';
 import { useExpenseCompanionRead } from '@/src/features/companions/useExpenseCompanionRead';
 import { useActiveTenant } from '@/src/features/tenancy/useActiveTenant';
 import { currentCalendarMonthStartDate } from '@/src/features/budgets/monthlyBudgets';
@@ -202,6 +202,8 @@ export default function App() {
   const [expenseCompanionSubmitError, setExpenseCompanionSubmitError] = useState<string | null>(null);
   const expenseSubmitLockRef = useRef(false);
   const expenseFormSessionRef = useRef(0);
+  /** Expense id for the open create session. Distinct from expenseFormSessionRef. */
+  const createExpenseIdRef = useRef<string | null>(null);
   const expenseFormContextRef = useRef<{
     userId: string | null;
     activeTenantId: string | null;
@@ -434,9 +436,16 @@ export default function App() {
 
   const discardExpenseFormSession = () => {
     expenseFormSessionRef.current += 1;
+    createExpenseIdRef.current = null;
     setIsAdding(false);
     resetExpenseDraft();
     setExpenseCompanionSubmitError(null);
+  };
+
+  const openCreateExpenseForm = () => {
+    if (isAdding || createExpenseIdRef.current != null) return;
+    createExpenseIdRef.current = makeId();
+    setIsAdding(true);
   };
 
   useLayoutEffect(() => {
@@ -483,6 +492,7 @@ export default function App() {
     expenseSubmitLockRef.current = true;
     setIsExpenseSubmitting(true);
     const ownedExpenseFormSession = expenseFormSessionRef.current;
+    const submittedCreateExpenseId = editingId == null ? createExpenseIdRef.current : null;
 
     try {
       if (editingId != null && editingExpense == null) {
@@ -509,6 +519,7 @@ export default function App() {
         date: newExpense.date,
         companionId: companionWrite.companionId,
         editingId,
+        createExpenseId: submittedCreateExpenseId,
       });
       if (expenseFormSessionRef.current !== ownedExpenseFormSession) {
         return;
@@ -517,6 +528,7 @@ export default function App() {
         return;
       }
 
+      createExpenseIdRef.current = null;
       setIsAdding(false);
       resetExpenseDraft();
     } finally {
@@ -526,6 +538,7 @@ export default function App() {
   };
 
   const handleEditClick = (expense: ExpenseWithCategoryCode) => {
+    createExpenseIdRef.current = null;
     setNewExpense({
       amount: expense.amount,
       categoryCode: expense.categoryCode,
@@ -592,7 +605,7 @@ export default function App() {
           accessBadgeLabel={accessBadgeLabel}
           accountTier={accountTier}
           giftLabel={giftLabel}
-          onAdd={() => setIsAdding(true)}
+          onAdd={openCreateExpenseForm}
           onSignOut={handleSignOut}
         />
 
@@ -688,7 +701,7 @@ export default function App() {
           onHome={navigateToHome}
           onExpenses={navigateToExpenses}
           onSettings={navigateToSettings}
-          onAdd={() => setIsAdding(true)}
+          onAdd={openCreateExpenseForm}
           addDisabled={!userId || !activeTenantId || isTenantContextLoading}
         />
       ) : null}
