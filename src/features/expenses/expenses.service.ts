@@ -12,6 +12,27 @@ import {
 } from './expenses.repository';
 import type { ExpenseDbRow, ExpenseWithCategoryCode } from './expenses.types';
 
+/**
+ * Create-only failure. Keeps Error.message and copies PostgREST code and
+ * details when the insert response includes them. Missing fields stay null.
+ * This type does not classify or recover the failure.
+ */
+export class ExpenseCreateError extends Error {
+  readonly code: string | null;
+  readonly details: string | null;
+
+  constructor(message: string, metadata: { code: string | null; details: string | null }) {
+    super(message);
+    this.name = 'ExpenseCreateError';
+    this.code = metadata.code;
+    this.details = metadata.details;
+  }
+}
+
+function postgrestString(value: unknown): string | null {
+  return typeof value === 'string' ? value : null;
+}
+
 export async function loadExpensesForTenant(tenantId: string): Promise<{
   expenses: ExpenseWithCategoryCode[];
   errorMessage: string | null;
@@ -32,12 +53,17 @@ export async function createExpenseInTenant(params: {
   expense: ExpenseWithCategoryCode;
   userId: string;
   tenantId: string;
-}): Promise<{ error: Error | null }> {
+}): Promise<{ error: ExpenseCreateError | null }> {
   const row = buildInsertPayload(params);
   const { error } = await createExpense(row);
   if (error) {
     console.error('Insert failed', error);
-    return { error: new Error(error.message || JSON.stringify(error)) };
+    return {
+      error: new ExpenseCreateError(error.message || JSON.stringify(error), {
+        code: postgrestString(error.code),
+        details: postgrestString(error.details),
+      }),
+    };
   }
   return { error: null };
 }
